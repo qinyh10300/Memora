@@ -5,6 +5,12 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_SESSION_SECRET = "development-only-change-me"
+UNSAFE_SESSION_SECRETS = {
+    "",
+    "change-me",
+    "replace-with-a-long-random-value",
+    DEFAULT_SESSION_SECRET,
+}
 
 
 class Settings(BaseSettings):
@@ -22,8 +28,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def reject_unsafe_production_secret(self) -> Self:
-        if self.app_env == "production" and self.session_secret == DEFAULT_SESSION_SECRET:
-            raise ValueError("production requires a non-default SESSION_SECRET")
+        if self.app_env == "production" and (
+            self.session_secret in UNSAFE_SESSION_SECRETS or len(self.session_secret) < 32
+        ):
+            raise ValueError(
+                "production requires a non-placeholder SESSION_SECRET of 32+ characters"
+            )
         return self
 
 
