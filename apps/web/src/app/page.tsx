@@ -7,6 +7,8 @@ import { api } from "@/lib/api";
 
 type CurrentUser = components["schemas"]["CurrentUserResponse"];
 type WorkspaceMember = components["schemas"]["WorkspaceMemberResponse"];
+type Memory = components["schemas"]["MemoryResponse"];
+type MemoryFilter = "ALL" | "MINE" | "WORKSPACE";
 
 const demoEmails = [
   "alex@memora.local",
@@ -116,18 +118,123 @@ function LoginScreen({ onLogin }: { onLogin: (user: CurrentUser) => void }) {
 function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () => void }) {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [membersError, setMembersError] = useState("");
+  const [memories, setMemories] = useState<Memory[]>([]);
+  const [memoriesLoading, setMemoriesLoading] = useState(true);
+  const [memoryError, setMemoryError] = useState("");
+  const [captureBody, setCaptureBody] = useState("");
+  const [captureError, setCaptureError] = useState("");
+  const [capturing, setCapturing] = useState(false);
+  const [filter, setFilter] = useState<MemoryFilter>("ALL");
+  const [supplementing, setSupplementing] = useState<Memory | null>(null);
+  const [busyMemoryId, setBusyMemoryId] = useState<string | null>(null);
+  const [deletingMemoryId, setDeletingMemoryId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    void api.GET("/workspace/members").then(({ data }) => {
-      if (!active) return;
-      if (data) setMembers([...data]);
-      else setMembersError("暂时无法读取工作区成员。");
-    });
+    void Promise.all([api.GET("/workspace/members"), api.GET("/memories")])
+      .then(([membersResult, memoriesResult]) => {
+        if (!active) return;
+        if (membersResult.data) setMembers([...membersResult.data]);
+        else setMembersError("暂时无法读取工作区成员。");
+        if (memoriesResult.data) setMemories([...memoriesResult.data]);
+        else setMemoryError("暂时无法读取想法，请稍后刷新。");
+      })
+      .catch(() => {
+        if (!active) return;
+        setMembersError("暂时无法读取工作区成员。");
+        setMemoryError("暂时无法读取想法，请稍后刷新。");
+      })
+      .finally(() => {
+        if (active) setMemoriesLoading(false);
+      });
     return () => {
       active = false;
     };
   }, []);
+
+  async function handleCapture(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const body = captureBody.trim();
+    if (!body) {
+      setCaptureError("先写下一点内容再保存。");
+      return;
+    }
+    setCaptureError("");
+    setCapturing(true);
+    try {
+      const { data, response } = await api.POST("/memories", {
+        body: {
+          body,
+          supersedes_id: supplementing?.id ?? null,
+        },
+      });
+      if (!data || !response.ok) {
+        setCaptureError("这条想法没有保存成功，请稍后重试。");
+        return;
+      }
+      setMemories((current) => [data, ...current]);
+      setCaptureBody("");
+      setSupplementing(null);
+      setFilter("ALL");
+    } catch {
+      setCaptureError("暂时无法连接 Memora，这条想法尚未保存。");
+    } finally {
+      setCapturing(false);
+    }
+  }
+
+  async function toggleVisibility(memory: Memory) {
+    setBusyMemoryId(memory.id);
+    setMemoryError("");
+    try {
+      const result =
+        memory.visibility === "PRIVATE"
+          ? await api.POST("/memories/{memory_id}/share", {
+              params: { path: { memory_id: memory.id } },
+            })
+          : await api.POST("/memories/{memory_id}/unshare", {
+              params: { path: { memory_id: memory.id } },
+            });
+      if (!result.data || !result.response.ok) {
+        setMemoryError("可见范围没有更新成功，请稍后重试。");
+        return;
+      }
+      setMemories((current) =>
+        current.map((item) => (item.id === result.data?.id ? result.data : item)),
+      );
+    } catch {
+      setMemoryError("暂时无法更新可见范围，请稍后重试。");
+    } finally {
+      setBusyMemoryId(null);
+    }
+  }
+
+  async function confirmDelete(memory: Memory) {
+    setBusyMemoryId(memory.id);
+    setMemoryError("");
+    try {
+      const { response } = await api.DELETE("/memories/{memory_id}", {
+        params: { path: { memory_id: memory.id } },
+      });
+      if (!response.ok) {
+        setMemoryError("这条想法没有删除成功，请稍后重试。");
+        return;
+      }
+      setMemories((current) => current.filter((item) => item.id !== memory.id));
+      setDeletingMemoryId(null);
+      if (supplementing?.id === memory.id) setSupplementing(null);
+    } catch {
+      setMemoryError("暂时无法删除这条想法，请稍后重试。");
+    } finally {
+      setBusyMemoryId(null);
+    }
+  }
+
+  const visibleMemories = memories.filter((memory) => {
+    if (filter === "MINE") return memory.author.id === user.id;
+    if (filter === "WORKSPACE") return memory.visibility === "WORKSPACE";
+    return true;
+  });
 
   return (
     <main className="app-shell">
@@ -157,11 +264,11 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
         <aside className="sidebar" aria-label="主导航">
           <nav>
             <a className="nav-active" href="#home">
-              今日记忆
+              记录与回顾
             </a>
-            <span>全部想法</span>
-            <span>Memora Chat</span>
-            <span>报告</span>
+            <a href="#timeline">全部想法</a>
+            <span aria-disabled="true">Memora Chat · 即将开放</span>
+            <span aria-disabled="true">报告 · 即将开放</span>
           </nav>
           <div className="privacy-card">
             <span aria-hidden="true">●</span>
@@ -173,46 +280,212 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
         </aside>
 
         <section className="workspace-main" id="home">
-          <p className="eyebrow">IDENTITY READY</p>
-          <h1>早上好，{user.display_name}。</h1>
+          <p className="eyebrow">CAPTURE · PRIVATE BY DEFAULT</p>
+          <h1>此刻，你在想什么？</h1>
           <p className="workspace-lead">
-            你的身份与工作区边界已经生效。下一步将在这里完成十五秒记录闭环。
+            先忠实地记录，再决定是否让团队看见。保存后会自动带上作者与时间。
           </p>
 
-          <article className="foundation-card">
-            <div>
-              <span className="card-icon" aria-hidden="true">
-                ✓
-              </span>
-              <div>
-                <h2>安全会话已建立</h2>
-                <p>会话可以立即注销，其他成员无法使用你的身份访问私有内容。</p>
-              </div>
-            </div>
-            <span className="status-pill">M2 已就绪</span>
-          </article>
-
-          <section className="members-section" aria-labelledby="members-title">
-            <div className="section-heading">
-              <div>
-                <p className="panel-kicker">测试空间</p>
-                <h2 id="members-title">工作区成员</h2>
-              </div>
-              <span>{members.length}/4</span>
-            </div>
-            {membersError ? <p role="alert">{membersError}</p> : null}
-            <div className="member-list">
-              {members.map((member) => (
-                <div className="member-row" key={member.id}>
-                  <span className="avatar" aria-hidden="true">
-                    {member.display_name.slice(0, 1)}
-                  </span>
-                  <strong>{member.display_name}</strong>
-                  <span>{member.role === "OWNER" ? "管理员" : "成员"}</span>
+          <section className="capture-card" aria-label="记录新想法">
+            {supplementing ? (
+              <div className="supplement-context">
+                <div>
+                  <strong>正在补充一条历史想法</strong>
+                  <p>{supplementing.body}</p>
                 </div>
-              ))}
-            </div>
+                <button type="button" onClick={() => setSupplementing(null)}>
+                  取消补充
+                </button>
+              </div>
+            ) : null}
+            <form onSubmit={handleCapture}>
+              <label htmlFor="memory-body">{supplementing ? "写下你的补充" : "快速记录"}</label>
+              <textarea
+                id="memory-body"
+                name="memory-body"
+                placeholder="一个判断、一个疑问，或刚刚发生的进展…"
+                value={captureBody}
+                onChange={(event) => setCaptureBody(event.target.value)}
+                maxLength={10_000}
+                rows={5}
+                disabled={capturing}
+              />
+              {captureError ? (
+                <p className="form-error" role="alert">
+                  {captureError}
+                </p>
+              ) : null}
+              <div className="capture-footer">
+                <div className="private-promise">
+                  <span aria-hidden="true">●</span>
+                  <div>
+                    <strong>保存后仅自己可见</strong>
+                    <small>之后可在记录上主动分享给整个工作区</small>
+                  </div>
+                </div>
+                <div className="capture-submit">
+                  <span>{captureBody.length}/10000</span>
+                  <button className="primary-button" type="submit" disabled={capturing}>
+                    {capturing ? "正在保存…" : "保存想法"}
+                  </button>
+                </div>
+              </div>
+            </form>
           </section>
+
+          <div className="content-grid">
+            <section className="timeline-section" id="timeline" aria-labelledby="timeline-title">
+              <div className="section-heading timeline-heading">
+                <div>
+                  <p className="panel-kicker">MEMORY TIMELINE</p>
+                  <h2 id="timeline-title">可访问的想法</h2>
+                </div>
+                <span>{visibleMemories.length} 条</span>
+              </div>
+
+              <div className="filter-bar" aria-label="筛选想法">
+                {(
+                  [
+                    ["ALL", "全部可见"],
+                    ["MINE", "我的记录"],
+                    ["WORKSPACE", "团队共享"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={filter === value ? "filter-active" : ""}
+                    aria-pressed={filter === value}
+                    onClick={() => setFilter(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {memoryError ? (
+                <p className="inline-error" role="alert">
+                  {memoryError}
+                </p>
+              ) : null}
+              {memoriesLoading ? <p className="empty-state">正在读取你的时间线…</p> : null}
+              {!memoriesLoading && visibleMemories.length === 0 ? (
+                <div className="empty-state">
+                  <strong>
+                    {memories.length === 0 ? "第一条想法，从现在开始。" : "这个范围还没有记录。"}
+                  </strong>
+                  <p>新想法默认私有，不会自动出现在同事的时间线里。</p>
+                </div>
+              ) : null}
+
+              <div className="memory-list">
+                {visibleMemories.map((memory) => {
+                  const timestamp = new Intl.DateTimeFormat("zh-CN", {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }).format(new Date(memory.created_at));
+                  const isBusy = busyMemoryId === memory.id;
+                  const isDeleting = deletingMemoryId === memory.id;
+                  return (
+                    <article className="memory-card" id={`memory-${memory.id}`} key={memory.id}>
+                      <header>
+                        <div className="memory-author">
+                          <span className="avatar" aria-hidden="true">
+                            {memory.author.display_name.slice(0, 1)}
+                          </span>
+                          <div>
+                            <strong>{memory.author.display_name}</strong>
+                            <time dateTime={memory.created_at}>{timestamp}</time>
+                          </div>
+                        </div>
+                        <span
+                          className={`visibility-pill ${memory.visibility === "PRIVATE" ? "visibility-private" : "visibility-shared"}`}
+                        >
+                          {memory.visibility === "PRIVATE" ? "仅自己" : "工作区共享"}
+                        </span>
+                      </header>
+                      {memory.supersedes_id ? (
+                        <a className="supplement-link" href={`#memory-${memory.supersedes_id}`}>
+                          ↳ 这是对一条历史想法的补充
+                        </a>
+                      ) : null}
+                      <p className="memory-body">{memory.body}</p>
+                      {memory.is_owner ? (
+                        <footer className="memory-actions">
+                          <button
+                            type="button"
+                            onClick={() => setSupplementing(memory)}
+                            disabled={isBusy}
+                          >
+                            补充这条
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void toggleVisibility(memory)}
+                            disabled={isBusy}
+                          >
+                            {memory.visibility === "PRIVATE" ? "分享给工作区" : "取消共享"}
+                          </button>
+                          {isDeleting ? (
+                            <span className="delete-confirm">
+                              <span>删除后正文不可恢复</span>
+                              <button
+                                type="button"
+                                className="danger-button"
+                                onClick={() => void confirmDelete(memory)}
+                                disabled={isBusy}
+                              >
+                                确认删除
+                              </button>
+                              <button type="button" onClick={() => setDeletingMemoryId(null)}>
+                                取消
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="danger-link"
+                              onClick={() => setDeletingMemoryId(memory.id)}
+                              disabled={isBusy}
+                            >
+                              删除
+                            </button>
+                          )}
+                        </footer>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+
+            <aside className="members-section" aria-labelledby="members-title">
+              <div className="section-heading">
+                <div>
+                  <p className="panel-kicker">TEST SPACE</p>
+                  <h2 id="members-title">工作区成员</h2>
+                </div>
+                <span>{members.length}/4</span>
+              </div>
+              {membersError ? <p role="alert">{membersError}</p> : null}
+              <div className="member-list">
+                {members.map((member) => (
+                  <div className="member-row" key={member.id}>
+                    <span className="avatar" aria-hidden="true">
+                      {member.display_name.slice(0, 1)}
+                    </span>
+                    <strong>{member.display_name}</strong>
+                    <span>{member.role === "OWNER" ? "管理员" : "成员"}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="member-scope-note">
+                你只能看到成员主动共享的记录，私有内容不会参与团队上下文。
+              </p>
+            </aside>
+          </div>
         </section>
       </section>
     </main>

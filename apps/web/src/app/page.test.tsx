@@ -6,6 +6,7 @@ import HomePage from "./page";
 const apiMocks = vi.hoisted(() => ({
   GET: vi.fn(),
   POST: vi.fn(),
+  DELETE: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({ api: apiMocks }));
@@ -26,10 +27,31 @@ const members = [
   { id: "user-devon", display_name: "Devon", role: "MEMBER" },
 ];
 
+const privateMemory = {
+  id: "memory-1",
+  body: "先把记录摩擦降到十五秒。",
+  visibility: "PRIVATE",
+  author: { id: "user-alex", display_name: "Alex" },
+  is_owner: true,
+  created_at: "2026-07-22T01:00:00Z",
+  shared_at: null,
+  supersedes_id: null,
+};
+
+function mockWorkspaceGet(memories: (typeof privateMemory)[] = []) {
+  apiMocks.GET.mockImplementation((path: string) => {
+    if (path === "/auth/me") return Promise.resolve({ data: alex });
+    if (path === "/workspace/members") return Promise.resolve({ data: members });
+    if (path === "/memories") return Promise.resolve({ data: memories });
+    return Promise.resolve({ data: undefined });
+  });
+}
+
 describe("HomePage identity flow", () => {
   beforeEach(() => {
     apiMocks.GET.mockReset();
     apiMocks.POST.mockReset();
+    apiMocks.DELETE.mockReset();
   });
 
   it("匿名用户看到默认私有的登录入口", async () => {
@@ -43,13 +65,19 @@ describe("HomePage identity flow", () => {
   });
 
   it("登录成功后展示当前身份和四位工作区成员", async () => {
-    apiMocks.GET.mockImplementation((path: string) =>
-      Promise.resolve(path === "/auth/me" ? { data: undefined } : { data: members }),
-    );
-    apiMocks.POST.mockResolvedValue({
-      data: alex,
-      response: { ok: true, status: 200 },
+    apiMocks.GET.mockImplementation((path: string) => {
+      if (path === "/auth/me") return Promise.resolve({ data: undefined });
+      if (path === "/workspace/members") return Promise.resolve({ data: members });
+      if (path === "/memories") return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: undefined });
     });
+    apiMocks.POST.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/auth/login"
+          ? { data: alex, response: { ok: true, status: 200 } }
+          : { data: undefined, response: { ok: false, status: 404 } },
+      ),
+    );
 
     render(<HomePage />);
     await screen.findByRole("heading", { name: "进入测试工作区" });
@@ -59,19 +87,76 @@ describe("HomePage identity flow", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "登录 Memora" }));
 
-    expect(await screen.findByRole("heading", { name: "早上好，Alex。" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "此刻，你在想什么？" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("4/4")).toBeInTheDocument());
     expect(screen.getByText("alex@memora.local")).toBeInTheDocument();
   });
 
   it("已有会话时直接恢复工作区", async () => {
-    apiMocks.GET.mockImplementation((path: string) =>
-      Promise.resolve(path === "/auth/me" ? { data: alex } : { data: members }),
-    );
+    mockWorkspaceGet();
 
     render(<HomePage />);
 
-    expect(await screen.findByText("安全会话已建立")).toBeInTheDocument();
+    expect(await screen.findByLabelText("快速记录")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "进入测试工作区" })).not.toBeInTheDocument();
+  });
+
+  it("保存的新想法默认私有并立即出现在时间线", async () => {
+    mockWorkspaceGet();
+    apiMocks.POST.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/memories"
+          ? { data: privateMemory, response: { ok: true, status: 201 } }
+          : { data: undefined, response: { ok: false, status: 404 } },
+      ),
+    );
+
+    render(<HomePage />);
+    const capture = await screen.findByLabelText("快速记录");
+    fireEvent.change(capture, { target: { value: privateMemory.body } });
+    fireEvent.click(screen.getByRole("button", { name: "保存想法" }));
+
+    expect(await screen.findByText(privateMemory.body)).toBeInTheDocument();
+    expect(screen.getByText("仅自己")).toBeInTheDocument();
+    expect(apiMocks.POST).toHaveBeenCalledWith("/memories", {
+      body: { body: privateMemory.body, supersedes_id: null },
+    });
+  });
+
+  it("作者可以主动分享并再次取消共享", async () => {
+    mockWorkspaceGet([privateMemory]);
+    const sharedMemory = {
+      ...privateMemory,
+      visibility: "WORKSPACE",
+      shared_at: "2026-07-22T01:05:00Z",
+    };
+    apiMocks.POST.mockImplementation((path: string) =>
+      Promise.resolve({
+        data: path.endsWith("/share") ? sharedMemory : privateMemory,
+        response: { ok: true, status: 200 },
+      }),
+    );
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "分享给工作区" }));
+
+    expect(await screen.findByText("工作区共享")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "取消共享" }));
+    expect(await screen.findByText("仅自己")).toBeInTheDocument();
+  });
+
+  it("删除要求二次确认并从时间线移除", async () => {
+    mockWorkspaceGet([privateMemory]);
+    apiMocks.DELETE.mockResolvedValue({ response: { ok: true, status: 204 } });
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "删除" }));
+    expect(screen.getByText("删除后正文不可恢复")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => expect(screen.queryByText(privateMemory.body)).not.toBeInTheDocument());
+    expect(apiMocks.DELETE).toHaveBeenCalledWith("/memories/{memory_id}", {
+      params: { path: { memory_id: privateMemory.id } },
+    });
   });
 });

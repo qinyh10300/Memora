@@ -1,6 +1,6 @@
 # Memora Development Guide
 
-本文档说明 M1 工程骨架的本地开发、验证、配置和容器运行方式。产品与架构规则仍以 `docs/product/brief.md`、`docs/architecture/overview.md` 和 ADR 为准。
+本文档说明 Memora 的本地开发、验证、配置和容器运行方式。产品与架构规则仍以 `docs/product/brief.md`、`docs/architecture/overview.md` 和 ADR 为准。
 
 ## Required tools
 
@@ -128,7 +128,7 @@ make api-dev
 make web-dev
 ```
 
-当前 M1 页面不调用业务 API。后续加入浏览器 API 请求时，应通过同源 `/api` 边界或显式的开发代理访问，不能把服务端密钥暴露为 `NEXT_PUBLIC_*` 变量。
+Web 通过同源 `/api` 和由 OpenAPI 生成的类型化客户端调用后端；`next.config.ts` 在原生热更新模式下把该路径代理到 `API_BASE_URL`（默认 `http://localhost:8000`）。不能把服务端密钥暴露为 `NEXT_PUBLIC_*` 变量。
 
 ## Quality commands
 
@@ -144,7 +144,7 @@ make web-dev
 | `make build` | Next.js 生产构建 |
 | `make check` | 格式、lint、类型、测试、契约与构建总检查 |
 | `make compose-check` | Docker Compose 语义配置检查 |
-| `make e2e` | 对已运行环境执行 Web/API smoke test |
+| `make e2e` | 对已运行环境执行登录、默认私有、分享、取消共享和删除的可清理 smoke test |
 
 `make check` 不需要真实 AI Key，也不会调用外部模型。真实供应商契约测试将在后续里程碑中单独标记，不能混入默认离线 CI。
 
@@ -159,7 +159,7 @@ make contract
 make contract-check
 ```
 
-OpenAPI 差异应与 API 实现一起审查。前端生成 client 的步骤将在出现第一个业务 API 时加入，避免 M1 提前提交没有消费者的生成代码。
+OpenAPI 差异应与 API 实现一起审查。`make contract` 会同时更新 JSON 和 `packages/api-contract/schema.d.ts`，Web 通过 `openapi-fetch` 消费生成类型；不要手工维护第二套请求模型。
 
 ## Environment and secrets
 

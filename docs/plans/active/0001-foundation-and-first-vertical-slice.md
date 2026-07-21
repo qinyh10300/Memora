@@ -67,7 +67,7 @@ Last updated: 2026-07-22
 - [x] **M0 — Planning approval**：产品、架构、ADR 和活动计划获批准。验证：用户已明确批准进入 M1。
 - [x] **M1 — Reproducible foundation**：本地一条命令启动 Web、API、worker 和数据库，`make check` 可在无真实 AI Key 时通过。
 - [x] **M2 — Identity boundary**：四个 seed 用户能登录；未登录和跨用户访问被拒绝。验证：15 个 API 测试、真实 PostgreSQL 会话验证和浏览器登录/恢复/退出测试。
-- [ ] **M3 — Private capture and sharing**：用户创建、浏览、补充、分享、取消分享和删除纯文本 memory；默认私有。验证：跨用户矩阵测试。
+- [x] **M3 — Private capture and sharing**：用户创建、浏览、补充、分享、取消分享和删除纯文本 memory；默认私有。验证：跨用户矩阵测试、真实 PostgreSQL E2E 和浏览器交互测试。
 - [ ] **M4 — Reliable retrieval projection**：创建记录不等待 embedding，job 可重试，关键词和向量检索只返回授权记录。验证：真实 PostgreSQL 故障/重试测试和 expected memory ID 评测。
 - [ ] **M5 — Cited chatbot slice**：用户能询问过去或类似想法，回答含可打开的引用；证据不足时明确说明。验证：产品简报代表问题和越权提示测试。
 - [ ] **M6 — On-demand reports**：生成个人、同事和团队时间段报告，严格遵守共享范围。验证：固定数据集和人工有用性检查。
@@ -75,8 +75,8 @@ Last updated: 2026-07-22
 
 ## Acceptance criteria
 
-- [ ] 新记录始终默认为私有，且共享必须由作者显式触发。
-- [ ] 用户 B 在任何接口中都无法发现用户 A 私有记录的正文或片段。
+- [x] 新记录始终默认为私有，且共享必须由作者显式触发。
+- [x] 用户 B 在任何已实现的记录接口中都无法发现用户 A 私有记录的正文、片段或补充目标 ID；搜索、Chatbot 和报告将在各自里程碑继续验证。
 - [ ] 五类代表问题均返回来源，或明确说明没有足够证据。
 - [ ] AI provider 不可用时记录不丢失，失败状态可见且可重试。
 - [ ] 删除正文和 embedding 后，检索、引用和新报告不再返回该内容。
@@ -96,6 +96,7 @@ Last updated: 2026-07-22
 
 - 首先只部署测试工作区和四个账号，不迁移真实生产数据。
 - 数据库迁移在备份后执行，并记录当前 schema revision。
+- `20260722_0003` 只新增 memories、jobs、audit_events 与索引，旧版 M2 应用可在保留新表时回退；其 Alembic downgrade 会删除记录数据，只用于空测试库，不作为生产回滚手段。已有数据环境优先回退应用镜像、保留 schema 并向前修复，必要时从迁移前备份恢复。
 - AI 供应商变更通过配置和 adapter 完成；embedding 模型变化通过可重启的重建 job 处理。
 - 部署失败时回退应用镜像；涉及不可逆 schema 变化时使用向前修复并从已验证备份恢复。
 
@@ -112,6 +113,9 @@ Last updated: 2026-07-22
 - 2026-07-22：开始 M2–M6 第一版连续交付；确定 seed 账号、Argon2、数据库不透明会话、统一授权查询和显式报告时间范围。
 - 2026-07-22：完成 M2。四个可配置 seed 用户写入真实 PostgreSQL，密码使用 Argon2，不透明会话仅在数据库保存摘要，登录限流与即时注销生效；OpenAPI 生成 TypeScript 客户端并由 Web 同源调用。
 - 2026-07-22：完成 M2 浏览器验收。Alex 登录后显示四位成员，刷新恢复会话，退出后回到登录页，浏览器控制台无错误；`make check` 覆盖 4 个 Web 测试和 15 个 API 测试。
+- 2026-07-22：完成 M3 数据与权限边界。迁移 `20260722_0003` 增加追加式 memories、embedding outbox jobs 和不含正文的 audit events；创建、列表、详情、补充、分享、取消共享和删除 API 统一使用工作区与可见性过滤。
+- 2026-07-22：真实 PostgreSQL 首次 E2E 暴露出无 ORM relationship 时 job 可能先于 memory flush 的外键错误。实现改为同一事务中先 flush memory 再写 outbox，并强制 SQLite 测试启用外键，防止数据库差异再次漏检。
+- 2026-07-22：完成 M3 浏览器验收。新记录显示“仅自己”，作者主动分享后 Blair 可见且没有作者操作，取消共享立即生效，删除要求二次确认；真实 PostgreSQL `make e2e` 和浏览器控制台检查均通过。
 
 ## Decision log
 
@@ -124,4 +128,4 @@ Last updated: 2026-07-22
 
 ## Completion summary
 
-M0、M1 和 M2 已完成。仓库具备可复现的本地工程基础、四个预置账号、可撤销服务端会话、OpenAPI 生成客户端、真实 PostgreSQL/pgvector 迁移以及同源 Web/API 浏览器验收。当前计划继续执行，下一里程碑为 M3 默认私有记录和主动共享；公网 HTTPS、备份恢复和真实 AI 供应商验证仍属于后续里程碑。
+M0 至 M3 已完成。仓库具备可复现的本地工程基础、四个预置账号、可撤销服务端会话、默认私有的追加式记录、主动分享/取消共享、删除清除正文、事务性 embedding outbox、OpenAPI 生成客户端，以及真实 PostgreSQL 和同源浏览器验收。当前计划继续执行，下一里程碑为 M4 可重试的 embedding 投影与授权混合检索；公网 HTTPS、备份恢复和真实 AI 供应商验证仍属于后续里程碑。
