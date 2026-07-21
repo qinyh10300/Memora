@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from memora.api.auth import router as auth_router
+from memora.api.memories import router as memories_router
 from memora.api.system import router as system_router
 from memora.api.workspaces import router as workspaces_router
 from memora.database import build_engine, build_session_factory
@@ -38,6 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(system_router)
     application.include_router(auth_router)
     application.include_router(workspaces_router)
+    application.include_router(memories_router)
     return application
 
 
