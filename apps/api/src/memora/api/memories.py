@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, update
 
 from memora.audit.models import AuditEvent
+from memora.conversations.service import invalidate_cited_answers
 from memora.database import DatabaseSession
 from memora.identity.dependencies import CurrentPrincipal, Principal
 from memora.identity.models import User
@@ -180,6 +181,12 @@ def unshare_memory(
 ) -> MemoryResponse:
     memory, author, projection = _author_row_or_error(database, principal, memory_id)
     if memory.visibility != "PRIVATE":
+        invalidate_cited_answers(
+            database,
+            memory_id=memory.id,
+            author_id=memory.author_id,
+            include_author=False,
+        )
         memory.visibility = "PRIVATE"
         memory.shared_at = None
         _audit(database, principal, "MEMORY_UNSHARED", memory.id)
@@ -231,6 +238,12 @@ def delete_memory(
     database: DatabaseSession,
 ) -> None:
     memory, _author, projection = _author_row_or_error(database, principal, memory_id)
+    invalidate_cited_answers(
+        database,
+        memory_id=memory.id,
+        author_id=memory.author_id,
+        include_author=True,
+    )
     memory.body = None
     memory.visibility = "PRIVATE"
     memory.shared_at = None

@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     ai_embedding_api_key: SecretStr = SecretStr("")
     ai_embedding_model: str = ""
     ai_request_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    ai_chat_max_output_tokens: int = Field(default=1200, ge=100, le=8000)
     ai_embedding_max_attempts: int = Field(default=5, ge=1, le=20)
     ai_job_retry_base_seconds: int = Field(default=15, ge=1, le=3600)
 

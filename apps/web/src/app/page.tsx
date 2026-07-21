@@ -9,6 +9,8 @@ type CurrentUser = components["schemas"]["CurrentUserResponse"];
 type WorkspaceMember = components["schemas"]["WorkspaceMemberResponse"];
 type Memory = components["schemas"]["MemoryResponse"];
 type SemanticStatus = components["schemas"]["SearchResponse"]["semantic_status"];
+type ChatResponse = components["schemas"]["ChatResponse"];
+type ChatScope = components["schemas"]["ChatRequest"]["scope"];
 type MemoryFilter = "ALL" | "MINE" | "WORKSPACE";
 
 const demoEmails = [
@@ -133,6 +135,15 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
   const [searchResults, setSearchResults] = useState<Memory[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [semanticStatus, setSemanticStatus] = useState<SemanticStatus | null>(null);
+  const [chatQuestion, setChatQuestion] = useState("");
+  const [chatTopic, setChatTopic] = useState("");
+  const [chatScope, setChatScope] = useState<ChatScope>("PERSONAL");
+  const [chatAuthorId, setChatAuthorId] = useState("");
+  const [chatFrom, setChatFrom] = useState("");
+  const [chatTo, setChatTo] = useState("");
+  const [chatAnswer, setChatAnswer] = useState<ChatResponse | null>(null);
+  const [chatError, setChatError] = useState("");
+  const [chatting, setChatting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -235,6 +246,9 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
       }
       setMemories((current) => current.filter((item) => item.id !== memory.id));
       setSearchResults((current) => current?.filter((item) => item.id !== memory.id) ?? null);
+      if (chatAnswer?.citations.some((citation) => citation.memory_id === memory.id)) {
+        setChatAnswer(null);
+      }
       setDeletingMemoryId(null);
       if (supplementing?.id === memory.id) setSupplementing(null);
     } catch {
@@ -299,6 +313,56 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
     setSemanticStatus(null);
   }
 
+  async function handleChat(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const question = chatQuestion.trim();
+    const topic = chatTopic.trim();
+    if (!question || !topic) {
+      setChatError("请同时填写问题和检索主题；如果要回顾全部记录，主题可写“全部”。");
+      return;
+    }
+    if (chatScope === "COLLEAGUE" && !chatAuthorId) {
+      setChatError("请选择要了解的同事。");
+      return;
+    }
+    setChatting(true);
+    setChatError("");
+    setChatAnswer(null);
+    try {
+      const createdFrom = chatFrom ? new Date(`${chatFrom}T00:00:00`).toISOString() : null;
+      let createdTo: string | null = null;
+      if (chatTo) {
+        const inclusiveEnd = new Date(`${chatTo}T00:00:00`);
+        inclusiveEnd.setDate(inclusiveEnd.getDate() + 1);
+        createdTo = inclusiveEnd.toISOString();
+      }
+      const { data, response } = await api.POST("/chat/questions", {
+        body: {
+          question,
+          topic,
+          scope: chatScope,
+          author_id: chatScope === "COLLEAGUE" ? chatAuthorId : null,
+          created_from: createdFrom,
+          created_to: createdTo,
+          evidence_limit: 8,
+        },
+      });
+      if (!data || !response.ok) {
+        setChatError(
+          response.status === 429
+            ? "提问太频繁，请稍后再试。"
+            : "这次提问没有完成，请检查范围后重试。",
+        );
+        return;
+      }
+      setChatAnswer(data);
+    } catch {
+      setChatError("暂时无法连接 Memora Chat，请稍后重试。");
+    } finally {
+      setChatting(false);
+    }
+  }
+
   const timelineMemories = searchResults ?? memories;
   const visibleMemories = timelineMemories.filter((memory) => {
     if (filter === "MINE") return memory.author.id === user.id;
@@ -337,7 +401,7 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
               记录与回顾
             </a>
             <a href="#timeline">全部想法</a>
-            <span aria-disabled="true">Memora Chat · 即将开放</span>
+            <a href="#chat">Memora Chat</a>
             <span aria-disabled="true">报告 · 即将开放</span>
           </nav>
           <div className="privacy-card">
@@ -401,6 +465,140 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
                 </div>
               </div>
             </form>
+          </section>
+
+          <section className="chat-card" id="chat" aria-labelledby="chat-title">
+            <div className="chat-heading">
+              <div>
+                <p className="panel-kicker">MEMORA CHAT · CITED ANSWERS</p>
+                <h2 id="chat-title">用你的记录回答，而不是凭空猜测</h2>
+              </div>
+              <span>先授权，再检索</span>
+            </div>
+            <p className="chat-intro">
+              显式选择范围和主题。个人范围可使用你的私有记录；同事范围只使用对方主动共享的记录。
+            </p>
+            <form className="chat-form" onSubmit={handleChat}>
+              <div className="chat-fields chat-fields-primary">
+                <label>
+                  回答范围
+                  <select
+                    value={chatScope}
+                    onChange={(event) => {
+                      setChatScope(event.target.value as ChatScope);
+                      setChatAnswer(null);
+                    }}
+                  >
+                    <option value="PERSONAL">仅我的记录</option>
+                    <option value="COLLEAGUE">指定同事的共享记录</option>
+                    <option value="WORKSPACE">我的记录 + 团队共享</option>
+                  </select>
+                </label>
+                {chatScope === "COLLEAGUE" ? (
+                  <label>
+                    选择同事
+                    <select
+                      value={chatAuthorId}
+                      onChange={(event) => setChatAuthorId(event.target.value)}
+                      required
+                    >
+                      <option value="">请选择</option>
+                      {members
+                        .filter((member) => member.id !== user.id)
+                        .map((member) => (
+                          <option value={member.id} key={member.id}>
+                            {member.display_name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                ) : null}
+                <label>
+                  检索主题
+                  <input
+                    value={chatTopic}
+                    onChange={(event) => setChatTopic(event.target.value)}
+                    placeholder="例如：商业模式；回顾全部可写“全部”"
+                    maxLength={500}
+                    required
+                  />
+                </label>
+              </div>
+              <div className="chat-fields chat-date-fields">
+                <label>
+                  开始日期（可选）
+                  <input
+                    type="date"
+                    value={chatFrom}
+                    onChange={(event) => setChatFrom(event.target.value)}
+                  />
+                </label>
+                <label>
+                  结束日期（可选，含当天）
+                  <input
+                    type="date"
+                    value={chatTo}
+                    onChange={(event) => setChatTo(event.target.value)}
+                  />
+                </label>
+              </div>
+              <label htmlFor="chat-question">你想知道什么？</label>
+              <textarea
+                id="chat-question"
+                value={chatQuestion}
+                onChange={(event) => setChatQuestion(event.target.value)}
+                placeholder="例如：我之前对这个商业模式的看法是什么？"
+                rows={3}
+                maxLength={2_000}
+                required
+              />
+              <div className="chat-submit-row">
+                <p>涉及“这段时间”时请填写起止日期；证据不足时 Memora 会明确说不知道。</p>
+                <button className="primary-button" type="submit" disabled={chatting}>
+                  {chatting ? "正在核对证据…" : "询问 Memora"}
+                </button>
+              </div>
+            </form>
+            {chatError ? (
+              <p className="inline-error" role="alert">
+                {chatError}
+              </p>
+            ) : null}
+            {chatAnswer ? (
+              <section className="chat-answer" aria-live="polite" aria-label="Memora 的回答">
+                <header>
+                  <strong>
+                    {chatAnswer.status === "NEEDS_CLARIFICATION"
+                      ? "需要你补充范围"
+                      : chatAnswer.status === "NO_EVIDENCE"
+                        ? "证据不足"
+                        : "基于记录的回答"}
+                  </strong>
+                  <span>
+                    {chatAnswer.model_status === "AVAILABLE"
+                      ? "AI 已启用"
+                      : chatAnswer.model_status === "DEGRADED"
+                        ? "AI 降级 · 证据模式"
+                        : "基础证据模式"}
+                  </span>
+                </header>
+                <p className="chat-answer-body">{chatAnswer.answer}</p>
+                {chatAnswer.citations.length > 0 ? (
+                  <div className="citation-list">
+                    <strong>原始记录 · {chatAnswer.citations.length} 条</strong>
+                    {chatAnswer.citations.map((citation) => (
+                      <a href={citation.href} key={citation.memory_id}>
+                        <span>
+                          {citation.author.display_name} ·{" "}
+                          {new Date(citation.created_at).toLocaleString("zh-CN")}
+                        </span>
+                        <p>{citation.excerpt}</p>
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
           </section>
 
           <div className="content-grid">

@@ -4,10 +4,12 @@ import pytest
 from pydantic import SecretStr
 
 from memora.ai.openai_compatible import (
+    OpenAICompatibleChatModel,
     OpenAICompatibleEmbeddingModel,
+    build_chat_model,
     build_embedding_model,
 )
-from memora.ai.ports import AIProviderError
+from memora.ai.ports import AIProviderError, ChatMessage
 from memora.settings import Settings
 
 
@@ -111,3 +113,63 @@ def test_embedding_factory_requires_both_key_and_model_and_secrets_are_redacted(
 
     assert model is not None and model.model_id == "model"
     assert "private-test-key" not in repr(settings)
+
+
+def test_chat_adapter_uses_compatible_contract_and_records_usage() -> None:
+    transport = FakeTransport(
+        {
+            "choices": [{"message": {"role": "assistant", "content": "  有证据的回答  "}}],
+            "model": "chat-model-v1",
+            "usage": {"prompt_tokens": 21, "completion_tokens": 8},
+        }
+    )
+    model = OpenAICompatibleChatModel(
+        base_url="https://relay.example/v1/",
+        api_key="test-secret-key",
+        model="chat-model-v1",
+        timeout_seconds=15,
+        max_output_tokens=900,
+        transport=transport,
+    )
+
+    result = model.complete([ChatMessage(role="user", content="请回答")])
+
+    assert result.content == "有证据的回答"
+    assert result.model == "chat-model-v1"
+    assert result.usage.input_tokens == 21
+    assert result.usage.output_tokens == 8
+    assert transport.request is not None
+    url, headers, payload, timeout = transport.request
+    assert url == "https://relay.example/v1/chat/completions"
+    assert headers["Authorization"] == "Bearer test-secret-key"
+    assert payload == {
+        "model": "chat-model-v1",
+        "messages": [{"role": "user", "content": "请回答"}],
+        "max_tokens": 900,
+        "stream": False,
+    }
+    assert timeout == 15
+
+
+@pytest.mark.parametrize("response", [{}, {"choices": []}, {"choices": [{"message": {}}]}])
+def test_chat_adapter_rejects_malformed_responses(response: dict[str, Any]) -> None:
+    model = OpenAICompatibleChatModel(
+        base_url="https://relay.example/v1",
+        api_key="test-secret-key",
+        model="chat-model-v1",
+        timeout_seconds=15,
+        max_output_tokens=900,
+        transport=FakeTransport(response),
+    )
+
+    with pytest.raises(AIProviderError, match="invalid_provider_response"):
+        model.complete([ChatMessage(role="user", content="请回答")])
+
+
+def test_chat_factory_requires_key_and_model() -> None:
+    assert build_chat_model(Settings(ai_chat_api_key=SecretStr(""), ai_chat_model="model")) is None
+    assert build_chat_model(Settings(ai_chat_api_key=SecretStr("key"), ai_chat_model="")) is None
+    model = build_chat_model(
+        Settings(ai_chat_api_key=SecretStr("test-key"), ai_chat_model="chat-model")
+    )
+    assert model is not None and model.model_id == "chat-model"

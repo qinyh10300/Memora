@@ -144,7 +144,7 @@ Web 通过同源 `/api` 和由 OpenAPI 生成的类型化客户端调用后端�
 | `make build` | Next.js 生产构建 |
 | `make check` | 格式、lint、类型、测试、契约与构建总检查 |
 | `make compose-check` | Docker Compose 语义配置检查 |
-| `make e2e` | 对已运行环境执行登录、默认私有、授权搜索、分享、取消共享、worker 降级和删除的可清理 smoke test |
+| `make e2e` | 对已运行环境执行登录、默认私有、授权搜索/Chat、分享、取消共享、worker 降级和删除的可清理 smoke test |
 
 `make check` 不需要真实 AI Key，也不会调用外部模型。真实供应商契约测试单独标记，不能混入默认离线 CI。
 
@@ -168,6 +168,18 @@ docker compose up --detach --build api worker
 ```
 
 聊天与 embedding 配置互不隐式复用。worker 日志只记录 job/memory ID、模型、状态、尝试次数和用量，不记录正文、向量、Key 或完整供应商响应。搜索使用 POST JSON，因此搜索内容也不会出现在 URL 访问日志中。
+
+## Cited Chat
+
+`POST /chat/questions` 和 Web 页面都要求显式选择以下范围：
+
+- `PERSONAL`：只检索当前用户自己的记录，包括私有记录。
+- `COLLEAGUE`：必须选择另一位成员，只检索该成员主动共享的记录。
+- `WORKSPACE`：检索当前用户自己的记录和其他成员共享的记录。
+
+检索主题是独立字段，避免系统猜测“这个”或“类似”指什么；输入“全部”可在选定时间范围内回顾所有可访问记录。问题包含“这段时间”但没有起止时间时，API 会要求补充范围。时间使用带时区 ISO 8601，`created_to` 是排他的；Web 的结束日期控件会自动包含用户选择的整天。
+
+没有配置 `AI_CHAT_API_KEY` 或 `AI_CHAT_MODEL` 时，Chat 使用确定性的基础证据模式，仍返回作者、原始时间、摘录和 memory 链接。外部供应商失败时响应标记为降级。生产测试前仍需向四位用户披露：授权后的最小记录片段可能被发送到配置的外部模型。
 
 ## API contract workflow
 

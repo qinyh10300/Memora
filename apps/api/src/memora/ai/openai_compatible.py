@@ -6,7 +6,15 @@ from typing import Any, Protocol, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from memora.ai.ports import AIProviderError, EmbeddingBatch, EmbeddingModelPort, ModelUsage
+from memora.ai.ports import (
+    AIProviderError,
+    ChatMessage,
+    ChatModelPort,
+    ChatResult,
+    EmbeddingBatch,
+    EmbeddingModelPort,
+    ModelUsage,
+)
 from memora.settings import Settings
 
 
@@ -126,6 +134,68 @@ class OpenAICompatibleEmbeddingModel(EmbeddingModelPort):
         )
 
 
+class OpenAICompatibleChatModel(ChatModelPort):
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        timeout_seconds: float,
+        max_output_tokens: int,
+        transport: JSONTransport | None = None,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._api_key = api_key
+        self._model = model
+        self._timeout_seconds = timeout_seconds
+        self._max_output_tokens = max_output_tokens
+        self._transport = transport or UrllibJSONTransport()
+
+    @property
+    def model_id(self) -> str:
+        return self._model
+
+    def complete(self, messages: list[ChatMessage]) -> ChatResult:
+        if not messages or any(not message.content.strip() for message in messages):
+            raise ValueError("chat messages must be non-empty")
+        response = self._transport.post(
+            f"{self._base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+            payload={
+                "model": self._model,
+                "messages": [
+                    {"role": message.role, "content": message.content} for message in messages
+                ],
+                "max_tokens": self._max_output_tokens,
+                "stream": False,
+            },
+            timeout=self._timeout_seconds,
+        )
+        choices = response.get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            raise AIProviderError("invalid_provider_response", retryable=True)
+        message = choices[0].get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip() or len(content) > 20_000:
+            raise AIProviderError("invalid_provider_response", retryable=True)
+        usage = response.get("usage", {})
+        input_tokens = usage.get("prompt_tokens", 0) if isinstance(usage, dict) else 0
+        output_tokens = usage.get("completion_tokens", 0) if isinstance(usage, dict) else 0
+        response_model = response.get("model")
+        return ChatResult(
+            content=content.strip(),
+            model=response_model if isinstance(response_model, str) else self._model,
+            usage=ModelUsage(
+                input_tokens=input_tokens if isinstance(input_tokens, int) else 0,
+                output_tokens=output_tokens if isinstance(output_tokens, int) else 0,
+            ),
+        )
+
+
 def build_embedding_model(settings: Settings) -> EmbeddingModelPort | None:
     api_key = settings.ai_embedding_api_key.get_secret_value()
     model = settings.ai_embedding_model.strip()
@@ -136,4 +206,18 @@ def build_embedding_model(settings: Settings) -> EmbeddingModelPort | None:
         api_key=api_key,
         model=model,
         timeout_seconds=settings.ai_request_timeout_seconds,
+    )
+
+
+def build_chat_model(settings: Settings) -> ChatModelPort | None:
+    api_key = settings.ai_chat_api_key.get_secret_value()
+    model = settings.ai_chat_model.strip()
+    if not api_key or not model:
+        return None
+    return OpenAICompatibleChatModel(
+        base_url=settings.ai_chat_base_url,
+        api_key=api_key,
+        model=model,
+        timeout_seconds=settings.ai_request_timeout_seconds,
+        max_output_tokens=settings.ai_chat_max_output_tokens,
     )

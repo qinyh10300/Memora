@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chat/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask Chatbot */
+        post: operations["ask_chatbot_chat_questions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -214,6 +231,85 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ChatCitationResponse */
+        ChatCitationResponse: {
+            author: components["schemas"]["CitationAuthorResponse"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Excerpt */
+            excerpt: string;
+            /** Href */
+            href: string;
+            /**
+             * Memory Id
+             * Format: uuid
+             */
+            memory_id: string;
+        };
+        /** ChatRequest */
+        ChatRequest: {
+            /** Author Id */
+            author_id?: string | null;
+            /** Created From */
+            created_from?: string | null;
+            /** Created To */
+            created_to?: string | null;
+            /**
+             * Evidence Limit
+             * @default 8
+             */
+            evidence_limit: number;
+            /** Question */
+            question: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "PERSONAL" | "COLLEAGUE" | "WORKSPACE";
+            /** Topic */
+            topic?: string | null;
+        };
+        /** ChatResponse */
+        ChatResponse: {
+            /** Answer */
+            answer: string;
+            /** Citations */
+            citations: components["schemas"]["ChatCitationResponse"][];
+            /** Conversation Id */
+            conversation_id: string | null;
+            /** Message Id */
+            message_id: string | null;
+            /**
+             * Model Status
+             * @enum {string}
+             */
+            model_status: "AVAILABLE" | "DISABLED" | "DEGRADED";
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "PERSONAL" | "COLLEAGUE" | "WORKSPACE";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ANSWERED" | "NO_EVIDENCE" | "NEEDS_CLARIFICATION";
+            /** Topic */
+            topic: string | null;
+        };
+        /** CitationAuthorResponse */
+        CitationAuthorResponse: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
         /** CreateMemoryRequest */
         CreateMemoryRequest: {
             /** Body */
@@ -467,6 +563,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CurrentUserResponse"];
+                };
+            };
+        };
+    };
+    ask_chatbot_chat_questions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

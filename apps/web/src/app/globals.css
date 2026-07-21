@@ -38,6 +38,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -156,6 +157,7 @@ label {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   padding: 15px 16px;
@@ -170,6 +172,7 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   border-color: var(--green);
   box-shadow: 0 0 0 4px rgba(40, 91, 72, 0.1);
@@ -376,6 +379,149 @@ textarea {
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.68);
   box-shadow: 0 18px 50px rgba(32, 50, 43, 0.08);
+}
+
+.chat-card {
+  margin-top: 34px;
+  padding: clamp(22px, 4vw, 34px);
+  border: 1px solid rgba(40, 91, 72, 0.18);
+  border-radius: 24px;
+  background:
+    linear-gradient(145deg, rgba(220, 234, 221, 0.55), rgba(255, 255, 255, 0.72)), var(--surface);
+  box-shadow: 0 18px 50px rgba(32, 50, 43, 0.07);
+  scroll-margin-top: 20px;
+}
+
+.chat-heading,
+.chat-submit-row,
+.chat-answer header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.chat-heading h2 {
+  margin: 0;
+  font-family: Georgia, "Noto Serif SC", serif;
+  font-size: clamp(1.55rem, 3vw, 2.25rem);
+  font-weight: 500;
+}
+
+.chat-heading > span,
+.chat-answer header > span {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--green);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.chat-intro {
+  max-width: 780px;
+  margin: 14px 0 25px;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+.chat-form {
+  gap: 12px;
+}
+
+.chat-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.chat-fields-primary {
+  grid-template-columns: minmax(160px, 0.75fr) minmax(260px, 1.25fr);
+}
+
+.chat-fields-primary:has(label:nth-child(3)) {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.chat-date-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.chat-fields label,
+.chat-form > label {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.chat-form textarea {
+  min-height: 94px;
+}
+
+.chat-submit-row p {
+  max-width: 650px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.chat-submit-row .primary-button {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.chat-answer {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid rgba(40, 91, 72, 0.16);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.chat-answer-body {
+  margin: 18px 0;
+  white-space: pre-wrap;
+  line-height: 1.75;
+}
+
+.citation-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 15px;
+  border-top: 1px solid var(--line);
+}
+
+.citation-list > strong {
+  margin-bottom: 3px;
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+}
+
+.citation-list a {
+  display: block;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(220, 234, 221, 0.48);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.citation-list a:hover {
+  background: rgba(220, 234, 221, 0.82);
+}
+
+.citation-list span {
+  color: var(--green);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.citation-list p {
+  margin: 5px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
 }
 
 .capture-card form {
@@ -847,6 +993,11 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .chat-fields-primary,
+  .chat-fields-primary:has(label:nth-child(3)) {
+    grid-template-columns: 1fr;
+  }
+
   .members-section {
     position: static;
   }
@@ -879,6 +1030,20 @@ textarea {
   .capture-footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .chat-heading,
+  .chat-submit-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .chat-heading > span {
+    align-self: flex-start;
+  }
+
+  .chat-date-fields {
+    grid-template-columns: 1fr;
   }
 
   .capture-submit {

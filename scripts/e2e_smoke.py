@@ -96,6 +96,21 @@ def main() -> int:
         if created["processing_status"] not in {"PENDING", "WAITING_CONFIGURATION"}:
             raise AssertionError("新记录没有进入可靠的 AI 待处理状态")
 
+        personal_chat = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/chat/questions",
+            200,
+            {
+                "question": "我以前记录过这个验收主题吗？",
+                "topic": marker,
+                "scope": "PERSONAL",
+                "evidence_limit": 8,
+            },
+        )
+        if [item["memory_id"] for item in personal_chat["citations"]] != [created_id]:
+            raise AssertionError("个人 Chat 没有引用自己的私有记录")
+
         expect_status(blair, "GET", f"{public_url}/api/memories/{created_id}", 404)
         search_url = f"{public_url}/api/search"
         private_search = expect_status(blair, "POST", search_url, 200, {"q": marker})
@@ -103,6 +118,21 @@ def main() -> int:
             raise AssertionError("关键词检索泄露了其他用户的私有记录")
         if private_search["semantic_status"] != "DISABLED":
             raise AssertionError("空 embedding 配置没有明确降级为 DISABLED")
+        private_chat = expect_status(
+            blair,
+            "POST",
+            f"{public_url}/api/chat/questions",
+            200,
+            {
+                "question": "Alex 记录过这个验收主题吗？",
+                "topic": marker,
+                "scope": "COLLEAGUE",
+                "author_id": created["author"]["id"],
+                "evidence_limit": 8,
+            },
+        )
+        if private_chat["status"] != "NO_EVIDENCE" or private_chat["citations"]:
+            raise AssertionError("同事 Chat 泄露了尚未共享的记录")
         shared = expect_status(
             alex,
             "POST",
@@ -122,6 +152,21 @@ def main() -> int:
         shared_search = expect_status(blair, "POST", search_url, 200, {"q": marker})
         if [result["memory"]["id"] for result in shared_search["results"]] != [created_id]:
             raise AssertionError("关键词检索没有返回已授权的共享记录")
+        shared_chat = expect_status(
+            blair,
+            "POST",
+            f"{public_url}/api/chat/questions",
+            200,
+            {
+                "question": "Alex 记录过这个验收主题吗？",
+                "topic": marker,
+                "scope": "COLLEAGUE",
+                "author_id": created["author"]["id"],
+                "evidence_limit": 8,
+            },
+        )
+        if [item["memory_id"] for item in shared_chat["citations"]] != [created_id]:
+            raise AssertionError("同事 Chat 没有引用已共享记录")
 
         expect_status(
             alex,
@@ -133,6 +178,21 @@ def main() -> int:
         unshared_search = expect_status(blair, "POST", search_url, 200, {"q": marker})
         if unshared_search["results"]:
             raise AssertionError("取消共享后关键词检索仍返回记录")
+        unshared_chat = expect_status(
+            blair,
+            "POST",
+            f"{public_url}/api/chat/questions",
+            200,
+            {
+                "question": "Alex 记录过这个验收主题吗？",
+                "topic": marker,
+                "scope": "COLLEAGUE",
+                "author_id": created["author"]["id"],
+                "evidence_limit": 8,
+            },
+        )
+        if unshared_chat["status"] != "NO_EVIDENCE" or unshared_chat["citations"]:
+            raise AssertionError("取消共享后同事 Chat 仍然返回记录")
 
         for _ in range(20):
             processing = expect_status(
@@ -154,7 +214,7 @@ def main() -> int:
             with suppress(AssertionError, HTTPError):
                 expect_status(alex, "DELETE", f"{public_url}/api/memories/{created_id}", 204)
 
-    print(f"Memora M4 关键用户路径通过：{public_url}")
+    print(f"Memora M5 关键用户路径通过：{public_url}")
     return 0
 
 

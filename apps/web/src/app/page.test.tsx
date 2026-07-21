@@ -195,4 +195,58 @@ describe("HomePage identity flow", () => {
       body: { q: "记录摩擦", limit: 50 },
     });
   });
+
+  it("Memora Chat 显示带作者和时间的原记录引用", async () => {
+    mockWorkspaceGet([privateMemory]);
+    apiMocks.POST.mockImplementation((path: string) => {
+      if (path === "/chat/questions") {
+        return Promise.resolve({
+          data: {
+            conversation_id: "conversation-1",
+            message_id: "message-1",
+            status: "ANSWERED",
+            model_status: "DISABLED",
+            scope: "PERSONAL",
+            topic: "记录摩擦",
+            answer: "找到 1 条可核对的相关记录。",
+            citations: [
+              {
+                memory_id: privateMemory.id,
+                excerpt: privateMemory.body,
+                author: privateMemory.author,
+                created_at: privateMemory.created_at,
+                href: `/#memory-${privateMemory.id}`,
+              },
+            ],
+          },
+          response: { ok: true, status: 200 },
+        });
+      }
+      return Promise.resolve({ data: undefined, response: { ok: false, status: 404 } });
+    });
+
+    render(<HomePage />);
+    fireEvent.change(await screen.findByLabelText("检索主题"), {
+      target: { value: "记录摩擦" },
+    });
+    fireEvent.change(screen.getByLabelText("你想知道什么？"), {
+      target: { value: "我之前怎么看记录摩擦？" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "询问 Memora" }));
+
+    expect(await screen.findByText("找到 1 条可核对的相关记录。")).toBeInTheDocument();
+    expect(screen.getByText("基础证据模式")).toBeInTheDocument();
+    expect(screen.getAllByText(privateMemory.body)).toHaveLength(2);
+    expect(apiMocks.POST).toHaveBeenCalledWith("/chat/questions", {
+      body: {
+        question: "我之前怎么看记录摩擦？",
+        topic: "记录摩擦",
+        scope: "PERSONAL",
+        author_id: null,
+        created_from: null,
+        created_to: null,
+        evidence_limit: 8,
+      },
+    });
+  });
 });

@@ -1,6 +1,228 @@
 {
   "components": {
     "schemas": {
+      "ChatCitationResponse": {
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/CitationAuthorResponse"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "href": {
+            "title": "Href",
+            "type": "string"
+          },
+          "memory_id": {
+            "format": "uuid",
+            "title": "Memory Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id",
+          "excerpt",
+          "author",
+          "created_at",
+          "href"
+        ],
+        "title": "ChatCitationResponse",
+        "type": "object"
+      },
+      "ChatRequest": {
+        "properties": {
+          "author_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Id"
+          },
+          "created_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created From"
+          },
+          "created_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created To"
+          },
+          "evidence_limit": {
+            "default": 8,
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Evidence Limit",
+            "type": "integer"
+          },
+          "question": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "PERSONAL",
+              "COLLEAGUE",
+              "WORKSPACE"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic"
+          }
+        },
+        "required": [
+          "question",
+          "scope"
+        ],
+        "title": "ChatRequest",
+        "type": "object"
+      },
+      "ChatResponse": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/ChatCitationResponse"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
+          },
+          "model_status": {
+            "enum": [
+              "AVAILABLE",
+              "DISABLED",
+              "DEGRADED"
+            ],
+            "title": "Model Status",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "PERSONAL",
+              "COLLEAGUE",
+              "WORKSPACE"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ANSWERED",
+              "NO_EVIDENCE",
+              "NEEDS_CLARIFICATION"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "message_id",
+          "status",
+          "model_status",
+          "scope",
+          "topic",
+          "answer",
+          "citations"
+        ],
+        "title": "ChatResponse",
+        "type": "object"
+      },
+      "CitationAuthorResponse": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "CitationAuthorResponse",
+        "type": "object"
+      },
       "CreateMemoryRequest": {
         "properties": {
           "body": {
@@ -527,6 +749,47 @@
         "summary": "Me",
         "tags": [
           "identity"
+        ]
+      }
+    },
+    "/chat/questions": {
+      "post": {
+        "operationId": "ask_chatbot_chat_questions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ask Chatbot",
+        "tags": [
+          "chat"
         ]
       }
     },
