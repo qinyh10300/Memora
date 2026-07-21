@@ -4,7 +4,7 @@ Status: in-progress
 
 Owner: product team and coding agent
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 ## Outcome
 
@@ -43,13 +43,13 @@ Last updated: 2026-07-21
 ## Assumptions and open questions
 
 - [x] 批准产品简报、架构 overview 和 ADR-0001。
-- [ ] 提供四个测试账号的显示名和邮箱；初始密码通过安全渠道分发。
+- [x] 在真实名单确定前使用四个可由环境变量覆盖的 seed 账号；生产初始密码只通过服务器环境变量注入。
 - [ ] 确定服务器 Linux 发行版、SSH 访问、域名和 DNS 控制权。
 - [ ] 在云雾控制台创建 Memora 专用低额度测试 Key，不把 Key 发到聊天或提交 Git。
 - [ ] 验证云雾实际 base URL、聊天模型、流式协议、embedding endpoint 和模型。
 - [ ] 确定删除后的备份保留策略。
-- [ ] 确定报告默认时间范围；在此之前 UI 必须要求用户选择范围。
-- [ ] 决定 v0.1 是否启用 PostgreSQL RLS 作为纵深防御。
+- [x] v0.1 报告不猜测默认范围，UI 和 API 都要求显式时间范围。
+- [x] v0.1 暂不启用 PostgreSQL RLS；统一授权查询和真实 PostgreSQL 反向测试是主边界，获得更复杂租户需求后再评估 RLS。
 
 ## Design and boundaries
 
@@ -58,6 +58,9 @@ Last updated: 2026-07-21
 - memory 写入与 job 创建同事务；外部 AI 调用不参与数据库事务。
 - 先实现一个端到端用户路径，再增加报告和运维能力。
 - 真实外部 AI 测试与离线 CI 分离，CI 使用 fake/contract adapter。
+- 身份使用数据库持久化的随机不透明会话；浏览器只持有 HttpOnly、SameSite Cookie，数据库只保存带服务端密钥的 token 摘要。
+- 密码使用 Argon2 慢哈希；四个 seed 账号默认值只服务本地开发，生产环境拒绝本地占位密码。
+- Web 只通过同源 `/api` 和 OpenAPI 生成类型调用后端，不在客户端复制领域请求模型。
 
 ## Milestones
 
@@ -106,6 +109,7 @@ Last updated: 2026-07-21
 - 2026-07-21：完成 Makefile、Docker Compose、Caddy、容器 smoke test 脚本和两阶段 CI 配置。本机没有 Docker CLI，容器构建与 Compose 运行等待 CI 或具备 Docker 的环境验证后再勾选 M1。
 - 2026-07-21：最终 `make check` 通过，包括 2 个 Web 测试、10 个 API 测试、格式、lint、严格类型检查、OpenAPI 漂移检查和 Next.js 生产构建；生产配置会拒绝占位或少于 32 字符的会话密钥。
 - 2026-07-21：在 Apple Silicon macOS 上安装 Docker CLI、Compose、Buildx 与 Colima，完整构建并启动 6 个 Compose 服务；迁移 `20260721_0001`、pgvector 0.8.5、Web/API/ready 路由和 `make e2e` 均通过，M1 验收完成。
+- 2026-07-22：开始 M2–M6 第一版连续交付；确定 seed 账号、Argon2、数据库不透明会话、统一授权查询和显式报告时间范围。
 
 ## Decision log
 
@@ -113,6 +117,8 @@ Last updated: 2026-07-21
 - 2026-07-21：正文追加而非原地编辑；原因是观点变化分析依赖时间真实性。
 - 2026-07-21：先模块化单体而非微服务；原因是当前规模需要更低部署和验证复杂度。
 - 2026-07-21：将减少会议时间作为长期指标；两周四人测试先验证持续记录、检索可信和总结有用。
+- 2026-07-22：v0.1 不启用 RLS；原因是当前单工作区规模下，集中授权查询加真实数据库反向测试更容易审计，RLS 保留为企业隔离增强而非替代应用授权。
+- 2026-07-22：使用服务端数据库会话而非 JWT；原因是四人单体产品更需要即时注销、可审计和简单撤销，而不需要跨服务无状态令牌。
 
 ## Completion summary
 

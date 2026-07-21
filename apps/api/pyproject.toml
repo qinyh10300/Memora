@@ -13,6 +13,7 @@ dependencies = [
   "fastapi>=0.135,<1",
   "pgvector>=0.4,<1",
   "psycopg[binary]>=3.2,<4",
+  "pwdlib[argon2]>=0.3,<1",
   "pydantic-settings>=2.10,<3",
   "sqlalchemy>=2.0,<3",
   "structlog>=25.4,<26",
@@ -22,6 +23,7 @@ dependencies = [
 [project.scripts]
 memora-api = "memora.cli:main"
 memora-export-openapi = "memora.export_openapi:main"
+memora-seed = "memora.identity.seed:main"
 memora-worker = "memora.worker:main"
 
 [dependency-groups]

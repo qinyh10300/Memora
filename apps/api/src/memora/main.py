@@ -3,8 +3,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from memora.api.auth import router as auth_router
 from memora.api.system import router as system_router
-from memora.database import build_engine
+from memora.api.workspaces import router as workspaces_router
+from memora.database import build_engine, build_session_factory
+from memora.identity.rate_limit import LoginRateLimiter
 from memora.logging import configure_logging
 from memora.settings import Settings, get_settings
 
@@ -19,6 +22,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             json_logs=resolved_settings.app_env == "production",
         )
         app.state.engine = build_engine(resolved_settings.database_url)
+        app.state.session_factory = build_session_factory(app.state.engine)
+        app.state.login_rate_limiter = LoginRateLimiter()
         yield
         app.state.engine.dispose()
 
@@ -31,6 +36,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.settings = resolved_settings
     application.dependency_overrides[get_settings] = lambda: resolved_settings
     application.include_router(system_router)
+    application.include_router(auth_router)
+    application.include_router(workspaces_router)
     return application
 
 
