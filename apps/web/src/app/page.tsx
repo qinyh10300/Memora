@@ -11,6 +11,8 @@ type Memory = components["schemas"]["MemoryResponse"];
 type SemanticStatus = components["schemas"]["SearchResponse"]["semantic_status"];
 type ChatResponse = components["schemas"]["ChatResponse"];
 type ChatScope = components["schemas"]["ChatRequest"]["scope"];
+type ReportResponse = components["schemas"]["ReportResponse"];
+type ReportScope = components["schemas"]["ReportRequest"]["scope"];
 type MemoryFilter = "ALL" | "MINE" | "WORKSPACE";
 
 const demoEmails = [
@@ -19,6 +21,13 @@ const demoEmails = [
   "casey@memora.local",
   "devon@memora.local",
 ];
+
+function localDateValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 function LoginScreen({ onLogin }: { onLogin: (user: CurrentUser) => void }) {
   const [email, setEmail] = useState(demoEmails[0]);
@@ -144,6 +153,14 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
   const [chatAnswer, setChatAnswer] = useState<ChatResponse | null>(null);
   const [chatError, setChatError] = useState("");
   const [chatting, setChatting] = useState(false);
+  const [reportScope, setReportScope] = useState<ReportScope>("PERSONAL");
+  const [reportAuthorId, setReportAuthorId] = useState("");
+  const [reportTopic, setReportTopic] = useState("全部");
+  const [reportFrom, setReportFrom] = useState("");
+  const [reportTo, setReportTo] = useState("");
+  const [reportAnswer, setReportAnswer] = useState<ReportResponse | null>(null);
+  const [reportError, setReportError] = useState("");
+  const [reporting, setReporting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -226,6 +243,13 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
         return;
       }
       replaceMemory(result.data);
+      if (
+        memory.visibility === "WORKSPACE" &&
+        reportAnswer?.scope !== "PERSONAL" &&
+        reportAnswer?.citations.some((citation) => citation.memory_id === memory.id)
+      ) {
+        setReportAnswer(null);
+      }
     } catch {
       setMemoryError("暂时无法更新可见范围，请稍后重试。");
     } finally {
@@ -248,6 +272,9 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
       setSearchResults((current) => current?.filter((item) => item.id !== memory.id) ?? null);
       if (chatAnswer?.citations.some((citation) => citation.memory_id === memory.id)) {
         setChatAnswer(null);
+      }
+      if (reportAnswer?.citations.some((citation) => citation.memory_id === memory.id)) {
+        setReportAnswer(null);
       }
       setDeletingMemoryId(null);
       if (supplementing?.id === memory.id) setSupplementing(null);
@@ -363,6 +390,60 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
     }
   }
 
+  async function handleReport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const topic = reportTopic.trim();
+    if (!topic || !reportFrom || !reportTo) {
+      setReportError("报告必须填写主题、开始日期和结束日期。");
+      return;
+    }
+    if (reportScope === "COLLEAGUE" && !reportAuthorId) {
+      setReportError("请选择报告对应的同事。");
+      return;
+    }
+    setReporting(true);
+    setReportError("");
+    setReportAnswer(null);
+    try {
+      const createdFrom = new Date(`${reportFrom}T00:00:00`).toISOString();
+      const inclusiveEnd = new Date(`${reportTo}T00:00:00`);
+      inclusiveEnd.setDate(inclusiveEnd.getDate() + 1);
+      const { data, response } = await api.POST("/reports", {
+        body: {
+          scope: reportScope,
+          author_id: reportScope === "COLLEAGUE" ? reportAuthorId : null,
+          topic,
+          created_from: createdFrom,
+          created_to: inclusiveEnd.toISOString(),
+          evidence_limit: 20,
+        },
+      });
+      if (!data || !response.ok) {
+        setReportError(
+          response.status === 429
+            ? "报告生成太频繁，请稍后再试。"
+            : "报告没有生成成功，请检查时间和范围。",
+        );
+        return;
+      }
+      setReportAnswer(data);
+    } catch {
+      setReportError("暂时无法生成报告，请稍后重试。");
+    } finally {
+      setReporting(false);
+    }
+  }
+
+  function chooseReportRange(days: number) {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - (days - 1));
+    setReportFrom(localDateValue(start));
+    setReportTo(localDateValue(end));
+    setReportError("");
+    setReportAnswer(null);
+  }
+
   const timelineMemories = searchResults ?? memories;
   const visibleMemories = timelineMemories.filter((memory) => {
     if (filter === "MINE") return memory.author.id === user.id;
@@ -402,7 +483,7 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
             </a>
             <a href="#timeline">全部想法</a>
             <a href="#chat">Memora Chat</a>
-            <span aria-disabled="true">报告 · 即将开放</span>
+            <a href="#reports">按需报告</a>
           </nav>
           <div className="privacy-card">
             <span aria-hidden="true">●</span>
@@ -598,6 +679,158 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
                   </div>
                 ) : null}
               </section>
+            ) : null}
+          </section>
+
+          <section className="report-card" id="reports" aria-labelledby="report-title">
+            <div className="report-heading">
+              <div>
+                <p className="panel-kicker">EVIDENCE REPORTS · EXPLICIT RANGE</p>
+                <h2 id="report-title">把一段时间的记录，整理成可核对的报告</h2>
+              </div>
+              <span>不猜默认时间</span>
+            </div>
+            <p className="report-intro">
+              个人报告可使用你的私有记录；同事和团队报告只使用成员主动共享的内容。团队范围也不会自动带入你自己的私有记录。
+            </p>
+            <form className="report-form" onSubmit={handleReport}>
+              <div className="report-fields report-scope-fields">
+                <label>
+                  报告范围
+                  <select
+                    value={reportScope}
+                    onChange={(event) => {
+                      setReportScope(event.target.value as ReportScope);
+                      setReportAnswer(null);
+                    }}
+                  >
+                    <option value="PERSONAL">我的全部记录</option>
+                    <option value="COLLEAGUE">指定同事的共享记录</option>
+                    <option value="WORKSPACE">所有成员的共享记录</option>
+                  </select>
+                </label>
+                {reportScope === "COLLEAGUE" ? (
+                  <label>
+                    报告成员
+                    <select
+                      value={reportAuthorId}
+                      onChange={(event) => setReportAuthorId(event.target.value)}
+                      required
+                    >
+                      <option value="">请选择</option>
+                      {members
+                        .filter((member) => member.id !== user.id)
+                        .map((member) => (
+                          <option value={member.id} key={member.id}>
+                            {member.display_name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                ) : null}
+                <label>
+                  报告主题
+                  <input
+                    value={reportTopic}
+                    onChange={(event) => setReportTopic(event.target.value)}
+                    maxLength={500}
+                    placeholder="例如：商业模式；全部主题可写“全部”"
+                    required
+                  />
+                </label>
+              </div>
+              <div className="report-fields report-date-fields">
+                <label>
+                  开始日期（含）
+                  <input
+                    type="date"
+                    value={reportFrom}
+                    onChange={(event) => setReportFrom(event.target.value)}
+                    required
+                  />
+                </label>
+                <label>
+                  结束日期（含）
+                  <input
+                    type="date"
+                    value={reportTo}
+                    onChange={(event) => setReportTo(event.target.value)}
+                    required
+                  />
+                </label>
+              </div>
+              <div className="report-range-presets" aria-label="快速选择报告时间">
+                <span>快速选择</span>
+                <button type="button" onClick={() => chooseReportRange(7)}>
+                  最近 7 天
+                </button>
+                <button type="button" onClick={() => chooseReportRange(30)}>
+                  最近 30 天
+                </button>
+              </div>
+              <div className="report-submit-row">
+                <p>报告固定区分时间线、延续、变化、矛盾和证据缺口；没有记录不等于没有发生。</p>
+                <button className="primary-button" type="submit" disabled={reporting}>
+                  {reporting ? "正在核对并生成…" : "生成报告"}
+                </button>
+              </div>
+            </form>
+            {reportError ? (
+              <p className="inline-error" role="alert">
+                {reportError}
+              </p>
+            ) : null}
+            {reportAnswer ? (
+              <article className="report-output" aria-live="polite" aria-label="Memora 报告">
+                <header>
+                  <div>
+                    <p className="panel-kicker">GENERATED REPORT</p>
+                    <h3>{reportAnswer.title}</h3>
+                  </div>
+                  <span>
+                    {reportAnswer.model_status === "AVAILABLE"
+                      ? "AI 摘要"
+                      : reportAnswer.model_status === "DEGRADED"
+                        ? "AI 降级 · 证据报告"
+                        : "基础证据报告"}
+                  </span>
+                </header>
+                <p className="report-summary">{reportAnswer.summary}</p>
+                {reportAnswer.contributors.length > 0 ? (
+                  <div className="report-contributors" aria-label="报告贡献成员">
+                    {reportAnswer.contributors.map((contributor) => (
+                      <span key={contributor.author_id}>
+                        {contributor.display_name} · {contributor.record_count} 条
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="report-sections">
+                  {reportAnswer.sections.map((section) => (
+                    <section key={section.kind}>
+                      <header>
+                        <h4>{section.title}</h4>
+                        <span>{section.citation_memory_ids.length} 条依据</span>
+                      </header>
+                      <p>{section.content}</p>
+                    </section>
+                  ))}
+                </div>
+                {reportAnswer.citations.length > 0 ? (
+                  <div className="citation-list report-citations">
+                    <strong>报告来源 · {reportAnswer.citations.length} 条</strong>
+                    {reportAnswer.citations.map((citation) => (
+                      <a href={citation.href} key={citation.memory_id}>
+                        <span>
+                          {citation.author.display_name} ·{" "}
+                          {new Date(citation.created_at).toLocaleString("zh-CN")}
+                        </span>
+                        <p>{citation.excerpt}</p>
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
             ) : null}
           </section>
 

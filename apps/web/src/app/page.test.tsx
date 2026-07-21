@@ -249,4 +249,101 @@ describe("HomePage identity flow", () => {
       },
     });
   });
+
+  it("按需报告要求显式日期并展示五类证据结构", async () => {
+    mockWorkspaceGet([privateMemory]);
+    apiMocks.POST.mockImplementation((path: string) => {
+      if (path === "/reports") {
+        return Promise.resolve({
+          data: {
+            report_id: "report-1",
+            status: "GENERATED",
+            model_status: "DISABLED",
+            scope: "PERSONAL",
+            topic: "商业模式",
+            created_from: "2026-07-01T00:00:00Z",
+            created_to: "2026-08-01T00:00:00Z",
+            title: "我的想法报告 · 商业模式",
+            summary: "找到 1 条可核对记录，报告不推测未记录经历。",
+            contributors: [{ author_id: "user-alex", display_name: "Alex", record_count: 1 }],
+            sections: [
+              {
+                kind: "TIMELINE",
+                title: "时间线",
+                content: "按原始时间展示记录。",
+                citation_memory_ids: [privateMemory.id],
+              },
+              {
+                kind: "CONTINUITY",
+                title: "延续",
+                content: "记录数量不自动等于观点一致。",
+                citation_memory_ids: [privateMemory.id],
+              },
+              {
+                kind: "CHANGES",
+                title: "变化",
+                content: "只有一个时间点，无法可靠比较变化。",
+                citation_memory_ids: [privateMemory.id],
+              },
+              {
+                kind: "CONTRADICTIONS",
+                title: "矛盾",
+                content: "不会自动判定矛盾。",
+                citation_memory_ids: [privateMemory.id],
+              },
+              {
+                kind: "GAPS",
+                title: "证据缺口",
+                content: "未记录内容属于证据缺口。",
+                citation_memory_ids: [privateMemory.id],
+              },
+            ],
+            citations: [
+              {
+                memory_id: privateMemory.id,
+                excerpt: privateMemory.body,
+                author: privateMemory.author,
+                created_at: privateMemory.created_at,
+                href: `/#memory-${privateMemory.id}`,
+              },
+            ],
+          },
+          response: { ok: true, status: 200 },
+        });
+      }
+      return Promise.resolve({ data: undefined, response: { ok: false, status: 404 } });
+    });
+
+    render(<HomePage />);
+    fireEvent.change(await screen.findByLabelText("报告主题"), {
+      target: { value: "商业模式" },
+    });
+    fireEvent.change(screen.getByLabelText("开始日期（含）"), {
+      target: { value: "2026-07-01" },
+    });
+    fireEvent.change(screen.getByLabelText("结束日期（含）"), {
+      target: { value: "2026-07-31" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "生成报告" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "我的想法报告 · 商业模式" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("基础证据报告")).toBeInTheDocument();
+    expect(screen.getByText("找到 1 条可核对记录，报告不推测未记录经历。")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "证据缺口" })).toBeInTheDocument();
+    const expectedFrom = new Date("2026-07-01T00:00:00").toISOString();
+    const expectedTo = new Date("2026-07-31T00:00:00");
+    expectedTo.setDate(expectedTo.getDate() + 1);
+    expect(apiMocks.POST).toHaveBeenCalledWith("/reports", {
+      body: {
+        scope: "PERSONAL",
+        author_id: null,
+        topic: "商业模式",
+        created_from: expectedFrom,
+        created_to: expectedTo.toISOString(),
+        evidence_limit: 20,
+      },
+    });
+  });
 });

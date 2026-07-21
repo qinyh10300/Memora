@@ -144,7 +144,7 @@ Web 通过同源 `/api` 和由 OpenAPI 生成的类型化客户端调用后端�
 | `make build` | Next.js 生产构建 |
 | `make check` | 格式、lint、类型、测试、契约与构建总检查 |
 | `make compose-check` | Docker Compose 语义配置检查 |
-| `make e2e` | 对已运行环境执行登录、默认私有、授权搜索/Chat、分享、取消共享、worker 降级和删除的可清理 smoke test |
+| `make e2e` | 对已运行环境执行登录、默认私有、授权搜索/Chat/报告、分享、取消共享、worker 降级和删除的可清理 smoke test |
 
 `make check` 不需要真实 AI Key，也不会调用外部模型。真实供应商契约测试单独标记，不能混入默认离线 CI。
 
@@ -180,6 +180,18 @@ docker compose up --detach --build api worker
 检索主题是独立字段，避免系统猜测“这个”或“类似”指什么；输入“全部”可在选定时间范围内回顾所有可访问记录。问题包含“这段时间”但没有起止时间时，API 会要求补充范围。时间使用带时区 ISO 8601，`created_to` 是排他的；Web 的结束日期控件会自动包含用户选择的整天。
 
 没有配置 `AI_CHAT_API_KEY` 或 `AI_CHAT_MODEL` 时，Chat 使用确定性的基础证据模式，仍返回作者、原始时间、摘录和 memory 链接。外部供应商失败时响应标记为降级。生产测试前仍需向四位用户披露：授权后的最小记录片段可能被发送到配置的外部模型。
+
+## On-demand reports
+
+报告不使用默认时间范围。Web 用户必须手工选择日期，或主动点击“最近 7 天/最近 30 天”快速范围；API 必须传入带时区的 `created_from` 和排他的 `created_to`。
+
+范围定义与 Chat 有一处刻意差异：
+
+- `PERSONAL`：当前用户自己的私有和共享记录。
+- `COLLEAGUE`：指定成员的共享记录。
+- `WORKSPACE`：所有成员的共享记录，当前用户的私有记录也不进入团队报告。
+
+报告最多选择 30 条主题相关证据，返回时间线、延续、变化、矛盾、证据缺口和原记录引用。没有 Chat Key 时仍生成基础证据报告；有 Key 时模型只生成摘要，服务端固定结构不交给供应商决定。第一版报告不持久化、不定时运行、不推送，也不提供 PDF/Word 导出。
 
 ## API contract workflow
 

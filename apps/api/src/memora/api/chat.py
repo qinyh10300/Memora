@@ -22,6 +22,7 @@ from memora.database import DatabaseSession
 from memora.identity.dependencies import CurrentPrincipal
 from memora.identity.models import User
 from memora.identity.rate_limit import LoginRateLimiter
+from memora.retrieval.schemas import EvidenceCitationResponse, evidence_citation_for
 from memora.settings import Settings, get_settings
 from memora.workspaces.models import WorkspaceMembership
 
@@ -55,19 +56,6 @@ class ChatRequest(BaseModel):
         return normalized or None
 
 
-class CitationAuthorResponse(BaseModel):
-    id: UUID
-    display_name: str
-
-
-class ChatCitationResponse(BaseModel):
-    memory_id: UUID
-    excerpt: str
-    author: CitationAuthorResponse
-    created_at: datetime
-    href: str
-
-
 class ChatResponse(BaseModel):
     conversation_id: UUID | None
     message_id: UUID | None
@@ -76,19 +64,14 @@ class ChatResponse(BaseModel):
     scope: ChatScope
     topic: str | None
     answer: str
-    citations: list[ChatCitationResponse]
+    citations: list[EvidenceCitationResponse]
 
 
-def _citation_for(evidence: ChatEvidence) -> ChatCitationResponse:
-    return ChatCitationResponse(
-        memory_id=evidence.memory.id,
+def _citation_for(evidence: ChatEvidence) -> EvidenceCitationResponse:
+    return evidence_citation_for(
+        evidence.memory,
+        evidence.author,
         excerpt=excerpt_for(evidence.memory.body or ""),
-        author=CitationAuthorResponse(
-            id=evidence.author.id,
-            display_name=evidence.author.display_name,
-        ),
-        created_at=evidence.memory.created_at,
-        href=f"/#memory-{evidence.memory.id}",
     )
 
 

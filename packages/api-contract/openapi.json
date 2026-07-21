@@ -1,40 +1,6 @@
 {
   "components": {
     "schemas": {
-      "ChatCitationResponse": {
-        "properties": {
-          "author": {
-            "$ref": "#/components/schemas/CitationAuthorResponse"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "excerpt": {
-            "title": "Excerpt",
-            "type": "string"
-          },
-          "href": {
-            "title": "Href",
-            "type": "string"
-          },
-          "memory_id": {
-            "format": "uuid",
-            "title": "Memory Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "memory_id",
-          "excerpt",
-          "author",
-          "created_at",
-          "href"
-        ],
-        "title": "ChatCitationResponse",
-        "type": "object"
-      },
       "ChatRequest": {
         "properties": {
           "author_id": {
@@ -123,7 +89,7 @@
           },
           "citations": {
             "items": {
-              "$ref": "#/components/schemas/ChatCitationResponse"
+              "$ref": "#/components/schemas/EvidenceCitationResponse"
             },
             "title": "Citations",
             "type": "array"
@@ -204,23 +170,28 @@
         "title": "ChatResponse",
         "type": "object"
       },
-      "CitationAuthorResponse": {
+      "ContributorResponse": {
         "properties": {
+          "author_id": {
+            "format": "uuid",
+            "title": "Author Id",
+            "type": "string"
+          },
           "display_name": {
             "title": "Display Name",
             "type": "string"
           },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
+          "record_count": {
+            "title": "Record Count",
+            "type": "integer"
           }
         },
         "required": [
-          "id",
-          "display_name"
+          "author_id",
+          "display_name",
+          "record_count"
         ],
-        "title": "CitationAuthorResponse",
+        "title": "ContributorResponse",
         "type": "object"
       },
       "CreateMemoryRequest": {
@@ -286,6 +257,59 @@
           "role"
         ],
         "title": "CurrentUserResponse",
+        "type": "object"
+      },
+      "EvidenceAuthorResponse": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "EvidenceAuthorResponse",
+        "type": "object"
+      },
+      "EvidenceCitationResponse": {
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/EvidenceAuthorResponse"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "href": {
+            "title": "Href",
+            "type": "string"
+          },
+          "memory_id": {
+            "format": "uuid",
+            "title": "Memory Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id",
+          "excerpt",
+          "author",
+          "created_at",
+          "href"
+        ],
+        "title": "EvidenceCitationResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -463,6 +487,195 @@
           "service"
         ],
         "title": "ReadinessFailure",
+        "type": "object"
+      },
+      "ReportRequest": {
+        "properties": {
+          "author_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Id"
+          },
+          "created_from": {
+            "format": "date-time",
+            "title": "Created From",
+            "type": "string"
+          },
+          "created_to": {
+            "format": "date-time",
+            "title": "Created To",
+            "type": "string"
+          },
+          "evidence_limit": {
+            "default": 20,
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Evidence Limit",
+            "type": "integer"
+          },
+          "scope": {
+            "enum": [
+              "PERSONAL",
+              "COLLEAGUE",
+              "WORKSPACE"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "topic": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "topic",
+          "created_from",
+          "created_to"
+        ],
+        "title": "ReportRequest",
+        "type": "object"
+      },
+      "ReportResponse": {
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceCitationResponse"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "contributors": {
+            "items": {
+              "$ref": "#/components/schemas/ContributorResponse"
+            },
+            "title": "Contributors",
+            "type": "array"
+          },
+          "created_from": {
+            "format": "date-time",
+            "title": "Created From",
+            "type": "string"
+          },
+          "created_to": {
+            "format": "date-time",
+            "title": "Created To",
+            "type": "string"
+          },
+          "model_status": {
+            "enum": [
+              "AVAILABLE",
+              "DISABLED",
+              "DEGRADED"
+            ],
+            "title": "Model Status",
+            "type": "string"
+          },
+          "report_id": {
+            "format": "uuid",
+            "title": "Report Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "PERSONAL",
+              "COLLEAGUE",
+              "WORKSPACE"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ReportSectionResponse"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "GENERATED",
+              "NO_EVIDENCE"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report_id",
+          "status",
+          "model_status",
+          "scope",
+          "topic",
+          "created_from",
+          "created_to",
+          "title",
+          "summary",
+          "contributors",
+          "sections",
+          "citations"
+        ],
+        "title": "ReportResponse",
+        "type": "object"
+      },
+      "ReportSectionResponse": {
+        "properties": {
+          "citation_memory_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Citation Memory Ids",
+            "type": "array"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "TIMELINE",
+              "CONTINUITY",
+              "CHANGES",
+              "CONTRADICTIONS",
+              "GAPS"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "content",
+          "citation_memory_ids"
+        ],
+        "title": "ReportSectionResponse",
         "type": "object"
       },
       "SearchRequest": {
@@ -1207,6 +1420,47 @@
         "summary": "Ready",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/reports": {
+      "post": {
+        "operationId": "generate_report_reports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Report",
+        "tags": [
+          "reports"
         ]
       }
     },

@@ -193,6 +193,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Report */
+        post: operations["generate_report_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/search": {
         parameters: {
             query?: never;
@@ -231,24 +248,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** ChatCitationResponse */
-        ChatCitationResponse: {
-            author: components["schemas"]["CitationAuthorResponse"];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Excerpt */
-            excerpt: string;
-            /** Href */
-            href: string;
-            /**
-             * Memory Id
-             * Format: uuid
-             */
-            memory_id: string;
-        };
         /** ChatRequest */
         ChatRequest: {
             /** Author Id */
@@ -277,7 +276,7 @@ export interface components {
             /** Answer */
             answer: string;
             /** Citations */
-            citations: components["schemas"]["ChatCitationResponse"][];
+            citations: components["schemas"]["EvidenceCitationResponse"][];
             /** Conversation Id */
             conversation_id: string | null;
             /** Message Id */
@@ -300,15 +299,17 @@ export interface components {
             /** Topic */
             topic: string | null;
         };
-        /** CitationAuthorResponse */
-        CitationAuthorResponse: {
-            /** Display Name */
-            display_name: string;
+        /** ContributorResponse */
+        ContributorResponse: {
             /**
-             * Id
+             * Author Id
              * Format: uuid
              */
-            id: string;
+            author_id: string;
+            /** Display Name */
+            display_name: string;
+            /** Record Count */
+            record_count: number;
         };
         /** CreateMemoryRequest */
         CreateMemoryRequest: {
@@ -331,6 +332,34 @@ export interface components {
             workspace_id: string;
             /** Workspace Name */
             workspace_name: string;
+        };
+        /** EvidenceAuthorResponse */
+        EvidenceAuthorResponse: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** EvidenceCitationResponse */
+        EvidenceCitationResponse: {
+            author: components["schemas"]["EvidenceAuthorResponse"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Excerpt */
+            excerpt: string;
+            /** Href */
+            href: string;
+            /**
+             * Memory Id
+             * Format: uuid
+             */
+            memory_id: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -412,6 +441,92 @@ export interface components {
              * @constant
              */
             status: "not_ready";
+        };
+        /** ReportRequest */
+        ReportRequest: {
+            /** Author Id */
+            author_id?: string | null;
+            /**
+             * Created From
+             * Format: date-time
+             */
+            created_from: string;
+            /**
+             * Created To
+             * Format: date-time
+             */
+            created_to: string;
+            /**
+             * Evidence Limit
+             * @default 20
+             */
+            evidence_limit: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "PERSONAL" | "COLLEAGUE" | "WORKSPACE";
+            /** Topic */
+            topic: string;
+        };
+        /** ReportResponse */
+        ReportResponse: {
+            /** Citations */
+            citations: components["schemas"]["EvidenceCitationResponse"][];
+            /** Contributors */
+            contributors: components["schemas"]["ContributorResponse"][];
+            /**
+             * Created From
+             * Format: date-time
+             */
+            created_from: string;
+            /**
+             * Created To
+             * Format: date-time
+             */
+            created_to: string;
+            /**
+             * Model Status
+             * @enum {string}
+             */
+            model_status: "AVAILABLE" | "DISABLED" | "DEGRADED";
+            /**
+             * Report Id
+             * Format: uuid
+             */
+            report_id: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "PERSONAL" | "COLLEAGUE" | "WORKSPACE";
+            /** Sections */
+            sections: components["schemas"]["ReportSectionResponse"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "GENERATED" | "NO_EVIDENCE";
+            /** Summary */
+            summary: string;
+            /** Title */
+            title: string;
+            /** Topic */
+            topic: string;
+        };
+        /** ReportSectionResponse */
+        ReportSectionResponse: {
+            /** Citation Memory Ids */
+            citation_memory_ids: string[];
+            /** Content */
+            content: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "TIMELINE" | "CONTINUITY" | "CHANGES" | "CONTRADICTIONS" | "GAPS";
+            /** Title */
+            title: string;
         };
         /** SearchRequest */
         SearchRequest: {
@@ -866,6 +981,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReadinessFailure"];
+                };
+            };
+        };
+    };
+    generate_report_reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -8,6 +8,7 @@ import os
 import time
 import uuid
 from contextlib import suppress
+from datetime import UTC, datetime, timedelta
 from http.cookiejar import CookieJar
 from typing import Any
 from urllib.error import HTTPError
@@ -110,6 +111,25 @@ def main() -> int:
         )
         if [item["memory_id"] for item in personal_chat["citations"]] != [created_id]:
             raise AssertionError("个人 Chat 没有引用自己的私有记录")
+        now = datetime.now(UTC)
+        report_range = {
+            "created_from": (now - timedelta(days=1)).isoformat(),
+            "created_to": (now + timedelta(days=1)).isoformat(),
+        }
+        personal_report = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/reports",
+            200,
+            {
+                "scope": "PERSONAL",
+                "topic": marker,
+                "evidence_limit": 20,
+                **report_range,
+            },
+        )
+        if [item["memory_id"] for item in personal_report["citations"]] != [created_id]:
+            raise AssertionError("个人报告没有引用自己的私有记录")
 
         expect_status(blair, "GET", f"{public_url}/api/memories/{created_id}", 404)
         search_url = f"{public_url}/api/search"
@@ -133,6 +153,21 @@ def main() -> int:
         )
         if private_chat["status"] != "NO_EVIDENCE" or private_chat["citations"]:
             raise AssertionError("同事 Chat 泄露了尚未共享的记录")
+        private_report = expect_status(
+            blair,
+            "POST",
+            f"{public_url}/api/reports",
+            200,
+            {
+                "scope": "COLLEAGUE",
+                "author_id": created["author"]["id"],
+                "topic": marker,
+                "evidence_limit": 20,
+                **report_range,
+            },
+        )
+        if private_report["status"] != "NO_EVIDENCE" or private_report["citations"]:
+            raise AssertionError("同事报告泄露了尚未共享的记录")
         shared = expect_status(
             alex,
             "POST",
@@ -167,6 +202,28 @@ def main() -> int:
         )
         if [item["memory_id"] for item in shared_chat["citations"]] != [created_id]:
             raise AssertionError("同事 Chat 没有引用已共享记录")
+        shared_report = expect_status(
+            blair,
+            "POST",
+            f"{public_url}/api/reports",
+            200,
+            {
+                "scope": "WORKSPACE",
+                "topic": marker,
+                "evidence_limit": 20,
+                **report_range,
+            },
+        )
+        if [item["memory_id"] for item in shared_report["citations"]] != [created_id]:
+            raise AssertionError("团队报告没有引用已共享记录")
+        if [section["kind"] for section in shared_report["sections"]] != [
+            "TIMELINE",
+            "CONTINUITY",
+            "CHANGES",
+            "CONTRADICTIONS",
+            "GAPS",
+        ]:
+            raise AssertionError("报告没有返回固定的五类证据结构")
 
         expect_status(
             alex,
@@ -193,6 +250,20 @@ def main() -> int:
         )
         if unshared_chat["status"] != "NO_EVIDENCE" or unshared_chat["citations"]:
             raise AssertionError("取消共享后同事 Chat 仍然返回记录")
+        unshared_report = expect_status(
+            blair,
+            "POST",
+            f"{public_url}/api/reports",
+            200,
+            {
+                "scope": "WORKSPACE",
+                "topic": marker,
+                "evidence_limit": 20,
+                **report_range,
+            },
+        )
+        if unshared_report["status"] != "NO_EVIDENCE" or unshared_report["citations"]:
+            raise AssertionError("取消共享后团队报告仍然返回记录")
 
         for _ in range(20):
             processing = expect_status(
@@ -214,7 +285,7 @@ def main() -> int:
             with suppress(AssertionError, HTTPError):
                 expect_status(alex, "DELETE", f"{public_url}/api/memories/{created_id}", 204)
 
-    print(f"Memora M5 关键用户路径通过：{public_url}")
+    print(f"Memora M6 第一版关键用户路径通过：{public_url}")
     return 0
 
 
