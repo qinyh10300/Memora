@@ -8,11 +8,15 @@
   },
   "scripts": {
     "build": "pnpm --filter @memora/web build",
+    "contract:client": "openapi-typescript packages/api-contract/openapi.json -o packages/api-contract/schema.d.ts",
     "format": "pnpm --filter @memora/web format",
     "format:check": "pnpm --filter @memora/web format:check",
     "lint": "pnpm --filter @memora/web lint",
     "test": "pnpm --filter @memora/web test",
     "typecheck": "pnpm --filter @memora/web typecheck",
     "web:dev": "pnpm --filter @memora/web dev"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0"
   }
 }

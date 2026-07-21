@@ -100,6 +100,17 @@ make down
 - API readiness：`http://localhost:8080/api/ready`
 - API 文档：`http://localhost:8080/api/docs`
 
+首次启动会幂等创建以下本地测试账号：
+
+| 显示名 | 邮箱 | 本地初始密码 |
+|---|---|---|
+| Alex | `alex@memora.local` | `memora-local-alex` |
+| Blair | `blair@memora.local` | `memora-local-blair` |
+| Casey | `casey@memora.local` | `memora-local-casey` |
+| Devon | `devon@memora.local` | `memora-local-devon` |
+
+这些是提交到仓库的非生产开发凭据，只能用于本机。公网部署前必须通过 `SEED_USER_1_*` 到 `SEED_USER_4_*` 环境变量覆盖邮箱、显示名和每个账号的独立初始密码；生产 seed 会拒绝上述 `memora-local-*` 密码。seed 是幂等的，不会在每次启动时覆盖已有账号密码。
+
 本地与单台 Linux 服务器使用同一份 `compose.yaml` 和镜像构建方式，环境差异只通过 `.env` 注入。服务器部署时必须替换数据库密码、会话密钥、AI 配置和 `CADDY_SITE_ADDRESS`，并在 M7 完成 HTTPS、备份恢复和部署 smoke test 后才视为可公开测试。
 
 ## Native hot-reload development

@@ -70,6 +70,7 @@ build:
 
 contract:
 	cd $(API_DIR) && $(UV) run memora-export-openapi
+	$(PNPM) contract:client
 
 contract-check:
 	./scripts/check-openapi.sh

@@ -12,12 +12,14 @@ FROM base AS dependencies
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
+COPY packages/api-contract/package.json packages/api-contract/package.json
 
 RUN pnpm install --frozen-lockfile --filter @memora/web...
 
 FROM dependencies AS builder
 
 COPY apps/web apps/web
+COPY packages/api-contract packages/api-contract
 
 RUN pnpm --filter @memora/web build
 

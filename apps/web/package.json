@@ -14,7 +14,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@memora/api-contract": "workspace:*",
     "next": "16.2.10",
+    "openapi-fetch": "0.17.0",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },

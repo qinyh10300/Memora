@@ -1,0 +1,9 @@
+{
+  "name": "@memora/api-contract",
+  "version": "0.1.0",
+  "private": true,
+  "types": "./schema.d.ts",
+  "exports": {
+    ".": "./schema.d.ts"
+  }
+}

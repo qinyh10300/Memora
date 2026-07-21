@@ -10,7 +10,7 @@ Last updated: 2026-07-22
 
 将空仓库建设为可在本地和单台公网服务器运行的 Memora v0.1 基础，并交付一个最小端到端闭环：预置用户登录，记录默认私有的纯文本想法，主动共享给工作区，其他成员只能在授权后看到，并通过 Chatbot 获得带原记录引用的回答。
 
-产品简报和 ADR 已于 2026-07-21 获得批准，M1 工程骨架已通过本地容器验收，下一步进入 M2 身份边界。
+产品简报和 ADR 已于 2026-07-21 获得批准，M1 工程骨架和 M2 身份边界均已通过本地容器与浏览器验收，下一步进入 M3 私有记录与主动共享闭环。
 
 ## Context and evidence
 
@@ -66,7 +66,7 @@ Last updated: 2026-07-22
 
 - [x] **M0 — Planning approval**：产品、架构、ADR 和活动计划获批准。验证：用户已明确批准进入 M1。
 - [x] **M1 — Reproducible foundation**：本地一条命令启动 Web、API、worker 和数据库，`make check` 可在无真实 AI Key 时通过。
-- [ ] **M2 — Identity boundary**：四个 seed 用户能登录；未登录和跨用户访问被拒绝。验证：API 集成测试和浏览器登录测试。
+- [x] **M2 — Identity boundary**：四个 seed 用户能登录；未登录和跨用户访问被拒绝。验证：15 个 API 测试、真实 PostgreSQL 会话验证和浏览器登录/恢复/退出测试。
 - [ ] **M3 — Private capture and sharing**：用户创建、浏览、补充、分享、取消分享和删除纯文本 memory；默认私有。验证：跨用户矩阵测试。
 - [ ] **M4 — Reliable retrieval projection**：创建记录不等待 embedding，job 可重试，关键词和向量检索只返回授权记录。验证：真实 PostgreSQL 故障/重试测试和 expected memory ID 评测。
 - [ ] **M5 — Cited chatbot slice**：用户能询问过去或类似想法，回答含可打开的引用；证据不足时明确说明。验证：产品简报代表问题和越权提示测试。
@@ -110,6 +110,8 @@ Last updated: 2026-07-22
 - 2026-07-21：最终 `make check` 通过，包括 2 个 Web 测试、10 个 API 测试、格式、lint、严格类型检查、OpenAPI 漂移检查和 Next.js 生产构建；生产配置会拒绝占位或少于 32 字符的会话密钥。
 - 2026-07-21：在 Apple Silicon macOS 上安装 Docker CLI、Compose、Buildx 与 Colima，完整构建并启动 6 个 Compose 服务；迁移 `20260721_0001`、pgvector 0.8.5、Web/API/ready 路由和 `make e2e` 均通过，M1 验收完成。
 - 2026-07-22：开始 M2–M6 第一版连续交付；确定 seed 账号、Argon2、数据库不透明会话、统一授权查询和显式报告时间范围。
+- 2026-07-22：完成 M2。四个可配置 seed 用户写入真实 PostgreSQL，密码使用 Argon2，不透明会话仅在数据库保存摘要，登录限流与即时注销生效；OpenAPI 生成 TypeScript 客户端并由 Web 同源调用。
+- 2026-07-22：完成 M2 浏览器验收。Alex 登录后显示四位成员，刷新恢复会话，退出后回到登录页，浏览器控制台无错误；`make check` 覆盖 4 个 Web 测试和 15 个 API 测试。
 
 ## Decision log
 
@@ -122,4 +124,4 @@ Last updated: 2026-07-22
 
 ## Completion summary
 
-M0 和 M1 已完成。仓库具备可复现的本地工程基础、离线质量门禁、OpenAPI 漂移检查、容器构建、真实 PostgreSQL/pgvector 迁移和同源 Web/API smoke test。当前计划继续执行，下一里程碑为 M2 四个预置账号与身份权限边界；公网 HTTPS、备份恢复和真实 AI 供应商验证仍属于后续里程碑。
+M0、M1 和 M2 已完成。仓库具备可复现的本地工程基础、四个预置账号、可撤销服务端会话、OpenAPI 生成客户端、真实 PostgreSQL/pgvector 迁移以及同源 Web/API 浏览器验收。当前计划继续执行，下一里程碑为 M3 默认私有记录和主动共享；公网 HTTPS、备份恢复和真实 AI 供应商验证仍属于后续里程碑。
