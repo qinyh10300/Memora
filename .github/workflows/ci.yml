@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: 代码质量与构建
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v6
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: 安装 pnpm
+        run: npm install --global pnpm@11.9.0
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: 安装锁定依赖
+        run: make setup
+
+      - name: 执行完整检查
+        run: make check
+
+  containers:
+    name: 容器集成检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: quality
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v6
+
+      - name: 创建测试环境变量
+        run: cp .env.example .env
+
+      - name: 验证 Compose 配置
+        run: docker compose config --quiet
+
+      - name: 构建并启动完整环境
+        run: docker compose up --detach --build
+
+      - name: 等待服务并运行 smoke test
+        run: |
+          ./scripts/wait-for-services.sh
+          ./scripts/e2e-smoke.sh
+
+      - name: 输出容器日志
+        if: always()
+        run: docker compose logs --no-color --tail=200
+
+      - name: 清理容器
+        if: always()
+        run: docker compose down --volumes --remove-orphans
