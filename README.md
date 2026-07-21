@@ -4,7 +4,7 @@ Memora 是一个面向个人与小团队的想法记忆库。用户快速记录�
 
 ## 当前状态
 
-项目处于产品定义和架构规划阶段，尚未开始业务代码实现。
+M0 产品与架构规划已批准。M1 工程骨架已经实现：Web、API、worker、数据库迁移、容器编排、统一验证命令和 CI 均已进入仓库；尚未开始登录、想法记录或 Chatbot 业务功能。
 
 当前已确认：
 
@@ -25,7 +25,40 @@ Memora 是一个面向个人与小团队的想法记忆库。用户快速记录�
 - [Agent 协作规范](AGENTS.md)
 - [执行计划规范](PLANS.md)
 - [代码审查规范](docs/code-review.md)
+- [开发环境与工程命令](docs/development.md)
+
+## 技术基线
+
+- Next.js App Router、React、TypeScript
+- FastAPI、Pydantic、SQLAlchemy、Alembic
+- PostgreSQL + pgvector
+- pnpm 与 uv 锁定依赖
+- Docker Compose + Caddy
+
+## 快速开始
+
+准备 Node.js 22、pnpm 11.9、Python 3.13、uv、Docker Compose、make 和 curl，然后执行：
+
+```bash
+make setup
+make dev
+```
+
+默认入口为 `http://localhost:8080`。在另一个终端等待服务并检查 Web/API：
+
+```bash
+./scripts/wait-for-services.sh
+make e2e
+```
+
+不启动容器时，可以运行完整的离线质量检查：
+
+```bash
+make check
+```
+
+真实密钥只写入已被 Git 忽略的 `.env`。仓库中的 `.env.example` 只提供变量名称和本地占位值。
 
 ## 下一步
 
-先共同审阅并批准产品简报、架构决策和当前执行计划。批准后再创建工程骨架，并以最小端到端垂直切片推进实现。
+先在具备 Docker 的环境完成 M1 容器 smoke test。通过后进入 M2 身份边界，以四个 seed 用户和跨用户反向权限测试为第一个业务切片。

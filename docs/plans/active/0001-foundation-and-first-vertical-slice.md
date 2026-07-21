@@ -101,6 +101,9 @@ Last updated: 2026-07-21
 - 2026-07-21：完成产品访谈第一阶段，确认核心闭环、隐私边界、纯文本范围和四人测试方案。
 - 2026-07-21：提出模块化单体、PostgreSQL/pgvector、可替换 AI provider 和单服务器部署方案。
 - 2026-07-21：用户批准 M0，开始实施 M1 可复现工程骨架。
+- 2026-07-21：完成 Next.js Web 骨架，格式、lint、类型检查、2 个测试和生产构建通过。
+- 2026-07-21：完成 FastAPI、worker、Alembic 与 OpenAPI 骨架，严格 MyPy、6 个测试、离线迁移和真实健康请求通过。
+- 2026-07-21：完成 Makefile、Docker Compose、Caddy、容器 smoke test 脚本和两阶段 CI 配置。本机没有 Docker CLI，容器构建与 Compose 运行等待 CI 或具备 Docker 的环境验证后再勾选 M1。
 
 ## Decision log
 
