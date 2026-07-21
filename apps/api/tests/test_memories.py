@@ -16,6 +16,7 @@ from memora.identity.seed import seed_database
 from memora.jobs.models import Job
 from memora.main import create_app
 from memora.memories.models import Memory
+from memora.retrieval.models import MemoryEmbedding
 from memora.settings import Settings
 
 
@@ -69,10 +70,12 @@ def test_create_is_private_and_persists_outbox_in_same_commit(
     assert created["is_owner"] is True
     assert cast(dict[str, object], created["author"])["display_name"] == "Alex"
     assert created["shared_at"] is None
+    assert created["processing_status"] == "PENDING"
 
     engine = cast(FastAPI, memory_client.app).state.engine
     with Session(engine) as database:
         stored = database.get(Memory, memory_id)
+        projection = database.get(MemoryEmbedding, memory_id)
         job = database.scalar(select(Job).where(Job.payload_ref == memory_id))
         event = database.scalar(
             select(AuditEvent).where(
@@ -82,6 +85,7 @@ def test_create_is_private_and_persists_outbox_in_same_commit(
         )
 
     assert stored is not None and stored.visibility == "PRIVATE"
+    assert projection is not None and projection.status == "PENDING"
     assert job is not None and job.status == "PENDING" and job.type == "EMBED_MEMORY"
     assert event is not None
     assert not hasattr(event, "body")
@@ -171,6 +175,7 @@ def test_supplement_is_append_only_and_delete_clears_body(
     engine = cast(FastAPI, memory_client.app).state.engine
     with Session(engine) as database:
         stored = database.get(Memory, UUID(original_id))
+        projection = database.get(MemoryEmbedding, UUID(original_id))
         job = database.scalar(select(Job).where(Job.payload_ref == UUID(original_id)))
         deleted_event = database.scalar(
             select(AuditEvent).where(
@@ -179,6 +184,7 @@ def test_supplement_is_append_only_and_delete_clears_body(
             )
         )
     assert stored is not None and stored.body is None and stored.deleted_at is not None
+    assert projection is None
     assert job is not None and job.status == "CANCELLED"
     assert deleted_event is not None
 
@@ -220,3 +226,38 @@ def test_list_filters_and_all_routes_require_authentication(memory_client: TestC
     assert memory_client.get(f"/memories/{created['id']}").status_code == 401
     assert memory_client.post(f"/memories/{created['id']}/share").status_code == 401
     assert memory_client.delete(f"/memories/{created['id']}").status_code == 401
+
+
+def test_author_can_retry_failed_processing_but_other_users_cannot(
+    memory_client: TestClient,
+) -> None:
+    alex = _login(memory_client, "alex@memora.local", "memora-local-alex")
+    blair = _login(memory_client, "blair@memora.local", "memora-local-blair")
+    created = _create(memory_client, alex)
+    memory_id = UUID(cast(str, created["id"]))
+    engine = cast(FastAPI, memory_client.app).state.engine
+    with Session(engine) as database, database.begin():
+        job = database.scalar(select(Job).where(Job.payload_ref == memory_id))
+        projection = database.get(MemoryEmbedding, memory_id)
+        assert job is not None and projection is not None
+        job.status = "FAILED"
+        job.attempts = 5
+        job.next_run_at = None
+        job.last_error_code = "provider_timeout"
+        projection.status = "FAILED"
+        projection.last_error_code = "provider_timeout"
+
+    assert (
+        memory_client.post(f"/memories/{memory_id}/retry-processing", headers=blair).status_code
+        == 404
+    )
+    retry_response = memory_client.post(f"/memories/{memory_id}/retry-processing", headers=alex)
+
+    assert retry_response.status_code == 200
+    assert retry_response.json()["processing_status"] == "PENDING"
+    with Session(engine) as database:
+        job = database.scalar(select(Job).where(Job.payload_ref == memory_id))
+        projection = database.get(MemoryEmbedding, memory_id)
+    assert job is not None and job.status == "PENDING" and job.attempts == 0
+    assert job.next_run_at is not None and job.last_error_code is None
+    assert projection is not None and projection.status == "PENDING"

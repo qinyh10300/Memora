@@ -167,6 +167,16 @@
             "title": "Is Owner",
             "type": "boolean"
           },
+          "processing_status": {
+            "enum": [
+              "PENDING",
+              "WAITING_CONFIGURATION",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "title": "Processing Status",
+            "type": "string"
+          },
           "shared_at": {
             "anyOf": [
               {
@@ -208,7 +218,8 @@
           "is_owner",
           "created_at",
           "shared_at",
-          "supersedes_id"
+          "supersedes_id",
+          "processing_status"
         ],
         "title": "MemoryResponse",
         "type": "object"
@@ -230,6 +241,139 @@
           "service"
         ],
         "title": "ReadinessFailure",
+        "type": "object"
+      },
+      "SearchRequest": {
+        "properties": {
+          "author_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Id"
+          },
+          "created_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created From"
+          },
+          "created_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created To"
+          },
+          "limit": {
+            "default": 20,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "q": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Q",
+            "type": "string"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "enum": [
+                  "PRIVATE",
+                  "WORKSPACE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
+          }
+        },
+        "required": [
+          "q"
+        ],
+        "title": "SearchRequest",
+        "type": "object"
+      },
+      "SearchResponse": {
+        "properties": {
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchResultResponse"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "semantic_status": {
+            "enum": [
+              "AVAILABLE",
+              "DISABLED",
+              "DEGRADED"
+            ],
+            "title": "Semantic Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "semantic_status",
+          "results"
+        ],
+        "title": "SearchResponse",
+        "type": "object"
+      },
+      "SearchResultResponse": {
+        "properties": {
+          "match_reasons": {
+            "items": {
+              "enum": [
+                "KEYWORD",
+                "SEMANTIC"
+              ],
+              "type": "string"
+            },
+            "title": "Match Reasons",
+            "type": "array"
+          },
+          "memory": {
+            "$ref": "#/components/schemas/MemoryResponse"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "memory",
+          "score",
+          "match_reasons"
+        ],
+        "title": "SearchResultResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -643,6 +787,49 @@
         ]
       }
     },
+    "/memories/{memory_id}/retry-processing": {
+      "post": {
+        "operationId": "retry_memory_processing_memories__memory_id__retry_processing_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Memory Processing",
+        "tags": [
+          "memories"
+        ]
+      }
+    },
     "/memories/{memory_id}/share": {
       "post": {
         "operationId": "share_memory_memories__memory_id__share_post",
@@ -757,6 +944,47 @@
         "summary": "Ready",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/search": {
+      "post": {
+        "operationId": "search_memories_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Memories",
+        "tags": [
+          "retrieval"
         ]
       }
     },

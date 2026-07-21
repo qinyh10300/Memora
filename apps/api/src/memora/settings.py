@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal, Self
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_SESSION_SECRET = "development-only-change-me"
@@ -39,6 +39,16 @@ class Settings(BaseSettings):
     seed_user_4_email: str = "devon@memora.local"
     seed_user_4_display_name: str = "Devon"
     seed_user_4_password: SecretStr = SecretStr("memora-local-devon")
+
+    ai_chat_base_url: str = "https://yunwu.ai/v1"
+    ai_chat_api_key: SecretStr = SecretStr("")
+    ai_chat_model: str = ""
+    ai_embedding_base_url: str = "https://yunwu.ai/v1"
+    ai_embedding_api_key: SecretStr = SecretStr("")
+    ai_embedding_model: str = ""
+    ai_request_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    ai_embedding_max_attempts: int = Field(default=5, ge=1, le=20)
+    ai_job_retry_base_seconds: int = Field(default=15, ge=1, le=3600)
 
     @model_validator(mode="after")
     def reject_unsafe_production_secret(self) -> Self:

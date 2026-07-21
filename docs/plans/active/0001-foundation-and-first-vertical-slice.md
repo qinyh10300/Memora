@@ -10,7 +10,7 @@ Last updated: 2026-07-22
 
 将空仓库建设为可在本地和单台公网服务器运行的 Memora v0.1 基础，并交付一个最小端到端闭环：预置用户登录，记录默认私有的纯文本想法，主动共享给工作区，其他成员只能在授权后看到，并通过 Chatbot 获得带原记录引用的回答。
 
-产品简报和 ADR 已于 2026-07-21 获得批准，M1 工程骨架和 M2 身份边界均已通过本地容器与浏览器验收，下一步进入 M3 私有记录与主动共享闭环。
+产品简报和 ADR 已于 2026-07-21 获得批准，M1 至 M4 均已通过离线测试、真实 PostgreSQL/pgvector、完整 Docker Compose 和浏览器验收，下一步进入 M5 带引用 Chatbot。
 
 ## Context and evidence
 
@@ -68,7 +68,7 @@ Last updated: 2026-07-22
 - [x] **M1 — Reproducible foundation**：本地一条命令启动 Web、API、worker 和数据库，`make check` 可在无真实 AI Key 时通过。
 - [x] **M2 — Identity boundary**：四个 seed 用户能登录；未登录和跨用户访问被拒绝。验证：15 个 API 测试、真实 PostgreSQL 会话验证和浏览器登录/恢复/退出测试。
 - [x] **M3 — Private capture and sharing**：用户创建、浏览、补充、分享、取消分享和删除纯文本 memory；默认私有。验证：跨用户矩阵测试、真实 PostgreSQL E2E 和浏览器交互测试。
-- [ ] **M4 — Reliable retrieval projection**：创建记录不等待 embedding，job 可重试，关键词和向量检索只返回授权记录。验证：真实 PostgreSQL 故障/重试测试和 expected memory ID 评测。
+- [x] **M4 — Reliable retrieval projection**：创建记录不等待 embedding，job 可重试，关键词和向量检索只返回授权记录。验证：32 个 API 测试、真实 PostgreSQL/pgvector 反向权限查询、Docker worker 降级 E2E 和浏览器检索验收。
 - [ ] **M5 — Cited chatbot slice**：用户能询问过去或类似想法，回答含可打开的引用；证据不足时明确说明。验证：产品简报代表问题和越权提示测试。
 - [ ] **M6 — On-demand reports**：生成个人、同事和团队时间段报告，严格遵守共享范围。验证：固定数据集和人工有用性检查。
 - [ ] **M7 — Public test deployment**：四人通过 HTTPS 使用测试环境，完成备份恢复演练和基础监控。验证：部署 smoke test、恢复记录和密钥扫描。
@@ -78,7 +78,7 @@ Last updated: 2026-07-22
 - [x] 新记录始终默认为私有，且共享必须由作者显式触发。
 - [x] 用户 B 在任何已实现的记录接口中都无法发现用户 A 私有记录的正文、片段或补充目标 ID；搜索、Chatbot 和报告将在各自里程碑继续验证。
 - [ ] 五类代表问题均返回来源，或明确说明没有足够证据。
-- [ ] AI provider 不可用时记录不丢失，失败状态可见且可重试。
+- [x] AI provider 不可用时记录不丢失，失败状态可见且可重试。
 - [ ] 删除正文和 embedding 后，检索、引用和新报告不再返回该内容。
 - [ ] 本地开发、CI 和公网部署均有可复现命令和文档。
 - [ ] 四人两周测试所需的基本使用和用量指标可获取，但日志不保存私有正文。
@@ -97,6 +97,7 @@ Last updated: 2026-07-22
 - 首先只部署测试工作区和四个账号，不迁移真实生产数据。
 - 数据库迁移在备份后执行，并记录当前 schema revision。
 - `20260722_0003` 只新增 memories、jobs、audit_events 与索引，旧版 M2 应用可在保留新表时回退；其 Alembic downgrade 会删除记录数据，只用于空测试库，不作为生产回滚手段。已有数据环境优先回退应用镜像、保留 schema 并向前修复，必要时从迁移前备份恢复。
+- `20260722_0004` 增加可重建的 `memory_embeddings` 投影及 job 租约字段，并为活动记录回填待处理状态。旧版 M3 应用可忽略新增表/列；生产回滚优先回退应用并保留 schema。downgrade 会丢弃向量投影，只能通过正文重建，不影响 memory 事实数据。
 - AI 供应商变更通过配置和 adapter 完成；embedding 模型变化通过可重启的重建 job 处理。
 - 部署失败时回退应用镜像；涉及不可逆 schema 变化时使用向前修复并从已验证备份恢复。
 
@@ -116,6 +117,9 @@ Last updated: 2026-07-22
 - 2026-07-22：完成 M3 数据与权限边界。迁移 `20260722_0003` 增加追加式 memories、embedding outbox jobs 和不含正文的 audit events；创建、列表、详情、补充、分享、取消共享和删除 API 统一使用工作区与可见性过滤。
 - 2026-07-22：真实 PostgreSQL 首次 E2E 暴露出无 ORM relationship 时 job 可能先于 memory flush 的外键错误。实现改为同一事务中先 flush memory 再写 outbox，并强制 SQLite 测试启用外键，防止数据库差异再次漏检。
 - 2026-07-22：完成 M3 浏览器验收。新记录显示“仅自己”，作者主动分享后 Blair 可见且没有作者操作，取消共享立即生效，删除要求二次确认；真实 PostgreSQL `make e2e` 和浏览器控制台检查均通过。
+- 2026-07-22：完成 M4 AI 供应商边界、可靠 worker 和检索投影。记录与 job 同事务提交，worker 使用行锁、失效租约恢复和有上限退避；空模型配置进入 `WAITING_CONFIGURATION`，外部失败不阻塞记录写入。
+- 2026-07-22：真实 Docker worker 首次运行暴露独立进程没有加载完整 ORM metadata，外键排序失败。增加显式模型注册入口供 API、worker 和 Alembic 共用，避免测试进程的偶然 import 顺序掩盖问题。
+- 2026-07-22：将搜索从 GET query 改为 POST JSON，避免私有搜索词出现在 Uvicorn/Caddy URL 日志。真实 PostgreSQL/pgvector 反向测试确认 Blair 只能召回 Alex 共享向量，私有向量泄露为零；浏览器验证了待配置状态和关键词降级。
 
 ## Decision log
 
@@ -125,7 +129,9 @@ Last updated: 2026-07-22
 - 2026-07-21：将减少会议时间作为长期指标；两周四人测试先验证持续记录、检索可信和总结有用。
 - 2026-07-22：v0.1 不启用 RLS；原因是当前单工作区规模下，集中授权查询加真实数据库反向测试更容易审计，RLS 保留为企业隔离增强而非替代应用授权。
 - 2026-07-22：使用服务端数据库会话而非 JWT；原因是四人单体产品更需要即时注销、可审计和简单撤销，而不需要跨服务无状态令牌。
+- 2026-07-22：M4 使用可变维度 pgvector 列与精确扫描；原因是外部 embedding 模型尚未验证，必须先按模型和维度隔离，避免提前锁定错误的索引维度。
+- 2026-07-22：搜索使用 POST JSON；原因是搜索问题本身可能是个人私密上下文，不应出现在 URL、浏览器历史和默认访问日志。
 
 ## Completion summary
 
-M0 至 M3 已完成。仓库具备可复现的本地工程基础、四个预置账号、可撤销服务端会话、默认私有的追加式记录、主动分享/取消共享、删除清除正文、事务性 embedding outbox、OpenAPI 生成客户端，以及真实 PostgreSQL 和同源浏览器验收。当前计划继续执行，下一里程碑为 M4 可重试的 embedding 投影与授权混合检索；公网 HTTPS、备份恢复和真实 AI 供应商验证仍属于后续里程碑。
+M0 至 M4 已完成。仓库具备可复现的本地工程基础、四个预置账号、可撤销服务端会话、默认私有的追加式记录、主动分享/取消共享、删除清除正文、事务性 embedding outbox、可靠 worker、关键词/pgvector 授权混合检索、OpenAPI 生成客户端，以及真实 PostgreSQL 和同源浏览器验收。当前计划继续执行，下一里程碑为 M5 带原记录引用的 Chatbot；公网 HTTPS、备份恢复和真实 AI 供应商验证仍属于后续里程碑。

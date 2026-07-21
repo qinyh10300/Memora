@@ -108,6 +108,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/memories/{memory_id}/retry-processing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Memory Processing */
+        post: operations["retry_memory_processing_memories__memory_id__retry_processing_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/memories/{memory_id}/share": {
         parameters: {
             query?: never;
@@ -153,6 +170,23 @@ export interface paths {
         get: operations["ready_ready_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search Memories */
+        post: operations["search_memories_search_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -257,6 +291,11 @@ export interface components {
             id: string;
             /** Is Owner */
             is_owner: boolean;
+            /**
+             * Processing Status
+             * @enum {string}
+             */
+            processing_status: "PENDING" | "WAITING_CONFIGURATION" | "COMPLETED" | "FAILED";
             /** Shared At */
             shared_at: string | null;
             /** Supersedes Id */
@@ -277,6 +316,44 @@ export interface components {
              * @constant
              */
             status: "not_ready";
+        };
+        /** SearchRequest */
+        SearchRequest: {
+            /** Author Id */
+            author_id?: string | null;
+            /** Created From */
+            created_from?: string | null;
+            /** Created To */
+            created_to?: string | null;
+            /**
+             * Limit
+             * @default 20
+             */
+            limit: number;
+            /** Q */
+            q: string;
+            /** Visibility */
+            visibility?: ("PRIVATE" | "WORKSPACE") | null;
+        };
+        /** SearchResponse */
+        SearchResponse: {
+            /** Query */
+            query: string;
+            /** Results */
+            results: components["schemas"]["SearchResultResponse"][];
+            /**
+             * Semantic Status
+             * @enum {string}
+             */
+            semantic_status: "AVAILABLE" | "DISABLED" | "DEGRADED";
+        };
+        /** SearchResultResponse */
+        SearchResultResponse: {
+            /** Match Reasons */
+            match_reasons: ("KEYWORD" | "SEMANTIC")[];
+            memory: components["schemas"]["MemoryResponse"];
+            /** Score */
+            score: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -542,6 +619,37 @@ export interface operations {
             };
         };
     };
+    retry_memory_processing_memories__memory_id__retry_processing_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     share_memory_memories__memory_id__share_post: {
         parameters: {
             query?: never;
@@ -629,6 +737,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReadinessFailure"];
+                };
+            };
+        };
+    };
+    search_memories_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

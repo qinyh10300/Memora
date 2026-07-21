@@ -36,6 +36,7 @@ const privateMemory = {
   created_at: "2026-07-22T01:00:00Z",
   shared_at: null,
   supersedes_id: null,
+  processing_status: "PENDING",
 };
 
 function mockWorkspaceGet(memories: (typeof privateMemory)[] = []) {
@@ -157,6 +158,41 @@ describe("HomePage identity flow", () => {
     await waitFor(() => expect(screen.queryByText(privateMemory.body)).not.toBeInTheDocument());
     expect(apiMocks.DELETE).toHaveBeenCalledWith("/memories/{memory_id}", {
       params: { path: { memory_id: privateMemory.id } },
+    });
+  });
+
+  it("关键词搜索明确显示语义能力未配置", async () => {
+    apiMocks.GET.mockImplementation((path: string) => {
+      if (path === "/auth/me") return Promise.resolve({ data: alex });
+      if (path === "/workspace/members") return Promise.resolve({ data: members });
+      if (path === "/memories") return Promise.resolve({ data: [privateMemory] });
+      return Promise.resolve({ data: undefined });
+    });
+    apiMocks.POST.mockImplementation((path: string) => {
+      if (path === "/search") {
+        return Promise.resolve({
+          data: {
+            query: "记录摩擦",
+            semantic_status: "DISABLED",
+            results: [{ memory: privateMemory, score: 1, match_reasons: ["KEYWORD"] }],
+          },
+          response: { ok: true, status: 200 },
+        });
+      }
+      return Promise.resolve({ data: undefined });
+    });
+
+    render(<HomePage />);
+    const searchInput = await screen.findByLabelText("搜索已有想法");
+    fireEvent.change(searchInput, { target: { value: "记录摩擦" } });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+
+    expect(
+      await screen.findByText(/当前使用关键词检索；配置 embedding 模型后/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(privateMemory.body)).toBeInTheDocument();
+    expect(apiMocks.POST).toHaveBeenCalledWith("/search", {
+      body: { q: "记录摩擦", limit: 50 },
     });
   });
 });

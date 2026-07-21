@@ -12,11 +12,13 @@ from memora.identity.dependencies import CurrentPrincipal, Principal
 from memora.identity.models import User
 from memora.jobs.models import Job
 from memora.memories.models import Memory
+from memora.memories.schemas import MemoryResponse, memory_response_for
 from memora.memories.service import (
     get_authorized_memory,
     get_memory_for_author_action,
     list_authorized_memories,
 )
+from memora.retrieval.models import MemoryEmbedding
 
 router = APIRouter(prefix="/memories", tags=["memories"])
 MemoryVisibility = Literal["PRIVATE", "WORKSPACE"]
@@ -35,56 +37,22 @@ class CreateMemoryRequest(BaseModel):
         return normalized
 
 
-class MemoryAuthorResponse(BaseModel):
-    id: UUID
-    display_name: str
-
-
-class MemoryResponse(BaseModel):
-    id: UUID
-    body: str
-    visibility: MemoryVisibility
-    author: MemoryAuthorResponse
-    is_owner: bool
-    created_at: datetime
-    shared_at: datetime | None
-    supersedes_id: UUID | None
-
-
-def _response_for(memory: Memory, author: User, principal: Principal) -> MemoryResponse:
-    if memory.body is None:
-        raise RuntimeError("deleted memory cannot be serialized")
-    visibility: MemoryVisibility = "WORKSPACE" if memory.visibility == "WORKSPACE" else "PRIVATE"
-    is_owner = memory.author_id == principal.user_id
-    return MemoryResponse(
-        id=memory.id,
-        body=memory.body,
-        visibility=visibility,
-        author=MemoryAuthorResponse(id=author.id, display_name=author.display_name),
-        is_owner=is_owner,
-        created_at=memory.created_at,
-        shared_at=memory.shared_at,
-        # 非作者不能仅凭一条已共享的补充记录推断出私有原记录的稳定 ID。
-        supersedes_id=memory.supersedes_id if is_owner else None,
-    )
-
-
 def _not_found() -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="记录不存在")
 
 
 def _author_row_or_error(
     database: DatabaseSession, principal: Principal, memory_id: UUID
-) -> tuple[Memory, User]:
+) -> tuple[Memory, User, MemoryEmbedding | None]:
     row = get_memory_for_author_action(database, principal, memory_id)
     if row is None:
         raise _not_found()
-    memory, author = row
+    memory, author, projection = row
     if memory.author_id != principal.user_id:
         if memory.visibility == "PRIVATE":
             raise _not_found()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="只有作者可以执行此操作")
-    return memory, author
+    return memory, author, projection
 
 
 def _audit(database: DatabaseSession, principal: Principal, action: str, memory_id: UUID) -> None:
@@ -132,6 +100,8 @@ def create_memory(
     # payload_ref 没有 ORM relationship；先 flush 可保证 PostgreSQL 在同一事务中
     # 先插入 memory，再插入带外键的 outbox job。
     database.flush()
+    projection = MemoryEmbedding(memory_id=memory.id, status="PENDING")
+    database.add(projection)
     database.add(
         Job(
             workspace_id=principal.workspace_id,
@@ -146,7 +116,7 @@ def create_memory(
     author = database.get(User, principal.user_id)
     if author is None:
         raise RuntimeError("authenticated user disappeared")
-    return _response_for(memory, author, principal)
+    return memory_response_for(memory, author, projection, principal)
 
 
 @router.get("", response_model=list[MemoryResponse])
@@ -168,7 +138,10 @@ def list_memories(
         created_to=created_to,
         limit=limit,
     )
-    return [_response_for(memory, author, principal) for memory, author in rows]
+    return [
+        memory_response_for(memory, author, projection, principal)
+        for memory, author, projection in rows
+    ]
 
 
 @router.get("/{memory_id}", response_model=MemoryResponse)
@@ -180,7 +153,7 @@ def get_memory(
     row = get_authorized_memory(database, principal, memory_id)
     if row is None:
         raise _not_found()
-    return _response_for(*row, principal)
+    return memory_response_for(*row, principal)
 
 
 @router.post("/{memory_id}/share", response_model=MemoryResponse)
@@ -189,14 +162,14 @@ def share_memory(
     principal: CurrentPrincipal,
     database: DatabaseSession,
 ) -> MemoryResponse:
-    memory, author = _author_row_or_error(database, principal, memory_id)
+    memory, author, projection = _author_row_or_error(database, principal, memory_id)
     if memory.visibility != "WORKSPACE":
         memory.visibility = "WORKSPACE"
         memory.shared_at = datetime.now(UTC)
         _audit(database, principal, "MEMORY_SHARED", memory.id)
         database.commit()
         database.refresh(memory)
-    return _response_for(memory, author, principal)
+    return memory_response_for(memory, author, projection, principal)
 
 
 @router.post("/{memory_id}/unshare", response_model=MemoryResponse)
@@ -205,14 +178,50 @@ def unshare_memory(
     principal: CurrentPrincipal,
     database: DatabaseSession,
 ) -> MemoryResponse:
-    memory, author = _author_row_or_error(database, principal, memory_id)
+    memory, author, projection = _author_row_or_error(database, principal, memory_id)
     if memory.visibility != "PRIVATE":
         memory.visibility = "PRIVATE"
         memory.shared_at = None
         _audit(database, principal, "MEMORY_UNSHARED", memory.id)
         database.commit()
         database.refresh(memory)
-    return _response_for(memory, author, principal)
+    return memory_response_for(memory, author, projection, principal)
+
+
+@router.post("/{memory_id}/retry-processing", response_model=MemoryResponse)
+def retry_memory_processing(
+    memory_id: UUID,
+    principal: CurrentPrincipal,
+    database: DatabaseSession,
+) -> MemoryResponse:
+    memory, author, projection = _author_row_or_error(database, principal, memory_id)
+    if projection is None:
+        projection = MemoryEmbedding(memory_id=memory.id, status="PENDING")
+        database.add(projection)
+    job = database.scalar(
+        select(Job).where(Job.payload_ref == memory.id, Job.type == "EMBED_MEMORY")
+    )
+    if projection.status != "COMPLETED":
+        projection.status = "PENDING"
+        projection.last_error_code = None
+        if job is None:
+            job = Job(
+                workspace_id=principal.workspace_id,
+                type="EMBED_MEMORY",
+                payload_ref=memory.id,
+                status="PENDING",
+            )
+            database.add(job)
+        else:
+            job.status = "PENDING"
+            job.attempts = 0
+            job.next_run_at = datetime.now(UTC)
+            job.locked_at = None
+            job.last_error_code = None
+        _audit(database, principal, "MEMORY_PROCESSING_RETRIED", memory.id)
+        database.commit()
+        database.refresh(memory)
+    return memory_response_for(memory, author, projection, principal)
 
 
 @router.delete("/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -221,18 +230,25 @@ def delete_memory(
     principal: CurrentPrincipal,
     database: DatabaseSession,
 ) -> None:
-    memory, _author = _author_row_or_error(database, principal, memory_id)
+    memory, _author, projection = _author_row_or_error(database, principal, memory_id)
     memory.body = None
     memory.visibility = "PRIVATE"
     memory.shared_at = None
     memory.deleted_at = datetime.now(UTC)
+    if projection is not None:
+        database.delete(projection)
     database.execute(
         update(Job)
         .where(
             Job.payload_ref == memory.id,
             Job.status.in_(("PENDING", "RUNNING", "WAITING_CONFIGURATION", "FAILED")),
         )
-        .values(status="CANCELLED", last_error_code=None)
+        .values(
+            status="CANCELLED",
+            next_run_at=None,
+            locked_at=None,
+            last_error_code=None,
+        )
     )
     _audit(database, principal, "MEMORY_DELETED", memory.id)
     database.commit()

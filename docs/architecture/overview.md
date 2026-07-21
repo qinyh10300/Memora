@@ -2,7 +2,7 @@
 
 Status: Accepted baseline
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 ## Architecture goal
 
@@ -34,7 +34,7 @@ flowchart LR
 
 - **Web**：Next.js App Router、React、TypeScript。
 - **API and worker**：Python、FastAPI、Pydantic、SQLAlchemy、Alembic。
-- **Database**：PostgreSQL，使用 pgvector 保存 embedding，并结合 PostgreSQL 全文检索。
+- **Database**：PostgreSQL，使用 pgvector 保存 embedding，并结合 PostgreSQL 关键词检索。
 - **API contract**：FastAPI 生成 OpenAPI，前端使用生成的 TypeScript client。
 - **Deployment**：Docker Compose 部署到单台 Linux 服务器，Caddy 负责 HTTPS 和反向代理。
 - **Testing**：前端单元/组件测试、API 单元与集成测试、真实 PostgreSQL 集成测试、Playwright 关键路径测试。
@@ -120,6 +120,10 @@ v0.1 使用混合检索：
 
 embedding 模型切换会改变向量空间。`memory_embeddings` 必须记录模型和维度；迁移时创建可恢复的重建任务，不能混用不同模型的向量进行相似度比较。
 
+M4 的投影列使用 pgvector 可变维度 `vector`，查询必须同时硬过滤模型和维度。四人测试阶段采用精确余弦距离扫描；在真实模型、维度和数据量确定前不创建可能不匹配的近似索引。后续只有在观测到查询性能问题时，才针对确定的模型/维度用表达式或分区索引优化。pgvector 的 [SQLAlchemy 集成](https://github.com/pgvector/pgvector-python#sqlalchemy) 和 [可变维度向量说明](https://github.com/pgvector/pgvector#can-i-store-vectors-with-different-dimensions-in-the-same-column) 是该实现约束的上游依据。
+
+搜索请求使用 `POST /search` 和 JSON body，避免用户的私有搜索词进入反向代理与应用的 URL 访问日志。搜索响应明确标记语义能力为 `AVAILABLE`、`DISABLED` 或 `DEGRADED`；禁用或供应商失败时保留授权关键词结果。
+
 ## AI provider boundary
 
 定义两个独立端口：
@@ -128,6 +132,8 @@ embedding 模型切换会改变向量空间。`memory_embeddings` 必须记录�
 - `EmbeddingModelPort`：批量 embedding、模型标识、维度和用量。
 
 基础设施 adapter 从环境变量读取 base URL、API Key、模型名、超时和重试配置。领域和应用模块只依赖端口，不引用云雾或任一模型 SDK 的专用类型。
+
+当前兼容 adapter 按 OpenAI 的 [embeddings HTTP 契约](https://developers.openai.com/api/reference/resources/embeddings/methods/create) 发送请求并验证索引、有限浮点向量、模型与用量字段。配置为空时不构造 adapter，也不发起网络请求。
 
 云雾公开快速开始文档给出了 OpenAI 兼容 base URL 和模型选择方式，但在实现前仍需用最低权限、最低额度的测试 Key 验证：
 

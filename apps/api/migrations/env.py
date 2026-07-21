@@ -3,13 +3,11 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from memora.audit import models as audit_models  # noqa: F401
 from memora.database import Base
-from memora.identity import models as identity_models  # noqa: F401
-from memora.jobs import models as job_models  # noqa: F401
-from memora.memories import models as memory_models  # noqa: F401
+from memora.model_registry import load_all_models
 from memora.settings import get_settings
-from memora.workspaces import models as workspace_models  # noqa: F401
+
+load_all_models()
 
 config = context.config
 

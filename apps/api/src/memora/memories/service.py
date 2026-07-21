@@ -7,13 +7,18 @@ from sqlalchemy.orm import Session
 from memora.identity.dependencies import Principal
 from memora.identity.models import User
 from memora.memories.models import Memory
+from memora.retrieval.models import MemoryEmbedding
 
 
-def authorized_memories_statement(principal: Principal) -> Select[tuple[Memory, User]]:
+def authorized_memories_statement(
+    principal: Principal,
+) -> Select[tuple[Memory, User, MemoryEmbedding | None]]:
     """构造所有 memory 读取路径必须复用的授权候选查询。"""
     return (
         select(Memory, User)
         .join(User, User.id == Memory.author_id)
+        .add_columns(MemoryEmbedding)
+        .outerjoin(MemoryEmbedding, MemoryEmbedding.memory_id == Memory.id)
         .where(
             Memory.workspace_id == principal.workspace_id,
             Memory.deleted_at.is_(None),
@@ -34,7 +39,7 @@ def list_authorized_memories(
     created_from: datetime | None = None,
     created_to: datetime | None = None,
     limit: int = 100,
-) -> list[tuple[Memory, User]]:
+) -> list[tuple[Memory, User, MemoryEmbedding | None]]:
     statement = authorized_memories_statement(principal)
     filters = []
     if author_id is not None:
@@ -56,7 +61,7 @@ def list_authorized_memories(
 
 def get_authorized_memory(
     database: Session, principal: Principal, memory_id: UUID
-) -> tuple[Memory, User] | None:
+) -> tuple[Memory, User, MemoryEmbedding | None] | None:
     return (
         database.execute(authorized_memories_statement(principal).where(Memory.id == memory_id))
         .tuples()
@@ -66,11 +71,12 @@ def get_authorized_memory(
 
 def get_memory_for_author_action(
     database: Session, principal: Principal, memory_id: UUID
-) -> tuple[Memory, User] | None:
+) -> tuple[Memory, User, MemoryEmbedding | None] | None:
     return (
         database.execute(
-            select(Memory, User)
+            select(Memory, User, MemoryEmbedding)
             .join(User, User.id == Memory.author_id)
+            .outerjoin(MemoryEmbedding, MemoryEmbedding.memory_id == Memory.id)
             .where(
                 Memory.id == memory_id,
                 Memory.workspace_id == principal.workspace_id,

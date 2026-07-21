@@ -144,9 +144,30 @@ Web 通过同源 `/api` 和由 OpenAPI 生成的类型化客户端调用后端�
 | `make build` | Next.js 生产构建 |
 | `make check` | 格式、lint、类型、测试、契约与构建总检查 |
 | `make compose-check` | Docker Compose 语义配置检查 |
-| `make e2e` | 对已运行环境执行登录、默认私有、分享、取消共享和删除的可清理 smoke test |
+| `make e2e` | 对已运行环境执行登录、默认私有、授权搜索、分享、取消共享、worker 降级和删除的可清理 smoke test |
 
-`make check` 不需要真实 AI Key，也不会调用外部模型。真实供应商契约测试将在后续里程碑中单独标记，不能混入默认离线 CI。
+`make check` 不需要真实 AI Key，也不会调用外部模型。真实供应商契约测试单独标记，不能混入默认离线 CI。
+
+## Retrieval and embedding worker
+
+记录创建会在同一个事务中写入 `memory_embeddings` 投影和 `EMBED_MEMORY` job，但 API 不等待外部模型。worker 通过 PostgreSQL 行锁领取任务，外部调用发生在数据库事务之外，并对可重试错误执行有上限的指数退避。
+
+处理状态含义如下：
+
+| Status | Meaning | Operator action |
+|---|---|---|
+| `PENDING` | 等待 worker 领取或重试 | 通常无需操作 |
+| `WAITING_CONFIGURATION` | 未配置 embedding Key 或模型 | 写入 `.env` 并在页面重试，或继续使用关键词检索 |
+| `COMPLETED` | 向量已经可用于同模型、同维度的语义召回 | 无 |
+| `FAILED` | 已达到重试上限或遇到不可重试供应商错误 | 检查脱敏错误码和配置后在页面重试 |
+
+需要启用语义检索时，在本地 `.env` 设置 `AI_EMBEDDING_BASE_URL`、`AI_EMBEDDING_API_KEY` 和 `AI_EMBEDDING_MODEL`，然后重建或重启 API 与 worker：
+
+```bash
+docker compose up --detach --build api worker
+```
+
+聊天与 embedding 配置互不隐式复用。worker 日志只记录 job/memory ID、模型、状态、尝试次数和用量，不记录正文、向量、Key 或完整供应商响应。搜索使用 POST JSON，因此搜索内容也不会出现在 URL 访问日志中。
 
 ## API contract workflow
 

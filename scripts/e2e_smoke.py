@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import uuid
 from contextlib import suppress
 from http.cookiejar import CookieJar
@@ -92,8 +93,16 @@ def main() -> int:
         created_id = str(created["id"])
         if created["visibility"] != "PRIVATE":
             raise AssertionError("新记录没有默认为 PRIVATE")
+        if created["processing_status"] not in {"PENDING", "WAITING_CONFIGURATION"}:
+            raise AssertionError("新记录没有进入可靠的 AI 待处理状态")
 
         expect_status(blair, "GET", f"{public_url}/api/memories/{created_id}", 404)
+        search_url = f"{public_url}/api/search"
+        private_search = expect_status(blair, "POST", search_url, 200, {"q": marker})
+        if private_search["results"]:
+            raise AssertionError("关键词检索泄露了其他用户的私有记录")
+        if private_search["semantic_status"] != "DISABLED":
+            raise AssertionError("空 embedding 配置没有明确降级为 DISABLED")
         shared = expect_status(
             alex,
             "POST",
@@ -110,6 +119,9 @@ def main() -> int:
         )
         if marker not in visible_to_blair["body"]:
             raise AssertionError("共享记录正文与创建内容不一致")
+        shared_search = expect_status(blair, "POST", search_url, 200, {"q": marker})
+        if [result["memory"]["id"] for result in shared_search["results"]] != [created_id]:
+            raise AssertionError("关键词检索没有返回已授权的共享记录")
 
         expect_status(
             alex,
@@ -118,6 +130,22 @@ def main() -> int:
             200,
         )
         expect_status(blair, "GET", f"{public_url}/api/memories/{created_id}", 404)
+        unshared_search = expect_status(blair, "POST", search_url, 200, {"q": marker})
+        if unshared_search["results"]:
+            raise AssertionError("取消共享后关键词检索仍返回记录")
+
+        for _ in range(20):
+            processing = expect_status(
+                alex,
+                "GET",
+                f"{public_url}/api/memories/{created_id}",
+                200,
+            )["processing_status"]
+            if processing == "WAITING_CONFIGURATION":
+                break
+            time.sleep(0.5)
+        else:
+            raise AssertionError("未配置 embedding 时 worker 没有进入 WAITING_CONFIGURATION")
         expect_status(alex, "DELETE", f"{public_url}/api/memories/{created_id}", 204)
         expect_status(alex, "GET", f"{public_url}/api/memories/{created_id}", 404)
         created_id = None
@@ -126,7 +154,7 @@ def main() -> int:
             with suppress(AssertionError, HTTPError):
                 expect_status(alex, "DELETE", f"{public_url}/api/memories/{created_id}", 204)
 
-    print(f"Memora M3 关键用户路径通过：{public_url}")
+    print(f"Memora M4 关键用户路径通过：{public_url}")
     return 0
 
 

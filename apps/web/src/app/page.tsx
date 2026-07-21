@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 type CurrentUser = components["schemas"]["CurrentUserResponse"];
 type WorkspaceMember = components["schemas"]["WorkspaceMemberResponse"];
 type Memory = components["schemas"]["MemoryResponse"];
+type SemanticStatus = components["schemas"]["SearchResponse"]["semantic_status"];
 type MemoryFilter = "ALL" | "MINE" | "WORKSPACE";
 
 const demoEmails = [
@@ -128,6 +129,10 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
   const [supplementing, setSupplementing] = useState<Memory | null>(null);
   const [busyMemoryId, setBusyMemoryId] = useState<string | null>(null);
   const [deletingMemoryId, setDeletingMemoryId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Memory[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [semanticStatus, setSemanticStatus] = useState<SemanticStatus | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -176,11 +181,21 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
       setCaptureBody("");
       setSupplementing(null);
       setFilter("ALL");
+      setSearchQuery("");
+      setSearchResults(null);
+      setSemanticStatus(null);
     } catch {
       setCaptureError("暂时无法连接 Memora，这条想法尚未保存。");
     } finally {
       setCapturing(false);
     }
+  }
+
+  function replaceMemory(updated: Memory) {
+    setMemories((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    setSearchResults(
+      (current) => current?.map((item) => (item.id === updated.id ? updated : item)) ?? null,
+    );
   }
 
   async function toggleVisibility(memory: Memory) {
@@ -199,9 +214,7 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
         setMemoryError("可见范围没有更新成功，请稍后重试。");
         return;
       }
-      setMemories((current) =>
-        current.map((item) => (item.id === result.data?.id ? result.data : item)),
-      );
+      replaceMemory(result.data);
     } catch {
       setMemoryError("暂时无法更新可见范围，请稍后重试。");
     } finally {
@@ -221,6 +234,7 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
         return;
       }
       setMemories((current) => current.filter((item) => item.id !== memory.id));
+      setSearchResults((current) => current?.filter((item) => item.id !== memory.id) ?? null);
       setDeletingMemoryId(null);
       if (supplementing?.id === memory.id) setSupplementing(null);
     } catch {
@@ -230,7 +244,63 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
     }
   }
 
-  const visibleMemories = memories.filter((memory) => {
+  async function retryProcessing(memory: Memory) {
+    setBusyMemoryId(memory.id);
+    setMemoryError("");
+    try {
+      const { data, response } = await api.POST("/memories/{memory_id}/retry-processing", {
+        params: { path: { memory_id: memory.id } },
+      });
+      if (!data || !response.ok) {
+        setMemoryError("没有重新提交成功，请稍后再试。");
+        return;
+      }
+      replaceMemory(data);
+    } catch {
+      setMemoryError("暂时无法重新提交 AI 处理，请稍后再试。");
+    } finally {
+      setBusyMemoryId(null);
+    }
+  }
+
+  async function handleSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchResults(null);
+      setSemanticStatus(null);
+      return;
+    }
+    setSearching(true);
+    setMemoryError("");
+    try {
+      const { data, response } = await api.POST("/search", {
+        body: { q: query, limit: 50 },
+      });
+      if (!data || !response.ok) {
+        setMemoryError(
+          response.status === 429 ? "搜索太频繁，请稍后再试。" : "搜索失败，请稍后重试。",
+        );
+        return;
+      }
+      setSearchResults(data.results.map((result) => result.memory));
+      setSemanticStatus(data.semantic_status);
+      setFilter("ALL");
+    } catch {
+      setMemoryError("暂时无法搜索，请稍后重试。");
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function clearSearch() {
+    setSearchQuery("");
+    setSearchResults(null);
+    setSemanticStatus(null);
+  }
+
+  const timelineMemories = searchResults ?? memories;
+  const visibleMemories = timelineMemories.filter((memory) => {
     if (filter === "MINE") return memory.author.id === user.id;
     if (filter === "WORKSPACE") return memory.visibility === "WORKSPACE";
     return true;
@@ -343,6 +413,37 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
                 <span>{visibleMemories.length} 条</span>
               </div>
 
+              <form className="search-form" role="search" onSubmit={handleSearch}>
+                <label htmlFor="memory-search">搜索已有想法</label>
+                <div>
+                  <input
+                    id="memory-search"
+                    type="search"
+                    placeholder="输入关键词或一句相似的想法"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    maxLength={500}
+                  />
+                  <button type="submit" disabled={searching}>
+                    {searching ? "搜索中…" : "搜索"}
+                  </button>
+                  {searchResults !== null ? (
+                    <button type="button" className="clear-search" onClick={clearSearch}>
+                      清除
+                    </button>
+                  ) : null}
+                </div>
+              </form>
+              {semanticStatus ? (
+                <p className={`semantic-note semantic-${semanticStatus.toLowerCase()}`}>
+                  {semanticStatus === "AVAILABLE"
+                    ? "已合并关键词与语义相似结果。"
+                    : semanticStatus === "DISABLED"
+                      ? "当前使用关键词检索；配置 embedding 模型后会自动启用语义检索。"
+                      : "语义服务暂时不可用，本次结果仅来自关键词检索。"}
+                </p>
+              ) : null}
+
               <div className="filter-bar" aria-label="筛选想法">
                 {(
                   [
@@ -372,7 +473,11 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
               {!memoriesLoading && visibleMemories.length === 0 ? (
                 <div className="empty-state">
                   <strong>
-                    {memories.length === 0 ? "第一条想法，从现在开始。" : "这个范围还没有记录。"}
+                    {searchResults !== null
+                      ? "没有找到你有权限访问的记录。"
+                      : memories.length === 0
+                        ? "第一条想法，从现在开始。"
+                        : "这个范围还没有记录。"}
                   </strong>
                   <p>新想法默认私有，不会自动出现在同事的时间线里。</p>
                 </div>
@@ -412,6 +517,18 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
                         </a>
                       ) : null}
                       <p className="memory-body">{memory.body}</p>
+                      <div
+                        className={`processing-state processing-${memory.processing_status.toLowerCase()}`}
+                      >
+                        <span aria-hidden="true">●</span>
+                        {memory.processing_status === "COMPLETED"
+                          ? "可用于语义检索"
+                          : memory.processing_status === "WAITING_CONFIGURATION"
+                            ? "语义能力待配置，记录仍可通过关键词找到"
+                            : memory.processing_status === "FAILED"
+                              ? "AI 处理失败，原始记录已安全保存"
+                              : "等待 AI 处理，原始记录已保存"}
+                      </div>
                       {memory.is_owner ? (
                         <footer className="memory-actions">
                           <button
@@ -428,6 +545,15 @@ function WorkspaceScreen({ user, onLogout }: { user: CurrentUser; onLogout: () =
                           >
                             {memory.visibility === "PRIVATE" ? "分享给工作区" : "取消共享"}
                           </button>
+                          {memory.processing_status === "FAILED" ? (
+                            <button
+                              type="button"
+                              onClick={() => void retryProcessing(memory)}
+                              disabled={isBusy}
+                            >
+                              重试 AI 处理
+                            </button>
+                          ) : null}
                           {isDeleting ? (
                             <span className="delete-confirm">
                               <span>删除后正文不可恢复</span>

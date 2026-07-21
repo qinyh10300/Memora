@@ -29,9 +29,10 @@ class Job(Base):
     )
     status: Mapped[str] = mapped_column(String(30), default="PENDING")
     attempts: Mapped[int] = mapped_column(Integer, default=0)
-    next_run_at: Mapped[datetime] = mapped_column(
+    next_run_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     last_error_code: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
