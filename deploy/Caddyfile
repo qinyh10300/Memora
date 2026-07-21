@@ -1,26 +1,26 @@
 {
-    admin off
+	admin off
 }
 
 {$CADDY_SITE_ADDRESS:http://localhost} {
-    encode zstd gzip
+	encode zstd gzip
 
-    handle_path /api/* {
-        reverse_proxy api:8000
-    }
+	handle_path /api/* {
+		reverse_proxy api:8000
+	}
 
-    handle {
-        reverse_proxy web:3000
-    }
+	handle {
+		reverse_proxy web:3000
+	}
 
-    header {
-        Referrer-Policy "strict-origin-when-cross-origin"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-    }
+	header {
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
 
-    log {
-        output stdout
-        format json
-    }
+	log {
+		output stdout
+		format json
+	}
 }

@@ -10,11 +10,39 @@
 | pnpm | 11.9.0 | JavaScript workspace 与锁文件 |
 | Python | 3.13 | FastAPI 与 worker |
 | uv | 0.11+ | Python 环境、锁文件与命令 |
-| Docker Compose | current Compose v2 | PostgreSQL、完整环境与容器验证 |
+| Docker Compose | current `docker compose` plugin | PostgreSQL、完整环境与容器验证 |
 | make | 3.81+ | 稳定的仓库级命令入口 |
 | curl | current | smoke test 与健康检查 |
 
 Node 版本记录在 `.nvmrc`，Python 版本记录在 `.python-version`。pnpm 和 Python 依赖分别由 `pnpm-lock.yaml` 与 `apps/api/uv.lock` 固定。
+
+### macOS container runtime
+
+macOS 需要一个 Linux 虚拟机来运行容器。若不使用 Docker Desktop，推荐安装 Docker CLI、Compose、Buildx 和 Colima：
+
+```bash
+brew install colima docker docker-compose docker-buildx
+colima start --runtime docker --vm-type vz --cpu 4 --memory 8 --disk 60
+docker run --rm hello-world
+```
+
+Homebrew 安装的 CLI 插件位于 `/opt/homebrew/lib/docker/cli-plugins`。确保 `~/.docker/config.json` 的现有 JSON 中合并以下配置；不要直接覆盖已有的 registry、credential helper 或其他设置：
+
+```json
+{
+  "cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"]
+}
+```
+
+日常可用以下命令管理轻量虚拟机。`colima stop` 会停止运行时但保留镜像和数据；下次 `colima start` 可继续使用。
+
+```bash
+colima status
+colima start
+colima stop
+```
+
+Apple Silicon 本机已在 2026-07-21 使用 4 CPU、8 GiB 内存和 60 GiB 磁盘完成完整 Compose 构建与 smoke test。Linux 服务器直接使用 Docker Engine，不需要 Colima。
 
 ## First-time setup
 
@@ -34,6 +62,12 @@ make setup
 
 ```bash
 make dev
+```
+
+`make dev` 在前台显示服务日志。需要让环境在后台持续运行时，可以执行：
+
+```bash
+docker compose up --detach --build
 ```
 
 Compose 按以下顺序启动：
@@ -65,6 +99,8 @@ make down
 - API liveness：`http://localhost:8080/api/health`
 - API readiness：`http://localhost:8080/api/ready`
 - API 文档：`http://localhost:8080/api/docs`
+
+本地与单台 Linux 服务器使用同一份 `compose.yaml` 和镜像构建方式，环境差异只通过 `.env` 注入。服务器部署时必须替换数据库密码、会话密钥、AI 配置和 `CADDY_SITE_ADDRESS`，并在 M7 完成 HTTPS、备份恢复和部署 smoke test 后才视为可公开测试。
 
 ## Native hot-reload development
 
@@ -139,6 +175,17 @@ OpenAPI 差异应与 API 实现一起审查。前端生成 client 的步骤将�
 容器阶段失败时会输出最后 200 行日志并清理 volume。CI 不读取生产 Key，M1 环境使用空 AI 配置也应健康运行。
 
 ## Common failures
+
+### Localhost returns 502 behind a system proxy
+
+某些系统代理会接管终端中的 `localhost` 请求，表现为容器健康但普通 `curl` 返回 502。仓库的 `make e2e` 已显式绕过代理；手工检查时使用：
+
+```bash
+curl --noproxy '*' http://localhost:8080/health
+curl --noproxy '*' http://localhost:8080/api/ready
+```
+
+也可以在本机代理配置中将 `localhost` 和 `127.0.0.1` 加入绕过列表。不要因此修改容器内的服务地址或生产代理规则。
 
 ### pnpm blocks dependency build scripts
 
