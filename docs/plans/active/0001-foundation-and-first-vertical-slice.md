@@ -104,6 +104,7 @@ Last updated: 2026-07-21
 - 2026-07-21：完成 Next.js Web 骨架，格式、lint、类型检查、2 个测试和生产构建通过。
 - 2026-07-21：完成 FastAPI、worker、Alembic 与 OpenAPI 骨架，严格 MyPy、6 个测试、离线迁移和真实健康请求通过。
 - 2026-07-21：完成 Makefile、Docker Compose、Caddy、容器 smoke test 脚本和两阶段 CI 配置。本机没有 Docker CLI，容器构建与 Compose 运行等待 CI 或具备 Docker 的环境验证后再勾选 M1。
+- 2026-07-21：最终 `make check` 通过，包括 2 个 Web 测试、10 个 API 测试、格式、lint、严格类型检查、OpenAPI 漂移检查和 Next.js 生产构建；生产配置会拒绝占位或少于 32 字符的会话密钥。
 
 ## Decision log
 
