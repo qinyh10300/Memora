@@ -19,6 +19,7 @@ __pycache__/
 .ruff_cache/
 .venv/
 htmlcov/
+.python-version.local
 
 # Tooling and local state
 .DS_Store
