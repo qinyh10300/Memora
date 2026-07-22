@@ -183,7 +183,7 @@ docker compose up --detach --build api worker
 
 ## On-demand reports
 
-报告不使用默认时间范围。Web 用户必须手工选择日期，或主动点击“最近 7 天/最近 30 天”快速范围；API 必须传入带时区的 `created_from` 和排他的 `created_to`。
+报告不使用默认时间范围。Web 会从用户明确说出的“最近 7 天”“本周”或 `YYYY-MM-DD 到 YYYY-MM-DD` 中解析范围，无法可靠解析时继续在对话中追问；API 必须传入带时区的 `created_from` 和排他的 `created_to`。
 
 范围定义与 Chat 有一处刻意差异：
 

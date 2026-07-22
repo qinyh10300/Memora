@@ -39,33 +39,39 @@ const privateMemory = {
   processing_status: "PENDING",
 };
 
-function mockWorkspaceGet(memories: (typeof privateMemory)[] = []) {
+function mockSession(initialMemories: (typeof privateMemory)[] = []) {
   apiMocks.GET.mockImplementation((path: string) => {
     if (path === "/auth/me") return Promise.resolve({ data: alex });
     if (path === "/workspace/members") return Promise.resolve({ data: members });
-    if (path === "/memories") return Promise.resolve({ data: memories });
+    if (path === "/memories") return Promise.resolve({ data: initialMemories });
     return Promise.resolve({ data: undefined });
   });
 }
 
-describe("HomePage identity flow", () => {
+async function sendMessage(content: string) {
+  const composer = await screen.findByLabelText("给 Memora 发消息");
+  fireEvent.change(composer, { target: { value: content } });
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+}
+
+describe("HomePage conversation-first flow", () => {
   beforeEach(() => {
     apiMocks.GET.mockReset();
     apiMocks.POST.mockReset();
     apiMocks.DELETE.mockReset();
   });
 
-  it("匿名用户看到默认私有的登录入口", async () => {
+  it("匿名用户看到暗色极简登录入口且页面不暴露密码", async () => {
     apiMocks.GET.mockResolvedValue({ data: undefined });
 
     render(<HomePage />);
 
-    expect(await screen.findByRole("heading", { name: "进入测试工作区" })).toBeInTheDocument();
-    expect(screen.getByText(/新记录只对你可见/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "继续你的对话" })).toBeInTheDocument();
+    expect(screen.getByText(/新记录始终先征求你的共享选择/)).toBeInTheDocument();
     expect(screen.queryByText("memora-local-alex")).not.toBeInTheDocument();
   });
 
-  it("登录成功后展示当前身份和四位工作区成员", async () => {
+  it("登录成功后直接进入单一 Chatbot 界面", async () => {
     apiMocks.GET.mockImplementation((path: string) => {
       if (path === "/auth/me") return Promise.resolve({ data: undefined });
       if (path === "/workspace/members") return Promise.resolve({ data: members });
@@ -81,29 +87,17 @@ describe("HomePage identity flow", () => {
     );
 
     render(<HomePage />);
-    await screen.findByRole("heading", { name: "进入测试工作区" });
+    await screen.findByRole("heading", { name: "继续你的对话" });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "memora-local-alex" } });
+    fireEvent.click(screen.getByRole("button", { name: "继续" }));
 
-    fireEvent.change(screen.getByLabelText("密码"), {
-      target: { value: "memora-local-alex" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "登录 Memora" }));
-
-    expect(await screen.findByRole("heading", { name: "此刻，你在想什么？" })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("4/4")).toBeInTheDocument());
-    expect(screen.getByText("alex@memora.local")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "今天想记下什么？" })).toBeInTheDocument();
+    expect(screen.getByText(/我之前记了什么/)).toBeInTheDocument();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
 
-  it("已有会话时直接恢复工作区", async () => {
-    mockWorkspaceGet();
-
-    render(<HomePage />);
-
-    expect(await screen.findByLabelText("快速记录")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "进入测试工作区" })).not.toBeInTheDocument();
-  });
-
-  it("保存的新想法默认私有并立即出现在时间线", async () => {
-    mockWorkspaceGet();
+  it("普通陈述先追问可见范围，明确选择后才私有保存", async () => {
+    mockSession();
     apiMocks.POST.mockImplementation((path: string) =>
       Promise.resolve(
         path === "/memories"
@@ -113,91 +107,102 @@ describe("HomePage identity flow", () => {
     );
 
     render(<HomePage />);
-    const capture = await screen.findByLabelText("快速记录");
-    fireEvent.change(capture, { target: { value: privateMemory.body } });
-    fireEvent.click(screen.getByRole("button", { name: "保存想法" }));
+    await sendMessage(privateMemory.body);
 
-    expect(await screen.findByText(privateMemory.body)).toBeInTheDocument();
-    expect(screen.getByText("仅自己")).toBeInTheDocument();
+    expect(await screen.findByText("这条内容是存给自己，还是共享给团队？")).toBeInTheDocument();
+    expect(apiMocks.POST).not.toHaveBeenCalledWith("/memories", expect.anything());
+
+    fireEvent.click(screen.getByRole("button", { name: "只存给自己" }));
+    expect(await screen.findByText("OK，已保存。只有你可以看到。")).toBeInTheDocument();
     expect(apiMocks.POST).toHaveBeenCalledWith("/memories", {
       body: { body: privateMemory.body, supersedes_id: null },
     });
   });
 
-  it("作者可以主动分享并再次取消共享", async () => {
-    mockWorkspaceGet([privateMemory]);
-    const sharedMemory = {
-      ...privateMemory,
-      visibility: "WORKSPACE",
-      shared_at: "2026-07-22T01:05:00Z",
-    };
+  it("团队选择先创建私有记录，再调用显式共享接口", async () => {
+    mockSession();
+    apiMocks.POST.mockImplementation((path: string) => {
+      if (path === "/memories") {
+        return Promise.resolve({ data: privateMemory, response: { ok: true, status: 201 } });
+      }
+      if (path === "/memories/{memory_id}/share") {
+        return Promise.resolve({
+          data: { ...privateMemory, visibility: "WORKSPACE" },
+          response: { ok: true, status: 200 },
+        });
+      }
+      return Promise.resolve({ data: undefined, response: { ok: false, status: 404 } });
+    });
+
+    render(<HomePage />);
+    await sendMessage(privateMemory.body);
+    fireEvent.click(await screen.findByRole("button", { name: "共享给团队" }));
+
+    expect(await screen.findByText("OK，已保存并共享给团队。")).toBeInTheDocument();
+    expect(apiMocks.POST).toHaveBeenCalledWith("/memories/{memory_id}/share", {
+      params: { path: { memory_id: privateMemory.id } },
+    });
+  });
+
+  it("共享失败时明确告知记录仍已私有保存", async () => {
+    mockSession();
+    apiMocks.POST.mockImplementation((path: string) => {
+      if (path === "/memories") {
+        return Promise.resolve({ data: privateMemory, response: { ok: true, status: 201 } });
+      }
+      return Promise.resolve({ data: undefined, response: { ok: false, status: 503 } });
+    });
+
+    render(<HomePage />);
+    await sendMessage(privateMemory.body);
+    fireEvent.click(await screen.findByRole("button", { name: "共享给团队" }));
+
+    expect(
+      await screen.findByText("OK，已保存，但团队共享没有成功。这条记录目前仍然仅你可见。"),
+    ).toBeInTheDocument();
+  });
+
+  it("通过聊天命令共享上一条记录", async () => {
+    mockSession([privateMemory]);
     apiMocks.POST.mockImplementation((path: string) =>
-      Promise.resolve({
-        data: path.endsWith("/share") ? sharedMemory : privateMemory,
-        response: { ok: true, status: 200 },
-      }),
+      Promise.resolve(
+        path === "/memories/{memory_id}/share"
+          ? {
+              data: { ...privateMemory, visibility: "WORKSPACE" },
+              response: { ok: true, status: 200 },
+            }
+          : { data: undefined, response: { ok: false, status: 404 } },
+      ),
     );
 
     render(<HomePage />);
-    fireEvent.click(await screen.findByRole("button", { name: "分享给工作区" }));
+    await sendMessage("把上一条共享给团队");
 
-    expect(await screen.findByText("工作区共享")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "取消共享" }));
-    expect(await screen.findByText("仅自己")).toBeInTheDocument();
+    expect(await screen.findByText("OK，上一条记录已共享给团队。")).toBeInTheDocument();
+    expect(apiMocks.POST).toHaveBeenCalledWith("/memories/{memory_id}/share", {
+      params: { path: { memory_id: privateMemory.id } },
+    });
   });
 
-  it("删除要求二次确认并从时间线移除", async () => {
-    mockWorkspaceGet([privateMemory]);
+  it("删除聊天命令必须二次确认", async () => {
+    mockSession([privateMemory]);
     apiMocks.DELETE.mockResolvedValue({ response: { ok: true, status: 204 } });
 
     render(<HomePage />);
-    fireEvent.click(await screen.findByRole("button", { name: "删除" }));
-    expect(screen.getByText("删除后正文不可恢复")).toBeInTheDocument();
+    await sendMessage("删除上一条");
+
+    expect(await screen.findByText(/确认删除上一条记录吗/)).toBeInTheDocument();
+    expect(apiMocks.DELETE).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
 
-    await waitFor(() => expect(screen.queryByText(privateMemory.body)).not.toBeInTheDocument());
+    expect(await screen.findByText("上一条记录已删除。")).toBeInTheDocument();
     expect(apiMocks.DELETE).toHaveBeenCalledWith("/memories/{memory_id}", {
       params: { path: { memory_id: privateMemory.id } },
     });
   });
 
-  it("关键词搜索明确显示语义能力未配置", async () => {
-    apiMocks.GET.mockImplementation((path: string) => {
-      if (path === "/auth/me") return Promise.resolve({ data: alex });
-      if (path === "/workspace/members") return Promise.resolve({ data: members });
-      if (path === "/memories") return Promise.resolve({ data: [privateMemory] });
-      return Promise.resolve({ data: undefined });
-    });
-    apiMocks.POST.mockImplementation((path: string) => {
-      if (path === "/search") {
-        return Promise.resolve({
-          data: {
-            query: "记录摩擦",
-            semantic_status: "DISABLED",
-            results: [{ memory: privateMemory, score: 1, match_reasons: ["KEYWORD"] }],
-          },
-          response: { ok: true, status: 200 },
-        });
-      }
-      return Promise.resolve({ data: undefined });
-    });
-
-    render(<HomePage />);
-    const searchInput = await screen.findByLabelText("搜索已有想法");
-    fireEvent.change(searchInput, { target: { value: "记录摩擦" } });
-    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
-
-    expect(
-      await screen.findByText(/当前使用关键词检索；配置 embedding 模型后/),
-    ).toBeInTheDocument();
-    expect(screen.getByText(privateMemory.body)).toBeInTheDocument();
-    expect(apiMocks.POST).toHaveBeenCalledWith("/search", {
-      body: { q: "记录摩擦", limit: 50 },
-    });
-  });
-
-  it("Memora Chat 显示带作者和时间的原记录引用", async () => {
-    mockWorkspaceGet([privateMemory]);
+  it("回顾问题默认检索个人记录并在回答中展示来源", async () => {
+    mockSession();
     apiMocks.POST.mockImplementation((path: string) => {
       if (path === "/chat/questions") {
         return Promise.resolve({
@@ -207,7 +212,7 @@ describe("HomePage identity flow", () => {
             status: "ANSWERED",
             model_status: "DISABLED",
             scope: "PERSONAL",
-            topic: "记录摩擦",
+            topic: "全部",
             answer: "找到 1 条可核对的相关记录。",
             citations: [
               {
@@ -226,21 +231,15 @@ describe("HomePage identity flow", () => {
     });
 
     render(<HomePage />);
-    fireEvent.change(await screen.findByLabelText("检索主题"), {
-      target: { value: "记录摩擦" },
-    });
-    fireEvent.change(screen.getByLabelText("你想知道什么？"), {
-      target: { value: "我之前怎么看记录摩擦？" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "询问 Memora" }));
+    await sendMessage("我之前记了什么？");
 
     expect(await screen.findByText("找到 1 条可核对的相关记录。")).toBeInTheDocument();
-    expect(screen.getByText("基础证据模式")).toBeInTheDocument();
-    expect(screen.getAllByText(privateMemory.body)).toHaveLength(2);
+    expect(screen.getByText("来源 · 1")).toBeInTheDocument();
+    expect(screen.getByText(/仅检索你的记录 · 基础证据模式/)).toBeInTheDocument();
     expect(apiMocks.POST).toHaveBeenCalledWith("/chat/questions", {
       body: {
-        question: "我之前怎么看记录摩擦？",
-        topic: "记录摩擦",
+        question: "我之前记了什么？",
+        topic: "全部",
         scope: "PERSONAL",
         author_id: null,
         created_from: null,
@@ -250,8 +249,34 @@ describe("HomePage identity flow", () => {
     });
   });
 
-  it("按需报告要求显式日期并展示五类证据结构", async () => {
-    mockWorkspaceGet([privateMemory]);
+  it("明确说团队时才使用工作区范围", async () => {
+    mockSession();
+    apiMocks.POST.mockResolvedValue({
+      data: {
+        conversation_id: "conversation-1",
+        message_id: "message-1",
+        status: "NO_EVIDENCE",
+        model_status: "DISABLED",
+        scope: "WORKSPACE",
+        topic: "全部",
+        answer: "在团队共享范围内没有找到足够证据。",
+        citations: [],
+      },
+      response: { ok: true, status: 200 },
+    });
+
+    render(<HomePage />);
+    await sendMessage("团队之前记了什么？");
+
+    expect(await screen.findByText("在团队共享范围内没有找到足够证据。")).toBeInTheDocument();
+    expect(apiMocks.POST).toHaveBeenCalledWith(
+      "/chat/questions",
+      expect.objectContaining({ body: expect.objectContaining({ scope: "WORKSPACE" }) }),
+    );
+  });
+
+  it("报告请求也留在对话中并调用显式范围报告接口", async () => {
+    mockSession();
     apiMocks.POST.mockImplementation((path: string) => {
       if (path === "/reports") {
         return Promise.resolve({
@@ -260,53 +285,21 @@ describe("HomePage identity flow", () => {
             status: "GENERATED",
             model_status: "DISABLED",
             scope: "PERSONAL",
-            topic: "商业模式",
-            created_from: "2026-07-01T00:00:00Z",
-            created_to: "2026-08-01T00:00:00Z",
-            title: "我的想法报告 · 商业模式",
-            summary: "找到 1 条可核对记录，报告不推测未记录经历。",
-            contributors: [{ author_id: "user-alex", display_name: "Alex", record_count: 1 }],
+            topic: "全部",
+            created_from: "2026-07-16T00:00:00Z",
+            created_to: "2026-07-23T00:00:00Z",
+            title: "我的想法报告 · 全部",
+            summary: "找到 1 条可核对记录。",
+            contributors: [{ author_id: alex.id, display_name: "Alex", record_count: 1 }],
             sections: [
               {
                 kind: "TIMELINE",
                 title: "时间线",
-                content: "按原始时间展示记录。",
-                citation_memory_ids: [privateMemory.id],
-              },
-              {
-                kind: "CONTINUITY",
-                title: "延续",
-                content: "记录数量不自动等于观点一致。",
-                citation_memory_ids: [privateMemory.id],
-              },
-              {
-                kind: "CHANGES",
-                title: "变化",
-                content: "只有一个时间点，无法可靠比较变化。",
-                citation_memory_ids: [privateMemory.id],
-              },
-              {
-                kind: "CONTRADICTIONS",
-                title: "矛盾",
-                content: "不会自动判定矛盾。",
-                citation_memory_ids: [privateMemory.id],
-              },
-              {
-                kind: "GAPS",
-                title: "证据缺口",
-                content: "未记录内容属于证据缺口。",
+                content: "按记录时间排列。",
                 citation_memory_ids: [privateMemory.id],
               },
             ],
-            citations: [
-              {
-                memory_id: privateMemory.id,
-                excerpt: privateMemory.body,
-                author: privateMemory.author,
-                created_at: privateMemory.created_at,
-                href: `/#memory-${privateMemory.id}`,
-              },
-            ],
+            citations: [],
           },
           response: { ok: true, status: 200 },
         });
@@ -315,35 +308,65 @@ describe("HomePage identity flow", () => {
     });
 
     render(<HomePage />);
-    fireEvent.change(await screen.findByLabelText("报告主题"), {
-      target: { value: "商业模式" },
-    });
-    fireEvent.change(screen.getByLabelText("开始日期（含）"), {
-      target: { value: "2026-07-01" },
-    });
-    fireEvent.change(screen.getByLabelText("结束日期（含）"), {
-      target: { value: "2026-07-31" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "生成报告" }));
+    await sendMessage("给我一份最近 7 天的想法变化报告");
 
-    expect(
-      await screen.findByRole("heading", { name: "我的想法报告 · 商业模式" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("基础证据报告")).toBeInTheDocument();
-    expect(screen.getByText("找到 1 条可核对记录，报告不推测未记录经历。")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "证据缺口" })).toBeInTheDocument();
-    const expectedFrom = new Date("2026-07-01T00:00:00").toISOString();
-    const expectedTo = new Date("2026-07-31T00:00:00");
-    expectedTo.setDate(expectedTo.getDate() + 1);
-    expect(apiMocks.POST).toHaveBeenCalledWith("/reports", {
-      body: {
-        scope: "PERSONAL",
-        author_id: null,
-        topic: "商业模式",
-        created_from: expectedFrom,
-        created_to: expectedTo.toISOString(),
-        evidence_limit: 20,
+    expect(await screen.findByText(/我的想法报告 · 全部/)).toBeInTheDocument();
+    expect(screen.getByText(/时间线\s+按记录时间排列/)).toBeInTheDocument();
+    expect(apiMocks.POST).toHaveBeenCalledWith(
+      "/reports",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          scope: "PERSONAL",
+          topic: "全部",
+          created_from: expect.any(String),
+          created_to: expect.any(String),
+        }),
+      }),
+    );
+  });
+
+  it("同事指代不清时在对话中追问，选择成员后才检索", async () => {
+    mockSession();
+    apiMocks.POST.mockResolvedValue({
+      data: {
+        conversation_id: "conversation-1",
+        message_id: "message-1",
+        status: "NO_EVIDENCE",
+        model_status: "DISABLED",
+        scope: "COLLEAGUE",
+        topic: null,
+        answer: "没有找到 Blair 主动共享的相关记录。",
+        citations: [],
       },
+      response: { ok: true, status: 200 },
     });
+
+    render(<HomePage />);
+    await sendMessage("这个同事最近有什么进展？");
+    expect(await screen.findByText(/你想了解哪位同事/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Blair" }));
+    expect(await screen.findByText(/你想回顾哪个主题/)).toBeInTheDocument();
+    await sendMessage("全部");
+    expect(await screen.findByText("没有找到 Blair 主动共享的相关记录。")).toBeInTheDocument();
+    expect(apiMocks.POST).toHaveBeenCalledWith(
+      "/chat/questions",
+      expect.objectContaining({
+        body: expect.objectContaining({ scope: "COLLEAGUE", author_id: "user-blair" }),
+      }),
+    );
+  });
+
+  it("退出后回到登录界面", async () => {
+    mockSession();
+    apiMocks.POST.mockResolvedValue({ response: { ok: true, status: 204 } });
+
+    render(<HomePage />);
+    await screen.findByRole("heading", { name: "今天想记下什么？" });
+    fireEvent.click(screen.getByLabelText("打开账号菜单"));
+    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+
+    expect(await screen.findByRole("heading", { name: "继续你的对话" })).toBeInTheDocument();
+    await waitFor(() => expect(apiMocks.POST).toHaveBeenCalledWith("/auth/logout"));
   });
 });
