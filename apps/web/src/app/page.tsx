@@ -105,6 +105,31 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function formatReportText(value: string) {
+  return value.replace(
+    /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})/g,
+    (timestamp) => {
+      const normalizedTimestamp = timestamp.replace(/(\.\d{3})\d+/, "$1");
+      const date = new Date(normalizedTimestamp);
+      if (Number.isNaN(date.getTime())) return timestamp;
+      return new Intl.DateTimeFormat("zh-CN", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(date);
+    },
+  );
+}
+
+function conversationTitle(title: string) {
+  const normalizedTitle = title.trim();
+  if (!normalizedTitle) return "新对话";
+  if (/^[a-f0-9-]{24,}$/i.test(normalizedTitle)) return "未命名对话";
+  return normalizedTitle;
+}
+
 function memoryVisibilityLabel(memory: Memory) {
   return memory.visibility === "WORKSPACE" ? "团队共享" : "仅自己可见";
 }
@@ -566,7 +591,7 @@ function WorkspaceSidebar({
                 title={conversation.title}
               >
                 <ChatIcon />
-                <span>{conversation.title}</span>
+                <span>{conversationTitle(conversation.title)}</span>
               </button>
             ))
           )}
@@ -987,7 +1012,7 @@ function AnalyticsWorkspace({
                 </div>
                 <span>{report.scope === "WORKSPACE" ? "团队共享" : "我的记忆"}</span>
               </header>
-              <p className="report-summary">{report.summary}</p>
+              <p className="report-summary">{formatReportText(report.summary)}</p>
               {report.contributors.length > 0 ? (
                 <div className="report-contributors">
                   {report.contributors.map((contributor) => (
@@ -1004,7 +1029,7 @@ function AnalyticsWorkspace({
                     <span>{String(index + 1).padStart(2, "0")}</span>
                     <div>
                       <h4>{section.title}</h4>
-                      <p>{section.content}</p>
+                      <p>{formatReportText(section.content)}</p>
                     </div>
                   </article>
                 ))}
@@ -2112,7 +2137,9 @@ function WorkspaceApp({
                     ? "分析"
                     : activeView === "MEMBERS"
                       ? "成员与权限"
-                      : (activeConversation?.title ?? "记忆问答")}
+                      : activeConversation
+                        ? conversationTitle(activeConversation.title)
+                        : "记忆问答"}
               </strong>
               <span>{activeWorkspace?.name ?? user.workspace_name}</span>
             </div>
