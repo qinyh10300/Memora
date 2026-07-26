@@ -81,12 +81,65 @@ def test_login_cookie_me_members_and_logout(
     assert client.get("/auth/me").status_code == 401
 
 
+def test_workspace_list_create_activate_and_membership_isolation(
+    identity_client: tuple[TestClient, Settings],
+) -> None:
+    client, _settings = identity_client
+    assert (
+        client.post(
+            "/auth/login",
+            json={"email": "alex@memora.local", "password": "memora-local-alex"},
+        ).status_code
+        == 200
+    )
+
+    workspaces = client.get("/workspaces")
+    assert workspaces.status_code == 200
+    workspace_rows = workspaces.json()
+    assert [(item["kind"], item["name"]) for item in workspace_rows] == [
+        ("PERSONAL", "Alex 的个人空间"),
+        ("TEAM", "Memora 测试工作区"),
+    ]
+    assert [item["name"] for item in workspace_rows if item["is_current"]] == ["Memora 测试工作区"]
+
+    created = client.post("/workspaces", json={"name": "  Futura   Lab  "})
+    assert created.status_code == 201
+    created_workspace = created.json()
+    assert created_workspace["name"] == "Futura Lab"
+    assert created_workspace["kind"] == "TEAM"
+    assert created_workspace["role"] == "OWNER"
+    assert created_workspace["is_current"] is False
+
+    activated = client.post(f"/workspaces/{created_workspace['id']}/activate")
+    assert activated.status_code == 200
+    assert activated.json()["is_current"] is True
+    assert client.get("/auth/me").json()["workspace_name"] == "Futura Lab"
+    assert [member["display_name"] for member in client.get("/workspace/members").json()] == [
+        "Alex"
+    ]
+
+    client.cookies.clear()
+    assert (
+        client.post(
+            "/auth/login",
+            json={"email": "blair@memora.local", "password": "memora-local-blair"},
+        ).status_code
+        == 200
+    )
+    blair_workspaces = client.get("/workspaces").json()
+    assert "Futura Lab" not in [item["name"] for item in blair_workspaces]
+    assert client.post(f"/workspaces/{created_workspace['id']}/activate").status_code == 404
+    assert client.get("/auth/me").json()["workspace_name"] == "Memora 测试工作区"
+
+
 def test_protected_routes_reject_anonymous_users(
     identity_client: tuple[TestClient, Settings],
 ) -> None:
     client, _settings = identity_client
 
     assert client.get("/auth/me").status_code == 401
+    assert client.get("/workspaces").status_code == 401
+    assert client.post("/workspaces", json={"name": "匿名空间"}).status_code == 401
     assert client.get("/workspace/members").status_code == 401
 
 

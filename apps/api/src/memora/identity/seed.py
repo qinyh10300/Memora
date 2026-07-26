@@ -60,13 +60,19 @@ def seed_database(engine: Engine, settings: Settings) -> tuple[int, int]:
     created_memberships = 0
 
     with Session(engine) as database, database.begin():
-        workspace = database.scalar(select(Workspace).where(Workspace.slug == "memora-test"))
-        if workspace is None:
-            workspace = Workspace(slug="memora-test", name="Memora 测试工作区")
-            database.add(workspace)
+        team_workspace = database.scalar(select(Workspace).where(Workspace.slug == "memora-test"))
+        if team_workspace is None:
+            team_workspace = Workspace(
+                slug="memora-test",
+                name="Memora 测试工作区",
+                kind="TEAM",
+            )
+            database.add(team_workspace)
             database.flush()
+        else:
+            team_workspace.kind = "TEAM"
 
-        for seed_user in seed_users:
+        for index, seed_user in enumerate(seed_users):
             email = normalize_email(seed_user.email)
             user = database.scalar(select(User).where(User.email == email))
             if user is None:
@@ -81,17 +87,50 @@ def seed_database(engine: Engine, settings: Settings) -> tuple[int, int]:
 
             membership = database.get(
                 WorkspaceMembership,
-                {"workspace_id": workspace.id, "user_id": user.id},
+                {"workspace_id": team_workspace.id, "user_id": user.id},
             )
             if membership is None:
                 database.add(
                     WorkspaceMembership(
-                        workspace_id=workspace.id,
+                        workspace_id=team_workspace.id,
                         user_id=user.id,
-                        role="MEMBER",
+                        role="OWNER" if index == 0 else "MEMBER",
                     )
                 )
                 created_memberships += 1
+            elif index == 0:
+                membership.role = "OWNER"
+
+            personal_slug = f"personal-{user.id.hex}"
+            personal_workspace = database.scalar(
+                select(Workspace).where(Workspace.slug == personal_slug)
+            )
+            if personal_workspace is None:
+                personal_workspace = Workspace(
+                    slug=personal_slug,
+                    name=f"{user.display_name} 的个人空间",
+                    kind="PERSONAL",
+                )
+                database.add(personal_workspace)
+                database.flush()
+            else:
+                personal_workspace.kind = "PERSONAL"
+
+            personal_membership = database.get(
+                WorkspaceMembership,
+                {"workspace_id": personal_workspace.id, "user_id": user.id},
+            )
+            if personal_membership is None:
+                database.add(
+                    WorkspaceMembership(
+                        workspace_id=personal_workspace.id,
+                        user_id=user.id,
+                        role="OWNER",
+                    )
+                )
+                created_memberships += 1
+            else:
+                personal_membership.role = "OWNER"
 
     return created_users, created_memberships
 

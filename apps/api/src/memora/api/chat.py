@@ -14,6 +14,7 @@ from memora.conversations.service import (
     complete_with_model,
     deterministic_answer,
     excerpt_for,
+    get_owned_conversation,
     persist_exchange,
     reauthorize_evidence,
     select_chat_evidence,
@@ -33,6 +34,7 @@ ModelStatus = Literal["AVAILABLE", "DISABLED", "DEGRADED"]
 
 
 class ChatRequest(BaseModel):
+    conversation_id: UUID | None = None
     question: str = Field(min_length=1, max_length=2_000)
     topic: str | None = Field(default=None, max_length=500)
     scope: ChatScope
@@ -137,6 +139,13 @@ def ask_chatbot(
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="请稍后再试")
     _validate_time_range(payload)
     subject_author_id = _validate_scope(payload, principal, database)
+    conversation = (
+        get_owned_conversation(database, principal, payload.conversation_id)
+        if payload.conversation_id is not None
+        else None
+    )
+    if payload.conversation_id is not None and conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="对话不存在")
 
     needs_time_range = any(
         phrase in payload.question for phrase in ("这段时间", "最近一段时间", "这一段时间")
@@ -145,14 +154,28 @@ def ask_chatbot(
         needs_time_range and (payload.created_from is None or payload.created_to is None)
     ):
         missing = "一个明确的检索主题" if payload.topic is None else "开始和结束日期"
+        answer = f"我还不能可靠判断你指的范围。请补充{missing}后再提问。"
+        persisted_conversation, assistant = persist_exchange(
+            database,
+            principal,
+            conversation=conversation,
+            question=payload.question,
+            answer=answer,
+            topic=payload.topic or (conversation.topic if conversation is not None else "全部"),
+            scope=payload.scope,
+            subject_author_id=subject_author_id,
+            evidence=[],
+            model_result=None,
+        )
+        database.commit()
         return ChatResponse(
-            conversation_id=None,
-            message_id=None,
+            conversation_id=persisted_conversation.id,
+            message_id=assistant.id,
             status="NEEDS_CLARIFICATION",
             model_status="DISABLED",
             scope=payload.scope,
             topic=payload.topic,
-            answer=f"我还不能可靠判断你指的范围。请补充{missing}后再提问。",
+            answer=answer,
             citations=[],
         )
 
@@ -198,6 +221,7 @@ def ask_chatbot(
     conversation, assistant = persist_exchange(
         database,
         principal,
+        conversation=conversation,
         question=payload.question,
         answer=answer,
         topic=payload.topic,

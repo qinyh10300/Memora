@@ -42,13 +42,26 @@ class Conversation(Base):
     subject_author_id: Mapped[UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="RESTRICT")
     )
+    title: Mapped[str] = mapped_column(String(120), default="新对话")
     topic: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        index=True,
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
 
 class Message(Base):
     __tablename__ = "messages"
     __table_args__ = (
+        UniqueConstraint(
+            "conversation_id",
+            "position",
+            name="uq_messages_conversation_position",
+        ),
         CheckConstraint("role IN ('USER', 'ASSISTANT')", name="ck_messages_role"),
         CheckConstraint(
             "status IN ('COMPLETE', 'REDACTED')",
@@ -59,6 +72,10 @@ class Message(Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     conversation_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    memory_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("memories.id", ondelete="SET NULL"), index=True
     )
     role: Mapped[str] = mapped_column(String(20))
     content: Mapped[str] = mapped_column(Text)

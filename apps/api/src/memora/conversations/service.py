@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from memora.ai.ports import ChatMessage, ChatModelPort, ChatResult, ModelUsage
@@ -18,6 +18,7 @@ from memora.memories.service import authorized_memories_statement
 
 REDACTED_ANSWER = "这条回答依赖的来源已被撤回或删除，因此不再显示。"
 ALL_TOPICS = {"全部", "所有", "*"}
+DEFAULT_CONVERSATION_TITLE = "新对话"
 
 
 @dataclass(frozen=True)
@@ -150,10 +151,86 @@ def reauthorize_evidence(
     return [item for item in evidence if item.memory.id in allowed_ids]
 
 
+def get_owned_conversation(
+    database: Session,
+    principal: Principal,
+    conversation_id: UUID,
+    *,
+    include_archived: bool = False,
+) -> Conversation | None:
+    statement = select(Conversation).where(
+        Conversation.id == conversation_id,
+        Conversation.workspace_id == principal.workspace_id,
+        Conversation.user_id == principal.user_id,
+    )
+    if not include_archived:
+        statement = statement.where(Conversation.archived_at.is_(None))
+    return database.scalar(statement)
+
+
+def create_conversation(
+    database: Session,
+    principal: Principal,
+    *,
+    title: str = DEFAULT_CONVERSATION_TITLE,
+) -> Conversation:
+    conversation = Conversation(
+        workspace_id=principal.workspace_id,
+        user_id=principal.user_id,
+        title=title,
+        scope="PERSONAL",
+        subject_author_id=None,
+        topic="全部",
+    )
+    database.add(conversation)
+    database.flush()
+    return conversation
+
+
+def conversation_title_for(content: str) -> str:
+    normalized = " ".join(content.split())
+    return normalized if len(normalized) <= 40 else f"{normalized[:39]}…"
+
+
+def _touch_conversation(
+    conversation: Conversation,
+    *,
+    content: str,
+    scope: str | None = None,
+    subject_author_id: UUID | None = None,
+    topic: str | None = None,
+) -> None:
+    if conversation.title == DEFAULT_CONVERSATION_TITLE:
+        conversation.title = conversation_title_for(content)
+    if scope is not None:
+        conversation.scope = scope
+        conversation.subject_author_id = subject_author_id
+    if topic is not None:
+        conversation.topic = topic
+    conversation.updated_at = datetime.now(UTC)
+
+
+def _lock_conversation(database: Session, conversation: Conversation) -> Conversation:
+    locked = database.scalar(
+        select(Conversation).where(Conversation.id == conversation.id).with_for_update()
+    )
+    if locked is None:
+        raise RuntimeError("conversation disappeared while appending messages")
+    return locked
+
+
+def _next_message_position(database: Session, conversation_id: UUID) -> int:
+    current = database.scalar(
+        select(func.max(Message.position)).where(Message.conversation_id == conversation_id)
+    )
+    return (current if current is not None else -1) + 1
+
+
 def persist_exchange(
     database: Session,
     principal: Principal,
     *,
+    conversation: Conversation | None,
     question: str,
     answer: str,
     topic: str,
@@ -162,18 +239,23 @@ def persist_exchange(
     evidence: list[ChatEvidence],
     model_result: ChatResult | None,
 ) -> tuple[Conversation, Message]:
-    conversation = Conversation(
-        workspace_id=principal.workspace_id,
-        user_id=principal.user_id,
+    resolved_conversation = (
+        _lock_conversation(database, conversation)
+        if conversation is not None
+        else create_conversation(database, principal)
+    )
+    _touch_conversation(
+        resolved_conversation,
+        content=question,
         scope=scope,
         subject_author_id=subject_author_id,
         topic=topic,
     )
-    database.add(conversation)
-    database.flush()
+    first_position = _next_message_position(database, resolved_conversation.id)
     database.add(
         Message(
-            conversation_id=conversation.id,
+            conversation_id=resolved_conversation.id,
+            position=first_position,
             role="USER",
             content=question,
             status="COMPLETE",
@@ -181,7 +263,8 @@ def persist_exchange(
     )
     usage = model_result.usage if model_result is not None else ModelUsage()
     assistant = Message(
-        conversation_id=conversation.id,
+        conversation_id=resolved_conversation.id,
+        position=first_position + 1,
         role="ASSISTANT",
         content=answer,
         status="COMPLETE",
@@ -201,8 +284,41 @@ def persist_exchange(
             for item in evidence
         ]
     )
-    database.commit()
-    return conversation, assistant
+    database.flush()
+    return resolved_conversation, assistant
+
+
+def persist_capture(
+    database: Session,
+    *,
+    conversation: Conversation,
+    memory: Memory,
+    body: str,
+) -> Message:
+    locked_conversation = _lock_conversation(database, conversation)
+    _touch_conversation(locked_conversation, content=body)
+    first_position = _next_message_position(database, locked_conversation.id)
+    database.add(
+        Message(
+            conversation_id=locked_conversation.id,
+            position=first_position,
+            memory_id=memory.id,
+            role="USER",
+            content=body,
+            status="COMPLETE",
+        )
+    )
+    receipt = Message(
+        conversation_id=locked_conversation.id,
+        position=first_position + 1,
+        memory_id=memory.id,
+        role="ASSISTANT",
+        content="已保存。",
+        status="COMPLETE",
+    )
+    database.add(receipt)
+    database.flush()
+    return receipt
 
 
 def invalidate_cited_answers(

@@ -82,7 +82,7 @@ def login(
         select(WorkspaceMembership, Workspace)
         .join(Workspace, Workspace.id == WorkspaceMembership.workspace_id)
         .where(WorkspaceMembership.user_id == user.id)
-        .order_by(Workspace.created_at)
+        .order_by(Workspace.created_at, Workspace.slug)
         .limit(1)
     ).one_or_none()
     if membership_row is None:

@@ -182,7 +182,8 @@ def test_ambiguous_period_requires_dates_and_invalid_scope_is_rejected(
         question="总结我这段时间关于商业模式的想法。",
     )
     assert clarification["status"] == "NEEDS_CLARIFICATION"
-    assert clarification["conversation_id"] is None
+    assert clarification["conversation_id"] is not None
+    assert clarification["message_id"] is not None
     assert "开始和结束日期" in cast(str, clarification["answer"])
 
     missing_topic = _ask(chat_client, alex, question="我以前怎么想的？", topic=None)

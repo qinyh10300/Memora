@@ -22,6 +22,7 @@ class Principal:
     email: str
     display_name: str
     role: str
+    session_id: UUID | None = None
 
 
 def get_current_principal(
@@ -59,6 +60,7 @@ def get_current_principal(
         email=user.email,
         display_name=user.display_name,
         role=membership.role,
+        session_id=user_session.id,
     )
 
 

@@ -7,7 +7,13 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, update
 
 from memora.audit.models import AuditEvent
-from memora.conversations.service import invalidate_cited_answers
+from memora.conversations.models import Conversation, Message
+from memora.conversations.service import (
+    conversation_title_for,
+    get_owned_conversation,
+    invalidate_cited_answers,
+    persist_capture,
+)
 from memora.database import DatabaseSession
 from memora.identity.dependencies import CurrentPrincipal, Principal
 from memora.identity.models import User
@@ -28,6 +34,7 @@ MemoryVisibility = Literal["PRIVATE", "WORKSPACE"]
 class CreateMemoryRequest(BaseModel):
     body: str = Field(min_length=1, max_length=10_000)
     supersedes_id: UUID | None = None
+    conversation_id: UUID | None = None
 
     @field_validator("body")
     @classmethod
@@ -74,6 +81,14 @@ def create_memory(
     principal: CurrentPrincipal,
     database: DatabaseSession,
 ) -> MemoryResponse:
+    conversation = (
+        get_owned_conversation(database, principal, payload.conversation_id)
+        if payload.conversation_id is not None
+        else None
+    )
+    if payload.conversation_id is not None and conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="对话不存在")
+
     if payload.supersedes_id is not None:
         superseded_memory = database.scalar(
             select(Memory).where(
@@ -112,6 +127,13 @@ def create_memory(
         )
     )
     _audit(database, principal, "MEMORY_CREATED", memory.id)
+    if conversation is not None:
+        persist_capture(
+            database,
+            conversation=conversation,
+            memory=memory,
+            body=payload.body,
+        )
     database.commit()
     database.refresh(memory)
     author = database.get(User, principal.user_id)
@@ -238,6 +260,7 @@ def delete_memory(
     database: DatabaseSession,
 ) -> None:
     memory, _author, projection = _author_row_or_error(database, principal, memory_id)
+    deleted_body = memory.body or ""
     invalidate_cited_answers(
         database,
         memory_id=memory.id,
@@ -248,6 +271,26 @@ def delete_memory(
     memory.visibility = "PRIVATE"
     memory.shared_at = None
     memory.deleted_at = datetime.now(UTC)
+    database.execute(
+        update(Message)
+        .where(Message.memory_id == memory.id)
+        .values(
+            content="这条记录已删除。",
+            status="REDACTED",
+            model=None,
+            input_tokens=0,
+            output_tokens=0,
+        )
+    )
+    linked_conversation_ids = select(Message.conversation_id).where(Message.memory_id == memory.id)
+    database.execute(
+        update(Conversation)
+        .where(
+            Conversation.id.in_(linked_conversation_ids),
+            Conversation.title == conversation_title_for(deleted_body),
+        )
+        .values(title="已删除的记录", updated_at=datetime.now(UTC))
+    )
     if projection is not None:
         database.delete(projection)
     database.execute(
