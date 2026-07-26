@@ -1,6 +1,6 @@
 # Memora Initial Architecture
 
-Status: Accepted baseline with v0.2 workspace shell
+Status: Accepted baseline with personal Markdown surface
 
 Last updated: 2026-07-26
 
@@ -30,9 +30,35 @@ flowchart LR
 
 部署单位包括 `web`、`api`、`worker`、`postgres` 和反向代理。API 与 worker 来自同一后端代码库，因此仍属于模块化单体，不是微服务体系。
 
+## Current personal Markdown surface
+
+当前 Web 将已存在的团队、多空间、conversation 和报告能力隐藏，先验证个人 Markdown 记忆闭环。后端能力和历史数据不删除。
+
+- 登录后，Web 通过受保护的 workspace 接口找到并激活当前用户的 `PERSONAL` 空间；所有业务接口仍从服务端 session 解析活动空间。
+- 一级导航只有“记录想法”和“记忆库”。
+- `POST /drafts/refine` 接收当前 Markdown 和用户指令，只返回修改后的草稿。它不创建 memory，也不把草稿正文写入审计日志。
+- 模型未配置时，空草稿确定性地保留用户原文；非空草稿保持不变。供应商失败时也不覆盖当前内容。
+- `POST /memories` 仍是唯一的新记忆保存动作；当前 Web 只创建 `PRIVATE` 记录。
+- 记忆库调用现有授权列表，并额外指定当前作者和私有范围。
+
+### Immutable revisions
+
+已保存 Markdown 不原地改写。每次修订都创建新的 memory 行：
+
+- `timeline_entry_id` 是一个稳定的时间线条目标识。
+- `timeline_visible` 决定该修订能否进入活动列表、搜索、报告和 AI 证据候选。
+- “更新当前记忆”沿用来源 `timeline_entry_id`，隐藏来源修订并显示新修订。
+- “保存为新版本”使用新的 `timeline_entry_id`，来源与新版本都保持可见。
+- 修订历史按 `timeline_entry_id` 查询，只对活动条目的所有者开放。
+- 删除一个时间线条目会清除同一 `timeline_entry_id` 下全部内部修订的正文、向量和未完成任务。
+
+完整决策见 ADR-0003。
+
 ## Conversation-first Web orchestration
 
-Web 对用户只呈现一个 Chatbot 对话面。它在客户端维护短生命周期的交互状态，将“待保存内容 → 可见范围确认 → 创建/共享”、授权问答、显式时间报告，以及上一条记录的分享、取消共享、补充和删除编排到现有 OpenAPI 接口。
+以下是此前已交付的 conversation-first 交互架构。当前个人 Markdown MVP 暂时隐藏该界面，但保留相关服务端接口和权限语义。
+
+该版 Web 对用户只呈现一个 Chatbot 对话面。它在客户端维护短生命周期的交互状态，将“待保存内容 → 可见范围确认 → 创建/共享”、授权问答、显式时间报告，以及上一条记录的分享、取消共享、补充和删除编排到现有 OpenAPI 接口。
 
 该编排不是新的权限边界：
 
@@ -98,11 +124,12 @@ apps/api/
 └── memora/
     ├── identity/       # 登录、会话、密码哈希、当前用户
     ├── workspaces/     # 工作区与成员关系
-    ├── memories/       # 追加式记录、分享、删除
+    ├── memories/       # 不可变记录、修订、分享、删除
     ├── retrieval/      # 权限过滤、关键词/向量召回、排序
     ├── conversations/  # 对话上下文和问题范围
     ├── reports/        # 个人/同事/团队报告编排
     ├── ai/             # ChatModelPort、EmbeddingModelPort 与 adapters
+    ├── api/drafts.py   # 无持久化的 Markdown 草稿修改编排
     ├── jobs/           # transactional outbox、重试和状态
     └── shared/         # 少量跨模块基础设施；禁止成为杂物目录
 ```
@@ -116,13 +143,13 @@ apps/api/
 | `users` | 测试账号和身份 | id, email, password_hash, display_name, status |
 | `workspaces` | 个人或团队隔离边界 | id, name, kind |
 | `workspace_memberships` | 用户与工作区关系 | workspace_id, user_id, role |
-| `memories` | 不可原地改写的想法 | id, author_id, workspace_id, body, visibility, created_at, supersedes_id |
+| `memories` | 不可原地改写的想法与修订 | id, author_id, workspace_id, body, visibility, supersedes_id, timeline_entry_id, timeline_visible, revision_kind, created_at |
 | `memory_embeddings` | 可重建的检索投影 | memory_id, model, dimensions, embedding, status |
 | `conversations` | 用户私有 Chatbot 会话及默认范围 | id, user_id, workspace_id, title, scope, updated_at, archived_at |
 | `messages` | 问题、回答、capture 关联和生成元数据 | conversation_id, role, content, memory_id, model, usage |
 | `message_citations` | 回答到原记录的可审计引用 | message_id, memory_id, excerpt |
 | `jobs` | embedding 等异步任务 | type, payload_ref, status, attempts, next_run_at |
-| `audit_events` | 分享、删除和权限相关事件 | actor_id, action, resource_id, created_at |
+| `audit_events` | 权限事件及不含正文的 AI 用量元数据 | actor_id, action, resource_id, model, input_tokens, output_tokens, created_at |
 
 `memories.visibility` v0.1 只有 `PRIVATE` 和 `WORKSPACE`。未来如果引入群组或点对点分享，必须通过新的 ADR 扩展，不能复用含义模糊的布尔字段。
 
@@ -133,8 +160,10 @@ apps/api/
 3. 立即向用户返回已保存状态，不等待外部 AI。
 4. worker 生成 embedding，记录模型、维度、状态和失败原因。
 5. 失败任务按有上限的退避策略重试；记录仍可通过时间线和关键词找到。
-6. 补充或修正通过新 memory 表达，并可设置 `supersedes_id`。
-7. 删除操作清除正文和 embedding，使其不再进入检索；审计事件不保留正文。
+6. 补充或修正通过新 memory 表达，并用 `supersedes_id` 关联来源。
+7. “更新当前”隐藏旧修订；所有活动读取统一过滤 `timeline_visible = true`。
+8. “保存为新版本”创建新的可见时间线条目，原条目保持可见。
+9. 删除操作清除同一时间线条目的全部正文和 embedding，使其不再进入检索；审计事件不保留正文。
 
 ## Authorized retrieval and generation
 
@@ -183,6 +212,8 @@ M4 的投影列使用 pgvector 可变维度 `vector`，查询必须同时硬过�
 当前兼容 adapter 按 OpenAI 的 [embeddings HTTP 契约](https://developers.openai.com/api/reference/resources/embeddings/methods/create) 发送请求并验证索引、有限浮点向量、模型与用量字段。配置为空时不构造 adapter，也不发起网络请求。
 
 M5 的聊天 adapter 使用供应商兼容的 `v1/chat/completions` 端点；该端点仍被当前 OpenAI 文本模型列为支持的接口，例如 [Chat Latest 模型页](https://developers.openai.com/api/docs/models/chat-latest)。adapter 只负责 HTTP 契约和错误归一化，不读取数据库、不选择证据，也不决定引用。
+
+`POST /drafts/refine` 复用 `ChatModelPort`，把当前 Markdown 作为不可信数据、把用户修改要求作为独立字段发送。模型只能返回完整 Markdown，不能执行保存。调用成功、禁用或失败都只写入不含正文的审计事件；成功调用同时记录模型和 token 用量。
 
 `POST /chat/questions` 要求客户端显式传入范围和检索主题，问题与主题都放在 JSON body 中。服务端先用统一授权查询生成最多 12 条证据，再结束数据库事务并调用外部模型。模型输入中的 memory 正文被当作不可信数据；返回前重新授权所有证据，若生成期间发生撤回或删除，则丢弃模型答案并用剩余证据重建。无模型配置或供应商失败时使用确定性证据回答；没有证据时明确返回不知道。
 
@@ -245,11 +276,11 @@ v0.1 报告不长期保存，也不导出文件，只写入不含正文的 `REPO
 
 ## Quality strategy
 
-- 领域单元测试覆盖追加式记录和分享规则。
+- 领域单元测试覆盖不可变修订、活动过滤、删除范围和分享规则。
 - PostgreSQL 集成测试覆盖跨用户、跨工作区和删除后的检索隔离。
 - AI adapter 使用契约测试和录制的脱敏响应，少量受控测试调用真实中转服务。
 - 检索评测集从产品简报中的五类问题演化，记录 expected memory IDs 而不只比较自然语言。
-- Playwright 覆盖登录、记录私有想法、主动分享、他人可见、Chatbot 引用和越权不可见。
+- 浏览器验收覆盖登录、个人空间激活、草稿修改、明确保存、两种修订行为和时间线。
 - CI 必须能在没有真实生产 API Key 时运行；外部 AI 测试单独标记。
 
 ## Deferred decisions

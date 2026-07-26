@@ -148,7 +148,7 @@ conversation 历史继续存在，但只作为恢复工作上下文的辅助入�
 
 ## Approved personal Markdown MVP simplification
 
-本节是下一次实现的当前产品范围。前面的 v0.1–v0.3 章节保留已完成的需求演进记录；如果界面范围发生冲突，以本节为准。已有团队、多空间、conversation 和报告后台能力先保留，不因界面简化而删除数据或接口。
+本节是当前已经实现并进入验收的产品范围。前面的 v0.1–v0.3 章节保留已完成的需求演进记录；如果界面范围发生冲突，以本节为准。已有团队、多空间、conversation 和报告后台能力先保留，不因界面简化而删除数据或接口。
 
 ### Visible product surface
 

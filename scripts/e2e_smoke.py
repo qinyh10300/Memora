@@ -75,6 +75,8 @@ def main() -> int:
     alex_conversation_id: str | None = None
     blair_conversation_id: str | None = None
     team_workspace_id: str | None = None
+    alex_personal_workspace_id: str | None = None
+    personal_cleanup_ids: list[str] = []
 
     expect_status(alex, "GET", f"{public_url}/health", 200)
     expect_status(alex, "GET", f"{public_url}/api/health", 200)
@@ -134,6 +136,7 @@ def main() -> int:
         ):
             raise AssertionError("Blair 没有且仅有一个个人空间")
         team_workspace_id = str(alex_team["id"])
+        alex_personal_workspace_id = str(alex_personal["id"])
 
         alex_conversation = expect_status(
             alex,
@@ -225,6 +228,141 @@ def main() -> int:
         if any(item["id"] == alex_conversation_id for item in personal_conversations):
             raise AssertionError("团队空间 conversation 泄露到个人空间")
         expect_status(alex, "GET", f"{public_url}/api/memories/{created_id}", 404)
+
+        personal_original_marker = f"personal-original-{uuid.uuid4().hex}"
+        personal_current_marker = f"personal-current-{uuid.uuid4().hex}"
+        draft_result = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/drafts/refine",
+            200,
+            {
+                "markdown": "",
+                "instruction": f"记录个人 Markdown {personal_original_marker}",
+            },
+        )
+        if (
+            draft_result["model_status"] != "DISABLED"
+            or personal_original_marker not in draft_result["markdown"]
+        ):
+            raise AssertionError("未配置模型时草稿没有安全保留用户原文")
+        before_save = expect_status(
+            alex,
+            "GET",
+            f"{public_url}/api/memories",
+            200,
+        )
+        if any(personal_original_marker in item["body"] for item in before_save):
+            raise AssertionError("草稿修改接口在用户保存前创建了 memory")
+
+        personal_root = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/memories",
+            201,
+            {"body": draft_result["markdown"]},
+        )
+        personal_root_id = str(personal_root["id"])
+        personal_cleanup_ids = [personal_root_id]
+        personal_updated = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/memories/{personal_root_id}/revisions",
+            201,
+            {
+                "body": f"# 个人验收\n\n当前内容 {personal_current_marker}",
+                "mode": "UPDATE_CURRENT",
+            },
+        )
+        personal_updated_id = str(personal_updated["id"])
+        personal_cleanup_ids = [personal_updated_id]
+        personal_list = expect_status(
+            alex,
+            "GET",
+            f"{public_url}/api/memories",
+            200,
+        )
+        same_timeline = [
+            item
+            for item in personal_list
+            if item["timeline_entry_id"] == personal_root["timeline_entry_id"]
+        ]
+        if [item["id"] for item in same_timeline] != [personal_updated_id]:
+            raise AssertionError("更新当前记忆后时间线没有且仅有最新修订")
+        revision_history = expect_status(
+            alex,
+            "GET",
+            f"{public_url}/api/memories/{personal_updated_id}/revisions",
+            200,
+        )
+        if [item["id"] for item in revision_history] != [
+            personal_updated_id,
+            personal_root_id,
+        ]:
+            raise AssertionError("更新当前记忆后没有保留不可变修订历史")
+        old_revision_search = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/search",
+            200,
+            {"q": personal_original_marker},
+        )
+        if old_revision_search["results"]:
+            raise AssertionError("被替代的内部修订仍进入活动检索")
+
+        personal_new_version = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/memories/{personal_updated_id}/revisions",
+            201,
+            {
+                "body": f"# 个人验收新版本\n\n{personal_current_marker} 新时间点",
+                "mode": "NEW_VERSION",
+            },
+        )
+        personal_new_version_id = str(personal_new_version["id"])
+        personal_cleanup_ids = [personal_updated_id, personal_new_version_id]
+        after_new_version = expect_status(
+            alex,
+            "GET",
+            f"{public_url}/api/memories",
+            200,
+        )
+        visible_personal_ids = {
+            item["id"]
+            for item in after_new_version
+            if personal_current_marker in item["body"]
+        }
+        if visible_personal_ids != {personal_updated_id, personal_new_version_id}:
+            raise AssertionError("保存为新版本后没有保留两个独立时间点")
+        expect_status(
+            blair,
+            "GET",
+            f"{public_url}/api/memories/{personal_new_version_id}",
+            404,
+        )
+
+        expect_status(
+            alex,
+            "DELETE",
+            f"{public_url}/api/memories/{personal_updated_id}",
+            204,
+        )
+        personal_cleanup_ids = [personal_new_version_id]
+        expect_status(
+            alex,
+            "GET",
+            f"{public_url}/api/memories/{personal_new_version_id}",
+            200,
+        )
+        expect_status(
+            alex,
+            "DELETE",
+            f"{public_url}/api/memories/{personal_new_version_id}",
+            204,
+        )
+        personal_cleanup_ids = []
+
         expect_status(
             alex,
             "POST",
@@ -419,6 +557,22 @@ def main() -> int:
             raise AssertionError("memory 删除后 capture 消息没有标记为 REDACTED")
         created_id = None
     finally:
+        if alex_personal_workspace_id is not None and personal_cleanup_ids:
+            with suppress(AssertionError, HTTPError):
+                expect_status(
+                    alex,
+                    "POST",
+                    f"{public_url}/api/workspaces/{alex_personal_workspace_id}/activate",
+                    200,
+                )
+            for personal_memory_id in personal_cleanup_ids:
+                with suppress(AssertionError, HTTPError):
+                    expect_status(
+                        alex,
+                        "DELETE",
+                        f"{public_url}/api/memories/{personal_memory_id}",
+                        204,
+                    )
         if team_workspace_id is not None:
             with suppress(AssertionError, HTTPError):
                 expect_status(
@@ -451,7 +605,7 @@ def main() -> int:
                     {"archived": True},
                 )
 
-    print(f"Memora v0.2 多空间、持久对话与权限关键路径通过：{public_url}")
+    print(f"Memora 个人 Markdown、修订与既有权限关键路径通过：{public_url}")
     return 0
 
 

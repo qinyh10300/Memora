@@ -93,9 +93,7 @@ def test_refine_draft_updates_markdown_without_creating_memory_and_records_usage
     engine = cast(FastAPI, draft_client.app).state.engine
     with Session(engine) as database:
         memories = database.scalars(select(Memory)).all()
-        event = database.scalar(
-            select(AuditEvent).where(AuditEvent.action == "DRAFT_REFINED")
-        )
+        event = database.scalar(select(AuditEvent).where(AuditEvent.action == "DRAFT_REFINED"))
     assert memories == []
     assert event is not None
     assert event.model == "draft-model"

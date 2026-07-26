@@ -17,7 +17,7 @@ help:
 	@echo "  make api-dev         直接启动 FastAPI 热更新服务"
 	@echo "  make check           运行格式、lint、类型、测试、契约和构建检查"
 	@echo "  make compose-check   验证 Docker Compose 配置"
-	@echo "  make e2e             验证私有、授权搜索/Chat/报告、分享、降级和删除路径"
+	@echo "  make e2e             验证个人 Markdown、修订、权限、降级和删除路径"
 
 setup:
 	@test -f .env || cp .env.example .env

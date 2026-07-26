@@ -313,9 +313,7 @@ def test_update_current_creates_hidden_immutable_revision_and_filters_retrieval(
     assert old_search.status_code == 200
     assert old_search.json()["results"] == []
     current_search = memory_client.post("/search", headers=alex, json={"q": "席位订阅"})
-    assert [item["memory"]["id"] for item in current_search.json()["results"]] == [
-        updated["id"]
-    ]
+    assert [item["memory"]["id"] for item in current_search.json()["results"]] == [updated["id"]]
 
 
 def test_new_version_keeps_both_timeline_entries_and_delete_clears_only_its_lineage(
