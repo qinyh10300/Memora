@@ -167,6 +167,26 @@ describe("Memora personal Markdown MVP", () => {
     expect(screen.queryByRole("button", { name: "分析" })).not.toBeInTheDocument();
   });
 
+  it("个人空间激活失败时停止写入界面，避免保存到团队空间", async () => {
+    apiMocks.GET.mockImplementation((path: string) => {
+      if (path === "/auth/me") return Promise.resolve(ok(teamUser));
+      if (path === "/workspaces") {
+        return Promise.resolve(ok([personalWorkspace, teamWorkspace]));
+      }
+      return Promise.resolve(missing());
+    });
+    apiMocks.POST.mockResolvedValue(missing(500));
+
+    render(<HomePage />);
+
+    expect(
+      await screen.findByRole("heading", { name: "暂时无法进入个人空间" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/避免把个人记忆写入错误的空间/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Markdown 草稿")).not.toBeInTheDocument();
+    expect(apiMocks.POST).not.toHaveBeenCalledWith("/memories", expect.anything());
+  });
+
   it("通过对话生成右侧草稿，且只有明确点击后才保存", async () => {
     mockAuthenticatedSession([]);
 

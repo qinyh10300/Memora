@@ -804,10 +804,11 @@ export default function HomePage() {
           resolvedUser = refreshed.data;
         }
         setUser(resolvedUser);
+        setSessionError("");
         await loadMemories(resolvedUser.id);
       } catch {
         setSessionError("无法进入个人空间，请刷新后重试。");
-        setUser(authenticatedUser);
+        setUser(null);
       } finally {
         setBooting(false);
       }
@@ -1007,11 +1008,36 @@ export default function HomePage() {
     resetDraft();
   }
 
+  async function retryPersonalSpace() {
+    setBooting(true);
+    try {
+      const { data, response } = await api.GET("/auth/me");
+      if (!data || !response.ok) throw new Error("session_missing");
+      await enterPersonalSpace(data);
+    } catch {
+      setBooting(false);
+      setSessionError("无法进入个人空间，请刷新后重试。");
+    }
+  }
+
   if (booting) {
     return (
       <main className="boot-screen" aria-label="正在加载 Memora">
         <Logo />
         <span />
+      </main>
+    );
+  }
+
+  if (!user && sessionError) {
+    return (
+      <main className="session-failure" aria-labelledby="session-failure-title">
+        <Logo />
+        <h1 id="session-failure-title">暂时无法进入个人空间</h1>
+        <p>为了避免把个人记忆写入错误的空间，Memora 已停止当前操作。</p>
+        <button type="button" onClick={() => void retryPersonalSpace()}>
+          重新尝试
+        </button>
       </main>
     );
   }
