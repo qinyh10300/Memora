@@ -24,17 +24,32 @@ from memora.memories.service import (
     get_authorized_memory,
     get_memory_for_author_action,
     list_authorized_memories,
+    list_owned_memory_revisions,
 )
 from memora.retrieval.models import MemoryEmbedding
 
 router = APIRouter(prefix="/memories", tags=["memories"])
 MemoryVisibility = Literal["PRIVATE", "WORKSPACE"]
+MemoryRevisionMode = Literal["UPDATE_CURRENT", "NEW_VERSION"]
 
 
 class CreateMemoryRequest(BaseModel):
     body: str = Field(min_length=1, max_length=10_000)
     supersedes_id: UUID | None = None
     conversation_id: UUID | None = None
+
+    @field_validator("body")
+    @classmethod
+    def normalize_body(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("想法正文不能为空")
+        return normalized
+
+
+class CreateMemoryRevisionRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=10_000)
+    mode: MemoryRevisionMode
 
     @field_validator("body")
     @classmethod
@@ -75,6 +90,44 @@ def _audit(database: DatabaseSession, principal: Principal, action: str, memory_
     )
 
 
+def _add_memory_with_processing(
+    database: DatabaseSession,
+    principal: Principal,
+    *,
+    memory_id: UUID,
+    body: str,
+    supersedes_id: UUID | None,
+    timeline_entry_id: UUID,
+    revision_kind: str,
+) -> tuple[Memory, MemoryEmbedding]:
+    memory = Memory(
+        id=memory_id,
+        workspace_id=principal.workspace_id,
+        author_id=principal.user_id,
+        body=body,
+        visibility="PRIVATE",
+        supersedes_id=supersedes_id,
+        timeline_entry_id=timeline_entry_id,
+        timeline_visible=True,
+        revision_kind=revision_kind,
+    )
+    database.add(memory)
+    # payload_ref 没有 ORM relationship；先 flush 可保证 PostgreSQL 在同一事务中
+    # 先插入 memory，再插入带外键的 outbox job。
+    database.flush()
+    projection = MemoryEmbedding(memory_id=memory.id, status="PENDING")
+    database.add(projection)
+    database.add(
+        Job(
+            workspace_id=principal.workspace_id,
+            type="EMBED_MEMORY",
+            payload_ref=memory.id,
+            status="PENDING",
+        )
+    )
+    return memory, projection
+
+
 @router.post("", response_model=MemoryResponse, status_code=status.HTTP_201_CREATED)
 def create_memory(
     payload: CreateMemoryRequest,
@@ -104,27 +157,15 @@ def create_memory(
                 detail="只能补充自己仍然存在的记录",
             )
 
-    memory = Memory(
-        id=uuid4(),
-        workspace_id=principal.workspace_id,
-        author_id=principal.user_id,
+    memory_id = uuid4()
+    memory, projection = _add_memory_with_processing(
+        database,
+        principal,
+        memory_id=memory_id,
         body=payload.body,
-        visibility="PRIVATE",
         supersedes_id=payload.supersedes_id,
-    )
-    database.add(memory)
-    # payload_ref 没有 ORM relationship；先 flush 可保证 PostgreSQL 在同一事务中
-    # 先插入 memory，再插入带外键的 outbox job。
-    database.flush()
-    projection = MemoryEmbedding(memory_id=memory.id, status="PENDING")
-    database.add(projection)
-    database.add(
-        Job(
-            workspace_id=principal.workspace_id,
-            type="EMBED_MEMORY",
-            payload_ref=memory.id,
-            status="PENDING",
-        )
+        timeline_entry_id=memory_id,
+        revision_kind="NEW_VERSION" if payload.supersedes_id is not None else "ROOT",
     )
     _audit(database, principal, "MEMORY_CREATED", memory.id)
     if conversation is not None:
@@ -140,6 +181,89 @@ def create_memory(
     if author is None:
         raise RuntimeError("authenticated user disappeared")
     return memory_response_for(memory, author, projection, principal)
+
+
+@router.post(
+    "/{memory_id}/revisions",
+    response_model=MemoryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_memory_revision(
+    memory_id: UUID,
+    payload: CreateMemoryRevisionRequest,
+    principal: CurrentPrincipal,
+    database: DatabaseSession,
+) -> MemoryResponse:
+    source, author, _projection = _author_row_or_error(database, principal, memory_id)
+    locked_source = database.scalar(
+        select(Memory)
+        .where(
+            Memory.id == source.id,
+            Memory.workspace_id == principal.workspace_id,
+            Memory.author_id == principal.user_id,
+            Memory.deleted_at.is_(None),
+        )
+        .with_for_update()
+    )
+    if locked_source is None:
+        raise _not_found()
+    if not locked_source.timeline_visible:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="这条记忆已有更新，请刷新后重试",
+        )
+    if payload.body == locked_source.body:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="内容没有变化",
+        )
+
+    new_memory_id = uuid4()
+    if payload.mode == "UPDATE_CURRENT":
+        invalidate_cited_answers(
+            database,
+            memory_id=locked_source.id,
+            author_id=locked_source.author_id,
+            include_author=True,
+        )
+        locked_source.timeline_visible = False
+        timeline_entry_id = locked_source.timeline_entry_id
+        audit_action = "MEMORY_CURRENT_UPDATED"
+    else:
+        timeline_entry_id = new_memory_id
+        audit_action = "MEMORY_VERSION_CREATED"
+
+    memory, projection = _add_memory_with_processing(
+        database,
+        principal,
+        memory_id=new_memory_id,
+        body=payload.body,
+        supersedes_id=locked_source.id,
+        timeline_entry_id=timeline_entry_id,
+        revision_kind=payload.mode,
+    )
+    _audit(database, principal, audit_action, memory.id)
+    database.commit()
+    database.refresh(memory)
+    return memory_response_for(memory, author, projection, principal)
+
+
+@router.get("/{memory_id}/revisions", response_model=list[MemoryResponse])
+def list_memory_revisions(
+    memory_id: UUID,
+    principal: CurrentPrincipal,
+    database: DatabaseSession,
+) -> list[MemoryResponse]:
+    memory, _author, _projection = _author_row_or_error(database, principal, memory_id)
+    rows = list_owned_memory_revisions(
+        database,
+        principal,
+        memory.timeline_entry_id,
+    )
+    return [
+        memory_response_for(revision, author, projection, principal)
+        for revision, author, projection in rows
+    ]
 
 
 @router.get("", response_model=list[MemoryResponse])
@@ -259,52 +383,66 @@ def delete_memory(
     principal: CurrentPrincipal,
     database: DatabaseSession,
 ) -> None:
-    memory, _author, projection = _author_row_or_error(database, principal, memory_id)
-    deleted_body = memory.body or ""
-    invalidate_cited_answers(
-        database,
-        memory_id=memory.id,
-        author_id=memory.author_id,
-        include_author=True,
-    )
-    memory.body = None
-    memory.visibility = "PRIVATE"
-    memory.shared_at = None
-    memory.deleted_at = datetime.now(UTC)
-    database.execute(
-        update(Message)
-        .where(Message.memory_id == memory.id)
-        .values(
-            content="这条记录已删除。",
-            status="REDACTED",
-            model=None,
-            input_tokens=0,
-            output_tokens=0,
+    memory, _author, _projection = _author_row_or_error(database, principal, memory_id)
+    revisions = database.scalars(
+        select(Memory).where(
+            Memory.timeline_entry_id == memory.timeline_entry_id,
+            Memory.workspace_id == principal.workspace_id,
+            Memory.author_id == principal.user_id,
+            Memory.deleted_at.is_(None),
         )
-    )
-    linked_conversation_ids = select(Message.conversation_id).where(Message.memory_id == memory.id)
-    database.execute(
-        update(Conversation)
-        .where(
-            Conversation.id.in_(linked_conversation_ids),
-            Conversation.title == conversation_title_for(deleted_body),
+    ).all()
+    deleted_at = datetime.now(UTC)
+    for revision in revisions:
+        deleted_body = revision.body or ""
+        invalidate_cited_answers(
+            database,
+            memory_id=revision.id,
+            author_id=revision.author_id,
+            include_author=True,
         )
-        .values(title="已删除的记录", updated_at=datetime.now(UTC))
-    )
-    if projection is not None:
-        database.delete(projection)
-    database.execute(
-        update(Job)
-        .where(
-            Job.payload_ref == memory.id,
-            Job.status.in_(("PENDING", "RUNNING", "WAITING_CONFIGURATION", "FAILED")),
+        database.execute(
+            update(Message)
+            .where(Message.memory_id == revision.id)
+            .values(
+                content="这条记录已删除。",
+                status="REDACTED",
+                model=None,
+                input_tokens=0,
+                output_tokens=0,
+            )
         )
-        .values(
-            status="CANCELLED",
-            next_run_at=None,
-            locked_at=None,
-            last_error_code=None,
+        linked_conversation_ids = select(Message.conversation_id).where(
+            Message.memory_id == revision.id
         )
-    )
-    _audit(database, principal, "MEMORY_DELETED", memory.id)
+        database.execute(
+            update(Conversation)
+            .where(
+                Conversation.id.in_(linked_conversation_ids),
+                Conversation.title == conversation_title_for(deleted_body),
+            )
+            .values(title="已删除的记录", updated_at=deleted_at)
+        )
+        projection = database.get(MemoryEmbedding, revision.id)
+        if projection is not None:
+            database.delete(projection)
+        database.execute(
+            update(Job)
+            .where(
+                Job.payload_ref == revision.id,
+                Job.status.in_(("PENDING", "RUNNING", "WAITING_CONFIGURATION", "FAILED")),
+            )
+            .values(
+                status="CANCELLED",
+                next_run_at=None,
+                locked_at=None,
+                last_error_code=None,
+            )
+        )
+        revision.body = None
+        revision.visibility = "PRIVATE"
+        revision.shared_at = None
+        revision.timeline_visible = False
+        revision.deleted_at = deleted_at
+        _audit(database, principal, "MEMORY_DELETED", revision.id)
     database.commit()

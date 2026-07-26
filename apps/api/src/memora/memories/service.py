@@ -22,6 +22,7 @@ def authorized_memories_statement(
         .where(
             Memory.workspace_id == principal.workspace_id,
             Memory.deleted_at.is_(None),
+            Memory.timeline_visible.is_(True),
             or_(
                 Memory.author_id == principal.user_id,
                 Memory.visibility == "WORKSPACE",
@@ -81,8 +82,53 @@ def get_memory_for_author_action(
                 Memory.id == memory_id,
                 Memory.workspace_id == principal.workspace_id,
                 Memory.deleted_at.is_(None),
+                Memory.timeline_visible.is_(True),
             )
         )
         .tuples()
         .one_or_none()
     )
+
+
+def list_owned_memory_revisions(
+    database: Session,
+    principal: Principal,
+    timeline_entry_id: UUID,
+) -> list[tuple[Memory, User, MemoryEmbedding | None]]:
+    """返回一个时间线条目的全部不可变修订；调用方必须先验证活动条目所有权。"""
+    rows = list(
+        database.execute(
+            select(Memory, User)
+            .join(User, User.id == Memory.author_id)
+            .add_columns(MemoryEmbedding)
+            .outerjoin(MemoryEmbedding, MemoryEmbedding.memory_id == Memory.id)
+            .where(
+                Memory.timeline_entry_id == timeline_entry_id,
+                Memory.workspace_id == principal.workspace_id,
+                Memory.author_id == principal.user_id,
+                Memory.deleted_at.is_(None),
+            )
+        )
+        .tuples()
+        .all()
+    )
+    if not rows:
+        return []
+
+    rows_by_id = {memory.id: row for row in rows for memory in [row[0]]}
+    current_rows = [row for row in rows if row[0].timeline_visible]
+    current_rows.sort(key=lambda row: (row[0].created_at, str(row[0].id)), reverse=True)
+    ordered: list[tuple[Memory, User, MemoryEmbedding | None]] = []
+    visited: set[UUID] = set()
+    cursor = current_rows[0] if current_rows else rows[0]
+    while cursor[0].id not in visited:
+        ordered.append(cursor)
+        visited.add(cursor[0].id)
+        predecessor_id = cursor[0].supersedes_id
+        if predecessor_id is None or predecessor_id not in rows_by_id:
+            break
+        cursor = rows_by_id[predecessor_id]
+
+    remaining = [row for row in rows if row[0].id not in visited]
+    remaining.sort(key=lambda row: (row[0].created_at, str(row[0].id)), reverse=True)
+    return ordered + remaining

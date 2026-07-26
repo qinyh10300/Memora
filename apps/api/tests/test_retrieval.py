@@ -94,6 +94,7 @@ def test_authorized_candidate_sql_contains_hard_workspace_and_visibility_filters
 
     assert "memories.workspace_id" in compiled
     assert "memories.deleted_at IS NULL" in compiled
+    assert "memories.timeline_visible IS true" in compiled
     assert "memories.author_id" in compiled
     assert "memories.visibility" in compiled
     assert "memory_embeddings" in compiled

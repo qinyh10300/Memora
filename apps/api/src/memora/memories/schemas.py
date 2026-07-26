@@ -11,6 +11,7 @@ from memora.retrieval.models import MemoryEmbedding
 
 MemoryVisibility = Literal["PRIVATE", "WORKSPACE"]
 MemoryProcessingStatus = Literal["PENDING", "WAITING_CONFIGURATION", "COMPLETED", "FAILED"]
+MemoryRevisionKind = Literal["ROOT", "UPDATE_CURRENT", "NEW_VERSION"]
 
 
 class MemoryAuthorResponse(BaseModel):
@@ -27,6 +28,9 @@ class MemoryResponse(BaseModel):
     created_at: datetime
     shared_at: datetime | None
     supersedes_id: UUID | None
+    timeline_entry_id: UUID
+    timeline_visible: bool
+    revision_kind: MemoryRevisionKind
     processing_status: MemoryProcessingStatus
 
 
@@ -47,6 +51,12 @@ def memory_response_for(
         if raw_processing_status in {"PENDING", "WAITING_CONFIGURATION", "COMPLETED", "FAILED"}
         else "FAILED",
     )
+    revision_kind = cast(
+        MemoryRevisionKind,
+        memory.revision_kind
+        if memory.revision_kind in {"ROOT", "UPDATE_CURRENT", "NEW_VERSION"}
+        else "ROOT",
+    )
     return MemoryResponse(
         id=memory.id,
         body=memory.body,
@@ -57,5 +67,8 @@ def memory_response_for(
         shared_at=memory.shared_at,
         # 非作者不能仅凭一条已共享的补充记录推断出私有原记录的稳定 ID。
         supersedes_id=memory.supersedes_id if is_owner else None,
+        timeline_entry_id=memory.timeline_entry_id,
+        timeline_visible=memory.timeline_visible,
+        revision_kind=revision_kind,
         processing_status=processing_status,
     )

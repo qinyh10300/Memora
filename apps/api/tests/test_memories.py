@@ -261,3 +261,145 @@ def test_author_can_retry_failed_processing_but_other_users_cannot(
     assert job is not None and job.status == "PENDING" and job.attempts == 0
     assert job.next_run_at is not None and job.last_error_code is None
     assert projection is not None and projection.status == "PENDING"
+
+
+def test_update_current_creates_hidden_immutable_revision_and_filters_retrieval(
+    memory_client: TestClient,
+) -> None:
+    alex = _login(memory_client, "alex@memora.local", "memora-local-alex")
+    blair = _login(memory_client, "blair@memora.local", "memora-local-blair")
+    original = _create(memory_client, alex, body="# 定价\n\n旧方案按项目收费。")
+    original_id = cast(str, original["id"])
+
+    response = memory_client.post(
+        f"/memories/{original_id}/revisions",
+        headers=alex,
+        json={
+            "body": "# 定价\n\n新方案按席位订阅。",
+            "mode": "UPDATE_CURRENT",
+        },
+    )
+
+    assert response.status_code == 201
+    updated = response.json()
+    assert updated["id"] != original_id
+    assert updated["timeline_entry_id"] == original["timeline_entry_id"]
+    assert updated["revision_kind"] == "UPDATE_CURRENT"
+    assert updated["supersedes_id"] == original_id
+    assert [item["id"] for item in memory_client.get("/memories", headers=alex).json()] == [
+        updated["id"]
+    ]
+    assert memory_client.get(f"/memories/{original_id}", headers=alex).status_code == 404
+
+    revisions = memory_client.get(
+        f"/memories/{updated['id']}/revisions",
+        headers=alex,
+    )
+    assert revisions.status_code == 200
+    assert [item["body"] for item in revisions.json()] == [
+        "# 定价\n\n新方案按席位订阅。",
+        "# 定价\n\n旧方案按项目收费。",
+    ]
+    assert revisions.json()[1]["timeline_visible"] is False
+    assert (
+        memory_client.get(
+            f"/memories/{updated['id']}/revisions",
+            headers=blair,
+        ).status_code
+        == 404
+    )
+
+    old_search = memory_client.post("/search", headers=alex, json={"q": "项目收费"})
+    assert old_search.status_code == 200
+    assert old_search.json()["results"] == []
+    current_search = memory_client.post("/search", headers=alex, json={"q": "席位订阅"})
+    assert [item["memory"]["id"] for item in current_search.json()["results"]] == [
+        updated["id"]
+    ]
+
+
+def test_new_version_keeps_both_timeline_entries_and_delete_clears_only_its_lineage(
+    memory_client: TestClient,
+) -> None:
+    alex = _login(memory_client, "alex@memora.local", "memora-local-alex")
+    original = _create(memory_client, alex, body="# 方向\n\n先验证个人记录。")
+    original_id = cast(str, original["id"])
+
+    new_version_response = memory_client.post(
+        f"/memories/{original_id}/revisions",
+        headers=alex,
+        json={
+            "body": "# 方向\n\n开始验证个人回顾。",
+            "mode": "NEW_VERSION",
+        },
+    )
+
+    assert new_version_response.status_code == 201
+    new_version = new_version_response.json()
+    assert new_version["timeline_entry_id"] == new_version["id"]
+    assert new_version["revision_kind"] == "NEW_VERSION"
+    listed_ids = {item["id"] for item in memory_client.get("/memories", headers=alex).json()}
+    assert listed_ids == {original_id, new_version["id"]}
+
+    updated_response = memory_client.post(
+        f"/memories/{new_version['id']}/revisions",
+        headers=alex,
+        json={
+            "body": "# 方向\n\n开始验证个人回顾，并观察连续使用率。",
+            "mode": "UPDATE_CURRENT",
+        },
+    )
+    assert updated_response.status_code == 201
+    updated = updated_response.json()
+    assert updated["timeline_entry_id"] == new_version["timeline_entry_id"]
+
+    assert memory_client.delete(f"/memories/{updated['id']}", headers=alex).status_code == 204
+    remaining = memory_client.get("/memories", headers=alex).json()
+    assert [item["id"] for item in remaining] == [original_id]
+
+    engine = cast(FastAPI, memory_client.app).state.engine
+    with Session(engine) as database:
+        deleted_revisions = database.scalars(
+            select(Memory).where(
+                Memory.timeline_entry_id == UUID(cast(str, new_version["timeline_entry_id"]))
+            )
+        ).all()
+        original_memory = database.get(Memory, UUID(original_id))
+        deleted_projections = database.scalars(
+            select(MemoryEmbedding).where(
+                MemoryEmbedding.memory_id.in_([item.id for item in deleted_revisions])
+            )
+        ).all()
+
+    assert len(deleted_revisions) == 2
+    assert all(item.body is None and item.deleted_at is not None for item in deleted_revisions)
+    assert deleted_projections == []
+    assert original_memory is not None and original_memory.body == "# 方向\n\n先验证个人记录。"
+
+
+def test_revision_rejects_unchanged_or_stale_memory(
+    memory_client: TestClient,
+) -> None:
+    alex = _login(memory_client, "alex@memora.local", "memora-local-alex")
+    original = _create(memory_client, alex, body="# 原始内容")
+    original_id = cast(str, original["id"])
+
+    unchanged = memory_client.post(
+        f"/memories/{original_id}/revisions",
+        headers=alex,
+        json={"body": "# 原始内容", "mode": "UPDATE_CURRENT"},
+    )
+    assert unchanged.status_code == 422
+
+    updated = memory_client.post(
+        f"/memories/{original_id}/revisions",
+        headers=alex,
+        json={"body": "# 更新内容", "mode": "UPDATE_CURRENT"},
+    )
+    assert updated.status_code == 201
+    stale = memory_client.post(
+        f"/memories/{original_id}/revisions",
+        headers=alex,
+        json={"body": "# 再次更新", "mode": "UPDATE_CURRENT"},
+    )
+    assert stale.status_code == 404
