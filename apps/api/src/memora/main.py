@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from memora.api.auth import router as auth_router
 from memora.api.chat import router as chat_router
 from memora.api.conversations import router as conversations_router
+from memora.api.drafts import router as drafts_router
 from memora.api.memories import router as memories_router
 from memora.api.reports import router as reports_router
 from memora.api.search import router as search_router
@@ -50,6 +51,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(auth_router)
     application.include_router(workspaces_router)
     application.include_router(conversations_router)
+    application.include_router(drafts_router)
     application.include_router(memories_router)
     application.include_router(search_router)
     application.include_router(chat_router)
