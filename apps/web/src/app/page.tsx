@@ -21,8 +21,9 @@ type StoredMessage = components["schemas"]["ConversationMessageResponse"];
 type Memory = components["schemas"]["MemoryResponse"];
 type Citation = components["schemas"]["EvidenceCitationResponse"];
 type ModelStatus = components["schemas"]["ChatResponse"]["model_status"];
+type ReportResponse = components["schemas"]["ReportResponse"];
 
-type AppView = "CHAT" | "MEMORIES";
+type AppView = "CHAT" | "MEMORIES" | "ANALYTICS" | "MEMBERS";
 type MemoryTab = "MINE" | "TEAM";
 
 type ConversationMessage = {
@@ -175,6 +176,35 @@ function MemoryIcon() {
   );
 }
 
+function CaptureIcon() {
+  return (
+    <Icon>
+      <path key="frame" d="M5 5h14v14H5z" />
+      <path key="vertical" d="M12 8v8" />
+      <path key="horizontal" d="M8 12h8" />
+    </Icon>
+  );
+}
+
+function AnalyticsIcon() {
+  return (
+    <Icon>
+      <path key="axis" d="M5 19V5M5 19h14" />
+      <path key="trend" d="m8 15 3-4 3 2 4-6" />
+    </Icon>
+  );
+}
+
+function MembersIcon() {
+  return (
+    <Icon>
+      <circle key="person-one" cx="9" cy="8" r="3" />
+      <path key="person-one-body" d="M4 19v-2a5 5 0 0 1 10 0v2" />
+      <path key="person-two" d="M16 5.5a3 3 0 0 1 0 5.5M16 14a5 5 0 0 1 4 4.9" />
+    </Icon>
+  );
+}
+
 function PlusIcon() {
   return (
     <Icon>
@@ -322,7 +352,7 @@ function WorkspaceSidebar({
   onToggleCollapsed,
   onSelectView,
   onSelectConversation,
-  onNewConversation,
+  onCaptureMemory,
   onSwitchWorkspace,
   onCreateWorkspace,
   onLogout,
@@ -340,7 +370,7 @@ function WorkspaceSidebar({
   onToggleCollapsed: () => void;
   onSelectView: (view: AppView) => void;
   onSelectConversation: (conversationId: string) => void;
-  onNewConversation: () => void;
+  onCaptureMemory: () => void;
   onSwitchWorkspace: (workspaceId: string) => void;
   onCreateWorkspace: (name: string) => Promise<boolean>;
   onLogout: () => void;
@@ -472,19 +502,23 @@ function WorkspaceSidebar({
             ) : null}
           </div>
 
-          <button className="new-chat-button" type="button" onClick={onNewConversation}>
-            <PlusIcon />
-            <span>新建对话</span>
+          <button className="capture-memory-button" type="button" onClick={onCaptureMemory}>
+            <CaptureIcon />
+            <span>
+              <strong>记录记忆</strong>
+              <small>写下一个新的想法</small>
+            </span>
           </button>
 
-          <nav className="primary-navigation">
+          <nav className="primary-navigation" aria-label="空间工作台">
+            <p className="navigation-group-label">工作台</p>
             <button
               type="button"
               className={activeView === "CHAT" ? "is-active" : ""}
               onClick={() => onSelectView("CHAT")}
             >
               <ChatIcon />
-              <span>对话</span>
+              <span>记忆问答</span>
             </button>
             <button
               type="button"
@@ -492,7 +526,24 @@ function WorkspaceSidebar({
               onClick={() => onSelectView("MEMORIES")}
             >
               <MemoryIcon />
-              <span>记忆库</span>
+              <span>{activeWorkspace?.kind === "PERSONAL" ? "我的记忆" : "团队记忆"}</span>
+            </button>
+            <button
+              type="button"
+              className={activeView === "ANALYTICS" ? "is-active" : ""}
+              onClick={() => onSelectView("ANALYTICS")}
+            >
+              <AnalyticsIcon />
+              <span>分析</span>
+            </button>
+            <p className="navigation-group-label organization-label">组织</p>
+            <button
+              type="button"
+              className={activeView === "MEMBERS" ? "is-active" : ""}
+              onClick={() => onSelectView("MEMBERS")}
+            >
+              <MembersIcon />
+              <span>成员与权限</span>
             </button>
           </nav>
         </div>
@@ -544,6 +595,8 @@ function WorkspaceSidebar({
 
 function MemoryLibrary({
   user,
+  workspace,
+  members,
   memories,
   tab,
   loading,
@@ -552,6 +605,8 @@ function MemoryLibrary({
   onOpenMemory,
 }: {
   user: CurrentUser;
+  workspace: Workspace | null;
+  members: WorkspaceMember[];
   memories: Memory[];
   tab: MemoryTab;
   loading: boolean;
@@ -560,10 +615,17 @@ function MemoryLibrary({
   onOpenMemory: (memoryId: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [authorFilter, setAuthorFilter] = useState("ALL");
+  const teamMemories = memories.filter((memory) => memory.visibility === "WORKSPACE");
+  const teamAuthors = new Set(teamMemories.map((memory) => memory.author.id)).size;
   const visibleMemories = memories.filter((memory) => {
     const inTab = tab === "MINE" ? memory.is_owner : memory.visibility === "WORKSPACE";
+    const matchesAuthor =
+      tab !== "TEAM" || authorFilter === "ALL" || memory.author.id === authorFilter;
     return (
-      inTab && memory.body.toLocaleLowerCase("zh-CN").includes(query.toLocaleLowerCase("zh-CN"))
+      inTab &&
+      matchesAuthor &&
+      memory.body.toLocaleLowerCase("zh-CN").includes(query.toLocaleLowerCase("zh-CN"))
     );
   });
 
@@ -572,8 +634,14 @@ function MemoryLibrary({
       <div className="memory-library-header">
         <div>
           <p className="eyebrow">ORIGINAL RECORDS</p>
-          <h2 id="memory-library-title">记忆库</h2>
-          <span>查看当前空间中你有权访问的原始记录。</span>
+          <h2 id="memory-library-title">
+            {workspace?.kind === "PERSONAL" ? "我的记忆" : "团队记忆"}
+          </h2>
+          <span>
+            {workspace?.kind === "PERSONAL"
+              ? "你的私人记忆空间，所有新记录默认只有你可见。"
+              : "管理当前团队主动共享的知识，同时保留清晰的作者与权限边界。"}
+          </span>
         </div>
         <label className="memory-search">
           <span className="sr-only">搜索记忆</span>
@@ -613,10 +681,52 @@ function MemoryLibrary({
       </div>
 
       {tab === "TEAM" ? (
-        <div className="permission-banner">
-          <i />
-          这里只包含成员主动共享到当前空间的记录，不包含任何成员的私有内容。
-        </div>
+        <>
+          <div className="team-memory-overview">
+            <article>
+              <small>团队共享</small>
+              <strong>{teamMemories.length}</strong>
+              <span>条可访问原始记忆</span>
+            </article>
+            <article>
+              <small>贡献成员</small>
+              <strong>{teamAuthors}</strong>
+              <span>人主动共享过内容</span>
+            </article>
+            <article>
+              <small>组织成员</small>
+              <strong>{members.length}</strong>
+              <span>私有内容始终隔离</span>
+            </article>
+          </div>
+          <div className="permission-banner">
+            <i />
+            这里只包含成员主动共享到当前空间的记录，不包含任何成员的私有内容。
+          </div>
+          <div className="member-filter" aria-label="按成员筛选团队记忆">
+            <span>成员</span>
+            <button
+              type="button"
+              className={authorFilter === "ALL" ? "is-active" : ""}
+              onClick={() => setAuthorFilter("ALL")}
+            >
+              全部成员
+            </button>
+            {members.map((member) => (
+              <button
+                type="button"
+                key={member.id}
+                className={authorFilter === member.id ? "is-active" : ""}
+                onClick={() => setAuthorFilter(member.id)}
+              >
+                {member.display_name}
+                <small>
+                  {teamMemories.filter((memory) => memory.author.id === member.id).length}
+                </small>
+              </button>
+            ))}
+          </div>
+        </>
       ) : (
         <div className="permission-banner private-banner">
           <i />
@@ -664,6 +774,352 @@ function MemoryLibrary({
             </div>
           </button>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function AnalyticsWorkspace({
+  workspace,
+  memories,
+  onOpenMemory,
+}: {
+  workspace: Workspace | null;
+  memories: Memory[];
+  onOpenMemory: (memoryId: string) => void;
+}) {
+  const [scope, setScope] = useState<"PERSONAL" | "WORKSPACE">("PERSONAL");
+  const [period, setPeriod] = useState(30);
+  const [topic, setTopic] = useState("全部");
+  const [report, setReport] = useState<ReportResponse | null>(null);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState("");
+
+  const sharedCount = memories.filter((memory) => memory.visibility === "WORKSPACE").length;
+  const personalCount = memories.filter((memory) => memory.is_owner).length;
+  const contributorCount = new Set(
+    memories
+      .filter((memory) => memory.visibility === "WORKSPACE")
+      .map((memory) => memory.author.id),
+  ).size;
+
+  async function runAnalysis(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setRunning(true);
+    setError("");
+    const createdTo = new Date();
+    const createdFrom = new Date(createdTo);
+    createdFrom.setUTCDate(createdFrom.getUTCDate() - period);
+    try {
+      const { data, response } = await api.POST("/reports", {
+        body: {
+          scope: workspace?.kind === "PERSONAL" ? "PERSONAL" : scope,
+          author_id: null,
+          topic: topic.trim() || "全部",
+          created_from: createdFrom.toISOString(),
+          created_to: createdTo.toISOString(),
+          evidence_limit: 20,
+        },
+      });
+      if (!data || !response.ok) {
+        setError(
+          response.status === 429
+            ? "分析请求有点频繁，请稍后再试。"
+            : "这次分析没有生成成功，原始记忆没有被修改。",
+        );
+        return;
+      }
+      setReport(data);
+    } catch {
+      setError("暂时无法连接分析服务，原始记忆没有被修改。");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <section className="analytics-workspace view-stage" aria-labelledby="analytics-title">
+      <div className="module-hero">
+        <div>
+          <p className="eyebrow">MEMORY INTELLIGENCE</p>
+          <h2 id="analytics-title">分析</h2>
+          <span>从有权访问的原始记录中发现时间线、变化和证据缺口。</span>
+        </div>
+        <div className="analysis-trust">
+          <i />
+          每个结论都必须回到原始记忆
+        </div>
+      </div>
+
+      <div className="analytics-overview" aria-label="当前可分析范围">
+        <article>
+          <MemoryIcon />
+          <div>
+            <strong>{personalCount}</strong>
+            <span>我的记录</span>
+          </div>
+        </article>
+        <article>
+          <MembersIcon />
+          <div>
+            <strong>{sharedCount}</strong>
+            <span>团队共享</span>
+          </div>
+        </article>
+        <article>
+          <AnalyticsIcon />
+          <div>
+            <strong>{contributorCount}</strong>
+            <span>共享贡献者</span>
+          </div>
+        </article>
+      </div>
+
+      <div className="analysis-layout">
+        <div className="analysis-config">
+          <div className="section-heading">
+            <div>
+              <small>新建分析</small>
+              <h3>你想理解什么？</h3>
+            </div>
+            <span>不会修改原始记忆</span>
+          </div>
+
+          <div className="analysis-templates">
+            <button
+              type="button"
+              onClick={() => {
+                setScope("PERSONAL");
+                setPeriod(30);
+                setTopic("全部");
+              }}
+            >
+              <span>01</span>
+              <strong>我的想法变化</strong>
+              <small>最近 30 天 · 全部主题</small>
+            </button>
+            {workspace?.kind === "TEAM" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setScope("WORKSPACE");
+                  setPeriod(7);
+                  setTopic("全部");
+                }}
+              >
+                <span>02</span>
+                <strong>团队本周脉搏</strong>
+                <small>最近 7 天 · 主动共享</small>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setScope("PERSONAL");
+                setPeriod(90);
+                setTopic("商业模式");
+              }}
+            >
+              <span>03</span>
+              <strong>商业模式复盘</strong>
+              <small>最近 90 天 · 商业模式</small>
+            </button>
+          </div>
+
+          <form className="analysis-form" onSubmit={runAnalysis}>
+            <label>
+              <span>分析范围</span>
+              <select
+                value={workspace?.kind === "PERSONAL" ? "PERSONAL" : scope}
+                disabled={workspace?.kind === "PERSONAL"}
+                onChange={(event) => setScope(event.target.value as "PERSONAL" | "WORKSPACE")}
+              >
+                <option value="PERSONAL">我的记忆</option>
+                {workspace?.kind === "TEAM" ? (
+                  <option value="WORKSPACE">团队主动共享</option>
+                ) : null}
+              </select>
+            </label>
+            <label>
+              <span>时间范围</span>
+              <select value={period} onChange={(event) => setPeriod(Number(event.target.value))}>
+                <option value={7}>最近 7 天</option>
+                <option value={30}>最近 30 天</option>
+                <option value={90}>最近 90 天</option>
+              </select>
+            </label>
+            <label className="analysis-topic">
+              <span>主题</span>
+              <input
+                value={topic}
+                maxLength={120}
+                onChange={(event) => setTopic(event.target.value)}
+                placeholder="例如：商业模式；输入“全部”分析所有记录"
+              />
+            </label>
+            <button type="submit" disabled={running || !topic.trim()}>
+              <AnalyticsIcon />
+              {running ? "正在整理证据…" : "生成分析"}
+            </button>
+          </form>
+          {error ? (
+            <p className="analysis-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
+
+        <div className={`analysis-result ${report ? "has-report" : ""}`} aria-live="polite">
+          {!report ? (
+            <div className="analysis-empty">
+              <span>
+                <AnalyticsIcon />
+              </span>
+              <strong>分析结果会出现在这里</strong>
+              <p>选择范围、时间和主题。证据不足时，Memora 会明确告诉你不知道。</p>
+            </div>
+          ) : (
+            <>
+              <header>
+                <div>
+                  <p className="eyebrow">EVIDENCE REPORT</p>
+                  <h3>{report.title}</h3>
+                </div>
+                <span>{report.scope === "WORKSPACE" ? "团队共享" : "我的记忆"}</span>
+              </header>
+              <p className="report-summary">{report.summary}</p>
+              {report.contributors.length > 0 ? (
+                <div className="report-contributors">
+                  {report.contributors.map((contributor) => (
+                    <span key={contributor.author_id}>
+                      {contributor.display_name}
+                      <small>{contributor.record_count}</small>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <div className="report-sections">
+                {report.sections.map((section, index) => (
+                  <article key={section.kind}>
+                    <span>{String(index + 1).padStart(2, "0")}</span>
+                    <div>
+                      <h4>{section.title}</h4>
+                      <p>{section.content}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <CitationList citations={report.citations} onOpenMemory={onOpenMemory} />
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MemberDirectory({
+  workspace,
+  members,
+  currentUserId,
+  loading,
+  error,
+}: {
+  workspace: Workspace | null;
+  members: WorkspaceMember[];
+  currentUserId: string;
+  loading: boolean;
+  error: string;
+}) {
+  const ownerCount = members.filter((member) => member.role === "OWNER").length;
+
+  return (
+    <section className="member-directory view-stage" aria-labelledby="member-directory-title">
+      <div className="module-hero">
+        <div>
+          <p className="eyebrow">ORGANIZATION</p>
+          <h2 id="member-directory-title">成员与权限</h2>
+          <span>
+            {workspace?.kind === "PERSONAL"
+              ? "个人空间只有你可以访问。"
+              : "查看当前团队成员、角色与记忆共享边界。"}
+          </span>
+        </div>
+        <span className="directory-status">
+          {workspace?.kind === "PERSONAL" ? "私人空间" : `${members.length} 位成员`}
+        </span>
+      </div>
+
+      <div className="directory-layout">
+        <div className="member-panel">
+          <div className="section-heading">
+            <div>
+              <small>成员目录</small>
+              <h3>{workspace?.name}</h3>
+            </div>
+            <span>{ownerCount} 位空间所有者</span>
+          </div>
+          {loading ? <div className="directory-state">正在读取成员…</div> : null}
+          {!loading && error ? (
+            <div className="directory-state error-state" role="alert">
+              {error}
+            </div>
+          ) : null}
+          {!loading && !error ? (
+            <div className="member-list">
+              {members.map((member) => (
+                <article key={member.id}>
+                  <span className="member-avatar">{member.display_name.slice(0, 1)}</span>
+                  <div>
+                    <strong>
+                      {member.display_name}
+                      {member.id === currentUserId ? <small>你</small> : null}
+                    </strong>
+                    <span>{member.role === "OWNER" ? "空间所有者" : "成员"} · 可主动共享记忆</span>
+                  </div>
+                  <span className={`role-badge ${member.role.toLowerCase()}`}>
+                    {member.role === "OWNER" ? "所有者" : "成员"}
+                  </span>
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <aside className="permission-panel">
+          <div className="section-heading">
+            <div>
+              <small>权限模型</small>
+              <h3>记忆如何流动</h3>
+            </div>
+          </div>
+          <div className="permission-rules">
+            <article>
+              <span>01</span>
+              <div>
+                <strong>默认私人</strong>
+                <p>新记录首先只属于作者，不会自动进入团队检索或报告。</p>
+              </div>
+            </article>
+            <article>
+              <span>02</span>
+              <div>
+                <strong>主动共享</strong>
+                <p>作者明确共享后，团队才能在记忆库、问答和分析中使用。</p>
+              </div>
+            </article>
+            <article>
+              <span>03</span>
+              <div>
+                <strong>随时撤回</strong>
+                <p>取消共享或删除后，原文会从其他成员的候选、引用和报告中移除。</p>
+              </div>
+            </article>
+          </div>
+          <p className="permission-footnote">
+            本版本的组织目录只读。邀请成员、部门层级和角色授权需要独立的审计与撤销设计。
+          </p>
+        </aside>
       </div>
     </section>
   );
@@ -834,6 +1290,7 @@ function WorkspaceApp({
   const [drawerError, setDrawerError] = useState("");
   const [drawerDeleting, setDrawerDeleting] = useState(false);
   const conversationEnd = useRef<HTMLDivElement>(null);
+  const composerInput = useRef<HTMLTextAreaElement>(null);
 
   const activeWorkspace =
     workspaces.find((workspace) => workspace.is_current) ??
@@ -943,11 +1400,11 @@ function WorkspaceApp({
     setMessages((current) => [...current, { ...message, id: messageId() }]);
   }
 
-  async function startConversation() {
+  async function startConversation(title = "新对话") {
     setBusy(true);
     try {
       const { data, response } = await api.POST("/conversations", {
-        body: { title: "新对话" },
+        body: { title },
       });
       if (!data || !response.ok) {
         setWorkspaceError("新对话创建失败，请稍后重试。");
@@ -965,6 +1422,13 @@ function WorkspaceApp({
       return null;
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function beginCapture() {
+    const conversationId = await startConversation("记录记忆");
+    if (conversationId) {
+      window.setTimeout(() => composerInput.current?.focus(), 0);
     }
   }
 
@@ -1614,11 +2078,14 @@ function WorkspaceApp({
         onClose={() => setSidebarOpen(false)}
         onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
         onSelectView={(view) => {
+          if (view === "MEMORIES" && activeWorkspace?.kind === "TEAM") {
+            setMemoryTab("TEAM");
+          }
           setActiveView(view);
           setSidebarOpen(false);
         }}
         onSelectConversation={(conversationId) => void selectConversation(conversationId)}
-        onNewConversation={() => void startConversation()}
+        onCaptureMemory={() => void beginCapture()}
         onSwitchWorkspace={(workspaceId) => void switchWorkspace(workspaceId)}
         onCreateWorkspace={createWorkspace}
         onLogout={onLogout}
@@ -1637,7 +2104,15 @@ function WorkspaceApp({
             </button>
             <div className="workspace-heading">
               <strong>
-                {activeView === "MEMORIES" ? "记忆库" : (activeConversation?.title ?? "新对话")}
+                {activeView === "MEMORIES"
+                  ? activeWorkspace?.kind === "PERSONAL"
+                    ? "我的记忆"
+                    : "团队记忆"
+                  : activeView === "ANALYTICS"
+                    ? "分析"
+                    : activeView === "MEMBERS"
+                      ? "成员与权限"
+                      : (activeConversation?.title ?? "记忆问答")}
               </strong>
               <span>{activeWorkspace?.name ?? user.workspace_name}</span>
             </div>
@@ -1666,12 +2141,28 @@ function WorkspaceApp({
         {activeView === "MEMORIES" ? (
           <MemoryLibrary
             user={user}
+            workspace={activeWorkspace}
+            members={members}
             memories={memories}
             tab={memoryTab}
             loading={workspaceLoading}
             error={memoriesError}
             onTabChange={setMemoryTab}
             onOpenMemory={(memoryId) => void openMemory(memoryId)}
+          />
+        ) : activeView === "ANALYTICS" ? (
+          <AnalyticsWorkspace
+            workspace={activeWorkspace}
+            memories={memories}
+            onOpenMemory={(memoryId) => void openMemory(memoryId)}
+          />
+        ) : activeView === "MEMBERS" ? (
+          <MemberDirectory
+            workspace={activeWorkspace}
+            members={members}
+            currentUserId={user.id}
+            loading={workspaceLoading}
+            error={membersError}
           />
         ) : (
           <>
@@ -1790,6 +2281,7 @@ function WorkspaceApp({
                   给 Memora 发消息
                 </label>
                 <textarea
+                  ref={composerInput}
                   id="message-composer"
                   value={composer}
                   onChange={(event) => setComposer(event.target.value)}

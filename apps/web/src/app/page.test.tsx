@@ -165,18 +165,38 @@ describe("Memora workspace conversation shell", () => {
     expect(screen.queryByText("memora-local-alex")).not.toBeInTheDocument();
   });
 
-  it("进入后同时提供空间切换、持久对话和记忆库入口", async () => {
+  it("进入后提供空间切换、任务工作台和持久对话入口", async () => {
     mockSession({ conversations: [conversation] });
 
     render(<HomePage />);
 
     expect(await screen.findByLabelText("Memora 导航")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /当前团队.*Memora 产品组/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "新建对话" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "记忆库" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /记录记忆/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "记忆问答" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "团队记忆" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "分析" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "成员与权限" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "商业模式回顾" })).toBeInTheDocument();
     expect(apiMocks.GET).toHaveBeenCalledWith("/conversations/{conversation_id}", {
       params: { path: { conversation_id: conversation.id } },
+    });
+  });
+
+  it("记录记忆创建专用对话并把输入焦点交给用户", async () => {
+    mockSession();
+    mockConversationCreation();
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: /记录记忆/ }));
+
+    await waitFor(() => {
+      expect(apiMocks.POST).toHaveBeenCalledWith("/conversations", {
+        body: { title: "记录记忆" },
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText("给 Memora 发消息")).toHaveFocus();
     });
   });
 
@@ -289,19 +309,102 @@ describe("Memora workspace conversation shell", () => {
     mockConversationCreation();
 
     render(<HomePage />);
-    fireEvent.click(await screen.findByRole("button", { name: "记忆库" }));
+    fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
 
-    expect(await screen.findByRole("heading", { name: "记忆库", level: 2 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "团队记忆", level: 2 })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /先把记录摩擦/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /本周完成了检索权限过滤/ })).toBeInTheDocument();
+    expect(screen.getByText(/不包含任何成员的私有内容/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: /我的记忆/ }));
+
     expect(screen.getByRole("button", { name: /先把记录摩擦/ })).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /本周完成了检索权限过滤/ }),
     ).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole("tab", { name: /团队共享/ }));
+  it("分析工作台只提交显式范围，并让报告结论回到原始证据", async () => {
+    mockSession({ memories: [privateMemory, sharedMemory] });
+    apiMocks.POST.mockImplementation((path: string) => {
+      if (path === "/reports") {
+        return Promise.resolve(
+          ok({
+            report_id: "report-1",
+            status: "GENERATED",
+            model_status: "DISABLED",
+            scope: "WORKSPACE",
+            topic: "商业模式",
+            created_from: "2026-06-22T01:00:00Z",
+            created_to: "2026-07-22T01:00:00Z",
+            title: "团队商业模式复盘",
+            summary: "团队从收费工具逐步转向记忆基础设施。",
+            contributors: [{ author_id: "user-blair", display_name: "Blair", record_count: 1 }],
+            sections: [
+              {
+                kind: "CHANGES",
+                title: "变化",
+                content: "定价假设发生了变化。",
+                citation_memory_ids: [sharedMemory.id],
+              },
+            ],
+            citations: [
+              {
+                memory_id: sharedMemory.id,
+                excerpt: sharedMemory.body,
+                author: sharedMemory.author,
+                created_at: sharedMemory.created_at,
+                href: `/#memory-${sharedMemory.id}`,
+              },
+            ],
+          }),
+        );
+      }
+      return Promise.resolve(missing());
+    });
 
-    expect(screen.queryByRole("button", { name: /先把记录摩擦/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /本周完成了检索权限过滤/ })).toBeInTheDocument();
-    expect(screen.getByText(/不包含任何成员的私有内容/)).toBeInTheDocument();
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "分析" }));
+    fireEvent.change(screen.getByLabelText("分析范围"), {
+      target: { value: "WORKSPACE" },
+    });
+    fireEvent.change(screen.getByLabelText("主题"), { target: { value: "商业模式" } });
+    fireEvent.click(screen.getByRole("button", { name: /生成分析/ }));
+
+    expect(await screen.findByRole("heading", { name: "团队商业模式复盘" })).toBeInTheDocument();
+    expect(screen.getByText("团队从收费工具逐步转向记忆基础设施。")).toBeInTheDocument();
+    expect(apiMocks.POST).toHaveBeenCalledWith("/reports", {
+      body: {
+        scope: "WORKSPACE",
+        author_id: null,
+        topic: "商业模式",
+        created_from: expect.any(String),
+        created_to: expect.any(String),
+        evidence_limit: 20,
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Blair.*本周完成了检索权限过滤/ }));
+    await waitFor(() => {
+      expect(
+        within(screen.getByLabelText("原始记忆详情")).getByText(sharedMemory.body),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("成员目录明确显示角色和共享边界，但不伪造未实现的组织管理", async () => {
+    mockSession();
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "成员与权限" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "成员与权限", level: 2 }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Blair")).toBeInTheDocument();
+    expect(screen.getByText(/新记录首先只属于作者/)).toBeInTheDocument();
+    expect(screen.getByText(/本版本的组织目录只读/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /邀请成员/ })).not.toBeInTheDocument();
   });
 
   it("切换空间必须调用激活接口，并刷新身份边界", async () => {
