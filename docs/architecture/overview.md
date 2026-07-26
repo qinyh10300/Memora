@@ -1,8 +1,8 @@
 # Memora Initial Architecture
 
-Status: Accepted baseline
+Status: Accepted baseline with v0.2 workspace shell
 
-Last updated: 2026-07-22
+Last updated: 2026-07-26
 
 ## Architecture goal
 
@@ -42,6 +42,41 @@ Web 对用户只呈现一个 Chatbot 对话面。它在客户端维护短生命�
 - 报告仍要求可解析的显式时间范围；信息不足时在同一对话中继续追问，不通过隐藏默认值绕过产品约束。
 - HTTP API 保持细粒度和可测试，所谓“统一接口”指统一用户界面，不把安全关键操作合并成无法审计的万能模型端点。
 
+## Workspace and persistent conversation shell
+
+v0.2 在同一模块化单体内增加工作区切换、持久化 conversation 历史和原始记忆浏览，不引入新的部署单元。
+
+### Active workspace
+
+- Cookie 仍只标识数据库中的不透明用户会话；会话记录当前活动 `workspace_id`。
+- `GET /workspaces` 通过 `workspace_memberships` 列出当前用户可访问的空间。
+- `POST /workspaces/{workspace_id}/activate` 先验证 membership，再更新当前会话的活动空间。
+- 切换后的所有业务接口继续从服务端 `Principal.workspace_id` 获取范围，不接受前端自行声明的可信租户 ID。
+- v0.2 接受同一浏览器多个标签共享最后一次活动空间的限制；出现真实并行空间需求后，再评估路径级 workspace 上下文。
+
+### Personal and team spaces
+
+- `workspaces.kind` 区分 `PERSONAL` 与 `TEAM`，但两者复用相同的 memory、检索和引用授权流水线。
+- 每个 seed 用户通过幂等 seed 获得一个确定的个人空间，且只有该用户拥有 membership。
+- 用户创建团队空间时成为 `OWNER`；邀请、移除成员和所有权转移不属于 v0.2。
+- 个人空间和团队空间之间默认不复制、不聚合 memory。
+
+### Persistent conversations
+
+- conversation 绑定 `workspace_id + user_id`，默认仅创建者可列出、读取、重命名或归档。
+- `title`、`updated_at` 与 `archived_at` 支持侧栏历史和生命周期；归档不删除审计或消息。
+- Chat 请求可以指定当前用户在活动空间内的 conversation，后续消息追加到同一 conversation。
+- memory 创建可以指定 conversation；memory、embedding outbox、审计事件与 capture 消息在同一事务中写入。
+- `messages.memory_id` 是可选的来源关联，用于在历史中呈现保存回执；它不改变 memory 的作者、可见性或事实来源。
+- conversation 详情中的引用和关联 memory 在响应前重新经过当前授权查询。历史消息不能绕过撤回、删除或空间切换。
+
+### Memory library
+
+- 记忆库仍调用现有授权 memory 接口，不维护第二份记录投影。
+- “我的记忆”增加服务端作者过滤，只返回当前用户记录。
+- “团队共享”增加服务端 `WORKSPACE` 过滤，只返回当前空间内当前用户有权访问的共享记录。
+- 原文抽屉每次通过 memory 详情接口加载；前端隐藏不是权限边界。
+
 ## Technology baseline
 
 - **Web**：Next.js App Router、React、TypeScript。
@@ -79,12 +114,12 @@ apps/api/
 | Entity | Purpose | Important fields |
 |---|---|---|
 | `users` | 测试账号和身份 | id, email, password_hash, display_name, status |
-| `workspaces` | 团队隔离边界 | id, name |
+| `workspaces` | 个人或团队隔离边界 | id, name, kind |
 | `workspace_memberships` | 用户与工作区关系 | workspace_id, user_id, role |
 | `memories` | 不可原地改写的想法 | id, author_id, workspace_id, body, visibility, created_at, supersedes_id |
 | `memory_embeddings` | 可重建的检索投影 | memory_id, model, dimensions, embedding, status |
-| `conversations` | Chatbot 会话及默认范围 | id, user_id, workspace_id, scope, created_at |
-| `messages` | 问题、回答和生成元数据 | conversation_id, role, content, model, usage |
+| `conversations` | 用户私有 Chatbot 会话及默认范围 | id, user_id, workspace_id, title, scope, updated_at, archived_at |
+| `messages` | 问题、回答、capture 关联和生成元数据 | conversation_id, role, content, memory_id, model, usage |
 | `message_citations` | 回答到原记录的可审计引用 | message_id, memory_id, excerpt |
 | `jobs` | embedding 等异步任务 | type, payload_ref, status, attempts, next_run_at |
 | `audit_events` | 分享、删除和权限相关事件 | actor_id, action, resource_id, created_at |

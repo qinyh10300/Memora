@@ -1,10 +1,10 @@
 # Memora Product Brief
 
-Status: Approved baseline
+Status: Approved baseline with v0.2 workspace extension
 
-Version: v0.1 planning baseline
+Version: v0.2 workspace and conversation shell
 
-Last updated: 2026-07-21
+Last updated: 2026-07-26
 
 ## One-line proposition
 
@@ -90,6 +90,41 @@ Memora 是一个面向个人与小团队的想法记忆库：用户快速记录�
 - 团队报告标明信息来自哪些成员和记录，不把 AI 推断表述为事实。
 - v0.1 不提供定时生成或主动推送。
 
+## v0.2 approved extension
+
+v0.2 保留 v0.1 的记录、授权检索、引用和报告语义，将单一临时对话页升级为可以持续使用的工作台。
+
+### Spaces and membership
+
+- 每个用户自动拥有一个个人空间，并可以加入多个团队空间。
+- 用户可以创建新的团队空间；第一版只有创建者 membership，不包含邀请、移除成员或所有权转移。
+- 空间是 Chat、memory、检索、报告和成员列表的硬隔离边界，默认不允许跨空间检索。
+- 用户只能看到和切换自己存在 membership 的空间。
+- 对外界面统一使用“空间”；后端继续使用 workspace 领域术语。
+
+### Persistent conversations
+
+- 每个空间可以创建多个 conversation，并在刷新或重新登录后恢复。
+- conversation 及其消息默认只属于创建用户，不因使用团队共享证据而自动共享。
+- conversation 只是交互上下文，不是 memory 文件夹或权限边界；同一授权 memory 可以被多个 conversation 引用。
+- 用户可以重命名和归档自己的 conversation，不能读取其他成员的 conversation。
+- 普通陈述和授权问答都写入当前 conversation；记录仍必须在选择可见范围后才创建。
+
+### Memory library
+
+- 工作台提供统一记忆库，并区分“我的记忆”和“团队共享”。
+- “我的记忆”展示当前用户在当前空间的私有及已共享记录。
+- “团队共享”只展示当前空间成员主动设为 `WORKSPACE` 的记录，不暗示系统能读取成员私有内容。
+- 点击记录或 AI 回答引用时，可以查看当前仍有权访问的原文、作者、时间、可见范围和补充关系。
+- 分享、取消共享、补充和删除仍只能由作者执行，权限由服务端验证。
+
+### Workspace shell
+
+- 桌面端使用可收起侧栏承载空间切换、新建 conversation、记忆库入口和 conversation 历史。
+- 移动端使用覆盖式侧栏和原文抽屉，保持主聊天输入可用。
+- 切换空间会清除未提交草稿和待确认状态，随后重新加载该空间的 conversation、成员和授权 memory。
+- Chat 输入仍统一承载记录与提问，不增加必须手动选择的“记录/问答模式”开关。
+
 ## Representative questions
 
 1. 之前我对这个商业模式的看法是什么？
@@ -110,6 +145,13 @@ Memora 是一个面向个人与小团队的想法记忆库：用户快速记录�
 - 用 AI 推断用户心理、绩效或未明确记录的经历。
 - 微服务、Kubernetes、多区域高可用或大规模商业计费系统。
 - 本地模型部署；v0.1 只保留可替换接口。
+
+## Non-goals for v0.2
+
+- 共享 conversation、公开 conversation 链接或团队共同编辑 conversation。
+- 跨空间统一搜索、跨空间报告或把一个 memory 同时发布到多个空间。
+- 团队邀请、成员移除、复杂角色、企业 SSO 和组织层级树。
+- 删除空间、转移所有权、细粒度群组或点对点分享。
 
 ## Privacy and AI processing
 
