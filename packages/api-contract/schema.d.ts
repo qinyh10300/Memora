@@ -108,6 +108,23 @@ export interface paths {
         patch: operations["update_conversation_conversations__conversation_id__patch"];
         trace?: never;
     };
+    "/drafts/refine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refine Draft */
+        post: operations["refine_draft_drafts_refine_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -172,6 +189,24 @@ export interface paths {
         put?: never;
         /** Retry Memory Processing */
         post: operations["retry_memory_processing_memories__memory_id__retry_processing_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/memories/{memory_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Memory Revisions */
+        get: operations["list_memory_revisions_memories__memory_id__revisions_get"];
+        put?: never;
+        /** Create Memory Revision */
+        post: operations["create_memory_revision_memories__memory_id__revisions_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -493,6 +528,16 @@ export interface components {
             /** Supersedes Id */
             supersedes_id?: string | null;
         };
+        /** CreateMemoryRevisionRequest */
+        CreateMemoryRevisionRequest: {
+            /** Body */
+            body: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "UPDATE_CURRENT" | "NEW_VERSION";
+        };
         /** CreateWorkspaceRequest */
         CreateWorkspaceRequest: {
             /** Name */
@@ -601,10 +646,22 @@ export interface components {
              * @enum {string}
              */
             processing_status: "PENDING" | "WAITING_CONFIGURATION" | "COMPLETED" | "FAILED";
+            /**
+             * Revision Kind
+             * @enum {string}
+             */
+            revision_kind: "ROOT" | "UPDATE_CURRENT" | "NEW_VERSION";
             /** Shared At */
             shared_at: string | null;
             /** Supersedes Id */
             supersedes_id: string | null;
+            /**
+             * Timeline Entry Id
+             * Format: uuid
+             */
+            timeline_entry_id: string;
+            /** Timeline Visible */
+            timeline_visible: boolean;
             /**
              * Visibility
              * @enum {string}
@@ -621,6 +678,28 @@ export interface components {
              * @constant
              */
             status: "not_ready";
+        };
+        /** RefineDraftRequest */
+        RefineDraftRequest: {
+            /** Instruction */
+            instruction: string;
+            /**
+             * Markdown
+             * @default
+             */
+            markdown: string;
+        };
+        /** RefineDraftResponse */
+        RefineDraftResponse: {
+            /** Assistant Message */
+            assistant_message: string;
+            /** Markdown */
+            markdown: string;
+            /**
+             * Model Status
+             * @enum {string}
+             */
+            model_status: "AVAILABLE" | "DISABLED" | "DEGRADED";
         };
         /** ReportRequest */
         ReportRequest: {
@@ -1055,6 +1134,39 @@ export interface operations {
             };
         };
     };
+    refine_draft_drafts_refine_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefineDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefineDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_health_get: {
         parameters: {
             query?: never;
@@ -1216,6 +1328,72 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_memory_revisions_memories__memory_id__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_memory_revision_memories__memory_id__revisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMemoryRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

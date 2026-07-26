@@ -456,6 +456,30 @@
         "title": "CreateMemoryRequest",
         "type": "object"
       },
+      "CreateMemoryRevisionRequest": {
+        "properties": {
+          "body": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "UPDATE_CURRENT",
+              "NEW_VERSION"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body",
+          "mode"
+        ],
+        "title": "CreateMemoryRevisionRequest",
+        "type": "object"
+      },
       "CreateWorkspaceRequest": {
         "properties": {
           "name": {
@@ -673,6 +697,15 @@
             "title": "Processing Status",
             "type": "string"
           },
+          "revision_kind": {
+            "enum": [
+              "ROOT",
+              "UPDATE_CURRENT",
+              "NEW_VERSION"
+            ],
+            "title": "Revision Kind",
+            "type": "string"
+          },
           "shared_at": {
             "anyOf": [
               {
@@ -697,6 +730,15 @@
             ],
             "title": "Supersedes Id"
           },
+          "timeline_entry_id": {
+            "format": "uuid",
+            "title": "Timeline Entry Id",
+            "type": "string"
+          },
+          "timeline_visible": {
+            "title": "Timeline Visible",
+            "type": "boolean"
+          },
           "visibility": {
             "enum": [
               "PRIVATE",
@@ -715,6 +757,9 @@
           "created_at",
           "shared_at",
           "supersedes_id",
+          "timeline_entry_id",
+          "timeline_visible",
+          "revision_kind",
           "processing_status"
         ],
         "title": "MemoryResponse",
@@ -737,6 +782,55 @@
           "service"
         ],
         "title": "ReadinessFailure",
+        "type": "object"
+      },
+      "RefineDraftRequest": {
+        "properties": {
+          "instruction": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "markdown": {
+            "default": "",
+            "maxLength": 10000,
+            "title": "Markdown",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instruction"
+        ],
+        "title": "RefineDraftRequest",
+        "type": "object"
+      },
+      "RefineDraftResponse": {
+        "properties": {
+          "assistant_message": {
+            "title": "Assistant Message",
+            "type": "string"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "model_status": {
+            "enum": [
+              "AVAILABLE",
+              "DISABLED",
+              "DEGRADED"
+            ],
+            "title": "Model Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "markdown",
+          "assistant_message",
+          "model_status"
+        ],
+        "title": "RefineDraftResponse",
         "type": "object"
       },
       "ReportRequest": {
@@ -1520,6 +1614,47 @@
         ]
       }
     },
+    "/drafts/refine": {
+      "post": {
+        "operationId": "refine_draft_drafts_refine_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefineDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefineDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refine Draft",
+        "tags": [
+          "drafts"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "health_health_get",
@@ -1815,6 +1950,104 @@
           }
         },
         "summary": "Retry Memory Processing",
+        "tags": [
+          "memories"
+        ]
+      }
+    },
+    "/memories/{memory_id}/revisions": {
+      "get": {
+        "operationId": "list_memory_revisions_memories__memory_id__revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryResponse"
+                  },
+                  "title": "Response List Memory Revisions Memories  Memory Id  Revisions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Memory Revisions",
+        "tags": [
+          "memories"
+        ]
+      },
+      "post": {
+        "operationId": "create_memory_revision_memories__memory_id__revisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMemoryRevisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Memory Revision",
         "tags": [
           "memories"
         ]
