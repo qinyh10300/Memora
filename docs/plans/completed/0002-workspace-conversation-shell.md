@@ -1,6 +1,6 @@
 # Workspace and conversation shell
 
-Status: in-progress
+Status: completed
 
 Owner: Yihua Qin and coding agent
 
@@ -79,22 +79,22 @@ Last updated: 2026-07-26
 
 ## Milestones
 
-- [ ] M1 — 产品 brief、架构说明、ADR 和本计划同步；验证：文档交叉引用和 diff 复查。
-- [ ] M2 — 多空间 API 与个人空间 seed 完成；验证：API 单元测试、跨成员激活反向测试和真实迁移。
-- [ ] M3 — 持久化多轮 conversation 与 capture 记录完成；验证：API 测试覆盖列表、详情、追加、归档、跨用户和跨空间隔离。
-- [ ] M4 — Web 工作台完成；验证：组件测试覆盖空间切换、新建/恢复对话、记忆库、来源抽屉和原有默认私有闭环。
-- [ ] M5 — 契约、完整检查和本地运行验收；验证：`make check`、`make e2e`、Docker 重建和桌面/移动浏览器检查。
+- [x] M1 — 产品 brief、架构说明、ADR 和本计划同步；验证：文档交叉引用和 diff 复查。
+- [x] M2 — 多空间 API 与个人空间 seed 完成；验证：API 单元测试、跨成员激活反向测试和真实迁移。
+- [x] M3 — 持久化多轮 conversation 与 capture 记录完成；验证：API 测试覆盖列表、详情、追加、归档、跨用户和跨空间隔离。
+- [x] M4 — Web 工作台完成；验证：组件测试覆盖空间切换、新建/恢复对话、记忆库、来源抽屉和原有默认私有闭环。
+- [x] M5 — 契约、完整检查和本地运行验收；验证：`make check`、增强后的 `make e2e`、Docker 重建和桌面/移动浏览器检查。
 
 ## Acceptance criteria
 
-- [ ] 用户能看到个人空间和自己加入的团队空间，不能发现或激活未加入的空间。
-- [ ] 切换空间后，聊天历史、成员、记忆库和后续检索全部切到同一服务端工作区边界。
-- [ ] 用户能在每个空间创建多个 conversation，刷新页面后恢复消息。
-- [ ] 记录和问答都能出现在所选 conversation 中；记录仍默认私有并且分享必须显式确认。
-- [ ] “我的记忆”只展示当前用户在当前空间的记录；“团队共享”只展示当前空间所有成员的 `WORKSPACE` 记录。
-- [ ] 点击来源或记忆记录只能打开当前用户仍有权访问的原文；取消共享或删除后立即不可读。
-- [ ] 其他用户不能通过 conversation ID、memory ID、空间 ID 或历史引用获得私有内容。
-- [ ] 桌面和 390×844 移动视口完成关键路径，浏览器控制台无错误。
+- [x] 用户能看到个人空间和自己加入的团队空间，不能发现或激活未加入的空间。
+- [x] 切换空间后，聊天历史、成员、记忆库和后续检索全部切到同一服务端工作区边界。
+- [x] 用户能在每个空间创建多个 conversation，刷新页面后恢复消息。
+- [x] 记录和问答都能出现在所选 conversation 中；记录仍默认私有并且分享必须显式确认。
+- [x] “我的记忆”只展示当前用户在当前空间的记录；“团队共享”只展示当前空间所有成员的 `WORKSPACE` 记录。
+- [x] 点击来源或记忆记录只能打开当前用户仍有权访问的原文；取消共享或删除后立即不可读。
+- [x] 其他用户不能通过 conversation ID、memory ID、空间 ID 或历史引用获得私有内容。
+- [x] 桌面和 390×844 移动视口完成关键路径，浏览器控制台无错误。
 
 ## Verification
 
@@ -109,13 +109,16 @@ Last updated: 2026-07-26
 - 新迁移仅增加 workspace 类型、conversation 生命周期字段和 message-memory 可选关联，不移动或删除现有 memory。
 - 旧 workspace 统一回填为 `TEAM`；旧 conversation 用已有 topic 回填 title，并用 created_at 回填 updated_at。
 - personal workspace 由幂等 seed 创建，不复制旧 memory；原测试工作区数据保持原位。
-- 应用回滚时优先回退镜像并保留新增列；Alembic downgrade 会删除新增 personal workspace 及其数据，只允许用于空测试环境，不作为有真实数据环境的恢复方案。
+- 应用回滚时优先回退镜像并保留新增列。Alembic downgrade 会移除 workspace 类型和 conversation/message 新字段，但不会删除 workspace 行；字段关联的信息会丢失，因此只允许用于空测试环境，不作为有真实数据环境的恢复方案。
 - 公网部署前必须先备份数据库、运行迁移和权限 smoke，再切换 Web 镜像。
 
 ## Progress log
 
 - 2026-07-26：用户批准工作区侧栏、多 conversation、个人/团队原始记忆浏览方向，并明确允许 feature 分支与多个过程提交。
 - 2026-07-26：完成现有模型、权限查询、Chat 持久化和 Web 状态机调研；创建 `codex/v0.2-workspace-shell` 分支并开始实施。
+- 2026-07-26：完成 workspace/session、conversation/message、capture 关联、删除脱敏、OpenAPI 契约和 50 个 API 测试。
+- 2026-07-26：完成桌面与移动 Web 工作台、17 个 Web 测试、生产构建和来源抽屉二次鉴权。
+- 2026-07-26：在现有 PostgreSQL 数据卷完成 `20260722_0005 -> 20260726_0006` 真实迁移，增强后的端到端权限 smoke 和桌面/390×844 浏览器验收通过。
 
 ## Decision log
 
@@ -126,4 +129,23 @@ Last updated: 2026-07-26
 
 ## Completion summary
 
-实施完成后填写。
+### Delivered
+
+- 一个用户专属个人空间、既有团队空间列表、成员校验后的显式空间切换，以及只创建 `TEAM` 空间的入口。
+- 当前用户、当前空间私有的 conversation 列表、详情、创建、重命名、归档和多轮追加。
+- capture 与 conversation 的事务性关联；memory 删除后，关联消息正文、memory 引用与授权 citation 均会脱敏或消失。
+- ChatGPT/Codex 风格暗色工作台：可收起/移动抽屉式左栏、最近对话、统一输入框、记忆库、范围提示和授权原文抽屉。
+- OpenAPI 生成客户端、API/组件权限回归测试，以及覆盖跨用户 conversation ID、跨空间、私有/共享/撤回/删除的真实端到端 smoke。
+
+### Verification evidence
+
+- `make check`：格式、lint、前后端类型检查、50 个 API 测试、17 个 Web 测试、OpenAPI 契约检查和 Next.js 生产构建全部通过。
+- `docker compose up --build --detach`：migrate 与 seed 均以状态 0 退出，API 与 Web healthcheck 通过。
+- `make e2e`：多空间、持久对话、默认私有、显式分享、跨用户隔离、撤回、删除脱敏和 embedding 未配置降级路径通过。
+- 浏览器：桌面与 390×844 移动视口实际完成空间切换、记忆库、授权原文和移动侧栏检查；页面无横向溢出，应用控制台无错误。
+
+### Remaining boundaries
+
+- v0.2 不包含邀请成员、共享 conversation、跨空间检索、空间删除或多标签页并行活动空间。
+- 报告结果继续使用既有独立报告接口，不写入 conversation 历史；本阶段持久化范围是 capture 和 Chat 问答。
+- 当前本地数据库保留开发阶段已有的 conversation；新增 e2e conversation 会在测试结束时归档，新增 memory 会清理。

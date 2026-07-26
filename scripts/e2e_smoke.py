@@ -12,7 +12,13 @@ from datetime import UTC, datetime, timedelta
 from http.cookiejar import CookieJar
 from typing import Any
 from urllib.error import HTTPError
-from urllib.request import HTTPCookieProcessor, OpenerDirector, ProxyHandler, Request, build_opener
+from urllib.request import (
+    HTTPCookieProcessor,
+    OpenerDirector,
+    ProxyHandler,
+    Request,
+    build_opener,
+)
 
 
 def build_client() -> OpenerDirector:
@@ -49,7 +55,9 @@ def expect_status(
     except HTTPError as error:
         if error.code == expected:
             return None
-        raise AssertionError(f"{method} {url} 返回 {error.code}，期望 {expected}") from error
+        raise AssertionError(
+            f"{method} {url} 返回 {error.code}，期望 {expected}"
+        ) from error
     if status != expected:
         raise AssertionError(f"{method} {url} 返回 {status}，期望 {expected}")
     return body
@@ -64,6 +72,9 @@ def main() -> int:
     alex = build_client()
     blair = build_client()
     created_id: str | None = None
+    alex_conversation_id: str | None = None
+    blair_conversation_id: str | None = None
+    team_workspace_id: str | None = None
 
     expect_status(alex, "GET", f"{public_url}/health", 200)
     expect_status(alex, "GET", f"{public_url}/api/health", 200)
@@ -83,13 +94,86 @@ def main() -> int:
     )
 
     try:
+        alex_workspaces = expect_status(
+            alex,
+            "GET",
+            f"{public_url}/api/workspaces",
+            200,
+        )
+        blair_workspaces = expect_status(
+            blair,
+            "GET",
+            f"{public_url}/api/workspaces",
+            200,
+        )
+        alex_personal = next(
+            (
+                workspace
+                for workspace in alex_workspaces
+                if workspace["kind"] == "PERSONAL"
+            ),
+            None,
+        )
+        alex_team = next(
+            (workspace for workspace in alex_workspaces if workspace["kind"] == "TEAM"),
+            None,
+        )
+        if alex_personal is None or alex_team is None:
+            raise AssertionError("Alex 没有同时获得个人空间和团队空间")
+        if not alex_team["is_current"]:
+            raise AssertionError("新登录会话没有进入已有团队空间")
+        if (
+            len(
+                [
+                    workspace
+                    for workspace in blair_workspaces
+                    if workspace["kind"] == "PERSONAL"
+                ]
+            )
+            != 1
+        ):
+            raise AssertionError("Blair 没有且仅有一个个人空间")
+        team_workspace_id = str(alex_team["id"])
+
+        alex_conversation = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/conversations",
+            201,
+            {"title": "E2E 持久对话"},
+        )
+        alex_conversation_id = str(alex_conversation["id"])
+        blair_conversation = expect_status(
+            blair,
+            "POST",
+            f"{public_url}/api/conversations",
+            201,
+            {"title": "E2E 授权对话"},
+        )
+        blair_conversation_id = str(blair_conversation["id"])
+        expect_status(
+            blair,
+            "GET",
+            f"{public_url}/api/conversations/{alex_conversation_id}",
+            404,
+        )
+        expect_status(
+            blair,
+            "POST",
+            f"{public_url}/api/workspaces/{alex_personal['id']}/activate",
+            404,
+        )
+
         marker = uuid.uuid4().hex
         created = expect_status(
             alex,
             "POST",
             f"{public_url}/api/memories",
             201,
-            {"body": f"M3 E2E 权限记录 {marker}"},
+            {
+                "body": f"v0.2 E2E 权限记录 {marker}",
+                "conversation_id": alex_conversation_id,
+            },
         )
         created_id = str(created["id"])
         if created["visibility"] != "PRIVATE":
@@ -107,10 +191,47 @@ def main() -> int:
                 "topic": marker,
                 "scope": "PERSONAL",
                 "evidence_limit": 8,
+                "conversation_id": alex_conversation_id,
             },
         )
         if [item["memory_id"] for item in personal_chat["citations"]] != [created_id]:
             raise AssertionError("个人 Chat 没有引用自己的私有记录")
+
+        restored = expect_status(
+            alex,
+            "GET",
+            f"{public_url}/api/conversations/{alex_conversation_id}",
+            200,
+        )
+        if restored["message_count"] != 4:
+            raise AssertionError("记录与问答没有追加到同一个持久对话")
+        if restored["messages"][0]["memory"]["id"] != created_id:
+            raise AssertionError("对话记录没有关联原始 memory")
+        if restored["messages"][3]["citations"][0]["memory_id"] != created_id:
+            raise AssertionError("恢复的回答没有保留可授权引用")
+
+        expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/workspaces/{alex_personal['id']}/activate",
+            200,
+        )
+        personal_conversations = expect_status(
+            alex,
+            "GET",
+            f"{public_url}/api/conversations",
+            200,
+        )
+        if any(item["id"] == alex_conversation_id for item in personal_conversations):
+            raise AssertionError("团队空间 conversation 泄露到个人空间")
+        expect_status(alex, "GET", f"{public_url}/api/memories/{created_id}", 404)
+        expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/workspaces/{team_workspace_id}/activate",
+            200,
+        )
+
         now = datetime.now(UTC)
         report_range = {
             "created_from": (now - timedelta(days=1)).isoformat(),
@@ -149,6 +270,7 @@ def main() -> int:
                 "scope": "COLLEAGUE",
                 "author_id": created["author"]["id"],
                 "evidence_limit": 8,
+                "conversation_id": blair_conversation_id,
             },
         )
         if private_chat["status"] != "NO_EVIDENCE" or private_chat["citations"]:
@@ -185,7 +307,9 @@ def main() -> int:
         if marker not in visible_to_blair["body"]:
             raise AssertionError("共享记录正文与创建内容不一致")
         shared_search = expect_status(blair, "POST", search_url, 200, {"q": marker})
-        if [result["memory"]["id"] for result in shared_search["results"]] != [created_id]:
+        if [result["memory"]["id"] for result in shared_search["results"]] != [
+            created_id
+        ]:
             raise AssertionError("关键词检索没有返回已授权的共享记录")
         shared_chat = expect_status(
             blair,
@@ -198,6 +322,7 @@ def main() -> int:
                 "scope": "COLLEAGUE",
                 "author_id": created["author"]["id"],
                 "evidence_limit": 8,
+                "conversation_id": blair_conversation_id,
             },
         )
         if [item["memory_id"] for item in shared_chat["citations"]] != [created_id]:
@@ -246,6 +371,7 @@ def main() -> int:
                 "scope": "COLLEAGUE",
                 "author_id": created["author"]["id"],
                 "evidence_limit": 8,
+                "conversation_id": blair_conversation_id,
             },
         )
         if unshared_chat["status"] != "NO_EVIDENCE" or unshared_chat["citations"]:
@@ -276,16 +402,56 @@ def main() -> int:
                 break
             time.sleep(0.5)
         else:
-            raise AssertionError("未配置 embedding 时 worker 没有进入 WAITING_CONFIGURATION")
+            raise AssertionError(
+                "未配置 embedding 时 worker 没有进入 WAITING_CONFIGURATION"
+            )
         expect_status(alex, "DELETE", f"{public_url}/api/memories/{created_id}", 204)
         expect_status(alex, "GET", f"{public_url}/api/memories/{created_id}", 404)
+        redacted = expect_status(
+            alex,
+            "GET",
+            f"{public_url}/api/conversations/{alex_conversation_id}",
+            200,
+        )
+        if marker in json.dumps(redacted["messages"], ensure_ascii=False):
+            raise AssertionError("memory 删除后 conversation 仍残留私有正文或引用")
+        if redacted["messages"][0]["status"] != "REDACTED":
+            raise AssertionError("memory 删除后 capture 消息没有标记为 REDACTED")
         created_id = None
     finally:
+        if team_workspace_id is not None:
+            with suppress(AssertionError, HTTPError):
+                expect_status(
+                    alex,
+                    "POST",
+                    f"{public_url}/api/workspaces/{team_workspace_id}/activate",
+                    200,
+                )
         if created_id is not None:
             with suppress(AssertionError, HTTPError):
-                expect_status(alex, "DELETE", f"{public_url}/api/memories/{created_id}", 204)
+                expect_status(
+                    alex, "DELETE", f"{public_url}/api/memories/{created_id}", 204
+                )
+        if alex_conversation_id is not None:
+            with suppress(AssertionError, HTTPError):
+                expect_status(
+                    alex,
+                    "PATCH",
+                    f"{public_url}/api/conversations/{alex_conversation_id}",
+                    200,
+                    {"archived": True},
+                )
+        if blair_conversation_id is not None:
+            with suppress(AssertionError, HTTPError):
+                expect_status(
+                    blair,
+                    "PATCH",
+                    f"{public_url}/api/conversations/{blair_conversation_id}",
+                    200,
+                    {"archived": True},
+                )
 
-    print(f"Memora M6 第一版关键用户路径通过：{public_url}")
+    print(f"Memora v0.2 多空间、持久对话与权限关键路径通过：{public_url}")
     return 0
 
 
