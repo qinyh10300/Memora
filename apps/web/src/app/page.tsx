@@ -22,17 +22,32 @@ type Workspace = components["schemas"]["WorkspaceResponse"];
 type Memory = components["schemas"]["MemoryResponse"];
 type EvidenceCitation = components["schemas"]["EvidenceCitationResponse"];
 type WebCitation = components["schemas"]["WebCitationResponse"];
+type DraftModel = components["schemas"]["DraftModelResponse"];
 type DraftImageInput = components["schemas"]["DraftImageInput"];
+type Asset = components["schemas"]["AssetResponse"];
+type AssetMediaType = components["schemas"]["CreateAssetRequest"]["media_type"];
 type WebSearchMode = components["schemas"]["DraftChatRequest"]["web_search"];
 type RevisionMode = components["schemas"]["CreateMemoryRevisionRequest"]["mode"];
 type AppView = "CAPTURE" | "LIBRARY";
 
 type DraftImageAttachment = DraftImageInput & {
   id: string;
+  assetId: string;
+  markdownUrl: string;
   previewUrl: string;
 };
 
 type DraftImagePreview = Pick<DraftImageAttachment, "id" | "name" | "previewUrl">;
+
+type DraftDocumentAttachment = {
+  id: string;
+  assetId: string;
+  name: string;
+  mediaType: AssetMediaType;
+  sizeBytes: number;
+};
+
+type DraftDocumentPreview = Pick<DraftDocumentAttachment, "id" | "name" | "mediaType">;
 
 type DraftMessage = {
   id: string;
@@ -42,15 +57,24 @@ type DraftMessage = {
   citations?: EvidenceCitation[];
   webCitations?: WebCitation[];
   images?: DraftImagePreview[];
+  attachments?: DraftDocumentPreview[];
 };
 
 const MAX_DRAFT_IMAGES = 3;
 const MAX_DRAFT_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_DRAFT_IMAGE_TOTAL_BYTES = 16 * 1024 * 1024;
+const MAX_DRAFT_DOCUMENTS = 3;
+const MAX_DRAFT_PDF_BYTES = 20 * 1024 * 1024;
 const ACCEPTED_DRAFT_IMAGE_TYPES = new Set<DraftImageInput["media_type"]>([
   "image/png",
   "image/jpeg",
   "image/webp",
+]);
+const ACCEPTED_ASSET_TYPES = new Set<AssetMediaType>([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "application/pdf",
 ]);
 const IMAGE_ONLY_INSTRUCTION = "请读取这些图片，提取其中的文字，并整理到右侧 Markdown。";
 const AUTO_WEB_SEARCH_MARKERS = [
@@ -100,30 +124,78 @@ function willSearchWeb(instruction: string, mode: WebSearchMode) {
   return AUTO_WEB_SEARCH_MARKERS.some((marker) => normalized.includes(marker));
 }
 
-function readImageAttachment(file: File): Promise<DraftImageAttachment> {
+function modelSupports(
+  model: DraftModel | undefined,
+  capability: DraftModel["capabilities"][number],
+) {
+  return !model || model.capabilities.includes(capability);
+}
+
+function base64FromDataUrl(value: string) {
+  const commaIndex = value.indexOf(",");
+  if (commaIndex < 0) throw new Error("file_read_failed");
+  return value.slice(commaIndex + 1);
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("image_read_failed"));
+    reader.onerror = () => reject(new Error("file_read_failed"));
     reader.onload = () => {
       if (typeof reader.result !== "string") {
-        reject(new Error("image_read_failed"));
+        reject(new Error("file_read_failed"));
         return;
       }
-      const commaIndex = reader.result.indexOf(",");
-      if (commaIndex < 0) {
-        reject(new Error("image_read_failed"));
-        return;
-      }
-      resolve({
-        id: nextId("image"),
-        name: file.name || "未命名图片",
-        media_type: file.type as DraftImageInput["media_type"],
-        data: reader.result.slice(commaIndex + 1),
-        previewUrl: reader.result,
-      });
+      resolve(reader.result);
     };
     reader.readAsDataURL(file);
   });
+}
+
+async function uploadAsset(file: File, data: string): Promise<Asset> {
+  const { data: asset, response } = await api.POST("/assets", {
+    body: {
+      name: file.name || "未命名附件",
+      media_type: file.type as AssetMediaType,
+      data,
+    },
+  });
+  if (!asset || !response.ok) throw new Error("asset_upload_failed");
+  return asset;
+}
+
+async function readImageAttachment(file: File): Promise<DraftImageAttachment> {
+  const previewUrl = await readFileAsDataUrl(file);
+  const data = base64FromDataUrl(previewUrl);
+  const asset = await uploadAsset(file, data);
+  if (!asset.markdown_url) throw new Error("asset_upload_failed");
+  return {
+    id: nextId("image"),
+    assetId: asset.id,
+    markdownUrl: asset.markdown_url,
+    name: asset.name,
+    media_type: asset.media_type as DraftImageInput["media_type"],
+    data,
+    previewUrl,
+  };
+}
+
+async function readDocumentAttachment(file: File): Promise<DraftDocumentAttachment> {
+  const dataUrl = await readFileAsDataUrl(file);
+  const asset = await uploadAsset(file, base64FromDataUrl(dataUrl));
+  return {
+    id: nextId("attachment"),
+    assetId: asset.id,
+    name: asset.name,
+    mediaType: asset.media_type,
+    sizeBytes: asset.size_bytes,
+  };
+}
+
+function appendMarkdownImage(markdown: string, image: DraftImageAttachment) {
+  const alt = image.name.replace(/[\]\n\r]/g, " ").trim() || "图片";
+  const imageMarkdown = `![${alt}](${image.markdownUrl})`;
+  return markdown.trim() ? `${markdown.replace(/\s*$/, "")}\n\n${imageMarkdown}` : imageMarkdown;
 }
 
 function formatDateTime(value: string) {
@@ -186,6 +258,60 @@ function memoryExcerpt(body: string) {
     .replace(/\s+/g, " ")
     .trim();
   return normalized.length > 72 ? `${normalized.slice(0, 71)}…` : normalized;
+}
+
+function safeMarkdownImageSrc(value: string) {
+  if (value.startsWith("/api/assets/")) return value;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function MarkdownPreview({ value }: { value: string }) {
+  const blocks = value.trim() ? value.trim().split(/\n{2,}/) : [];
+  if (!blocks.length) {
+    return (
+      <div className="markdown-preview is-empty">
+        <span>预览会显示 Markdown 图片和正文</span>
+      </div>
+    );
+  }
+  return (
+    <div className="markdown-preview" aria-label="Markdown 预览">
+      {blocks.map((block, index) => {
+        const image = block.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+        if (image) {
+          const src = safeMarkdownImageSrc(image[2].trim());
+          return src ? (
+            <figure key={`${index}-${src}`}>
+              <Image
+                src={src}
+                alt={image[1].trim() || "Markdown 图片"}
+                width={640}
+                height={360}
+                unoptimized
+              />
+              {image[1].trim() ? <figcaption>{image[1].trim()}</figcaption> : null}
+            </figure>
+          ) : (
+            <p key={index}>{block}</p>
+          );
+        }
+        const heading = block.match(/^(#{1,3})\s+(.+)$/);
+        if (heading) {
+          const level = heading[1].length;
+          const text = heading[2].trim();
+          if (level === 1) return <h1 key={index}>{text}</h1>;
+          if (level === 2) return <h2 key={index}>{text}</h2>;
+          return <h3 key={index}>{text}</h3>;
+        }
+        return <p key={index}>{block}</p>;
+      })}
+    </div>
+  );
 }
 
 function Logo() {
@@ -448,10 +574,13 @@ function CaptureWorkspace({
   searching,
   saving,
   savedBody,
+  modelOptions,
+  selectedModelId,
   onDraftChange,
   onRefine,
   onSave,
   onReset,
+  onModelChange,
   onOpenCitation,
 }: {
   draft: string;
@@ -460,18 +589,24 @@ function CaptureWorkspace({
   searching: boolean;
   saving: boolean;
   savedBody: string | null;
+  modelOptions: DraftModel[];
+  selectedModelId: string | null;
   onDraftChange: (value: string) => void;
   onRefine: (
     instruction: string,
     images: DraftImageAttachment[],
+    documents: DraftDocumentAttachment[],
     webSearch: WebSearchMode,
+    modelId: string | null,
   ) => Promise<void>;
   onSave: () => Promise<void>;
   onReset: () => void;
+  onModelChange: (modelId: string | null) => void;
   onOpenCitation: (memoryId: string) => Promise<void>;
 }) {
   const [instruction, setInstruction] = useState("");
   const [attachments, setAttachments] = useState<DraftImageAttachment[]>([]);
+  const [documents, setDocuments] = useState<DraftDocumentAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [webSearchMode, setWebSearchMode] = useState<WebSearchMode>("AUTO");
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -479,6 +614,9 @@ function CaptureWorkspace({
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const normalizedDraft = draft.trim();
   const isSaved = Boolean(normalizedDraft && normalizedDraft === savedBody);
+  const selectedModel = modelOptions.find((model) => model.id === selectedModelId);
+  const canUseImages = modelSupports(selectedModel, "vision");
+  const canUseWeb = modelSupports(selectedModel, "web_search");
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
@@ -500,16 +638,28 @@ function CaptureWorkspace({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = instruction.trim();
-    if ((!value && attachments.length === 0) || refining) return;
-    const message = value || IMAGE_ONLY_INSTRUCTION;
+    if ((!value && attachments.length === 0 && documents.length === 0) || refining) return;
+    const message =
+      value ||
+      (documents.length && !attachments.length
+        ? "请阅读这些 PDF，把与当前想法相关的内容整理到右侧 Markdown。"
+        : IMAGE_ONLY_INSTRUCTION);
     const selectedAttachments = attachments;
+    const selectedDocuments = documents;
     setInstruction("");
     setAttachments([]);
+    setDocuments([]);
     setAttachmentError("");
     if (imageInputRef.current) imageInputRef.current.value = "";
     const selectedWebSearchMode = webSearchMode;
     if (selectedWebSearchMode === "REQUIRED") setWebSearchMode("AUTO");
-    await onRefine(message, selectedAttachments, selectedWebSearchMode);
+    await onRefine(
+      message,
+      selectedAttachments,
+      selectedDocuments,
+      selectedWebSearchMode,
+      selectedModelId,
+    );
   }
 
   function composerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -519,24 +669,51 @@ function CaptureWorkspace({
     }
   }
 
+  function changeModel(modelId: string | null) {
+    const nextModel = modelOptions.find((model) => model.id === modelId);
+    if (attachments.length && !modelSupports(nextModel, "vision")) {
+      setAttachments([]);
+      setAttachmentError("已切换到不支持图片的模型，待发送图片已移除。");
+    } else {
+      setAttachmentError("");
+    }
+    if (!modelSupports(nextModel, "web_search")) {
+      setWebSearchMode("DISABLED");
+    }
+    onModelChange(modelId);
+  }
+
   // Returns an error message, or "" when the batch may be attached.
   function validateFiles(files: File[]) {
-    const availableSlots = MAX_DRAFT_IMAGES - attachments.length;
-    if (availableSlots <= 0 || files.length > availableSlots) {
+    const imageFiles = files.filter((file) =>
+      ACCEPTED_DRAFT_IMAGE_TYPES.has(file.type as DraftImageInput["media_type"]),
+    );
+    const pdfFiles = files.filter((file) => file.type === "application/pdf");
+    if (imageFiles.length && !canUseImages) {
+      return "当前模型不支持图片，请先切换支持图片的模型。";
+    }
+    if (imageFiles.length + pdfFiles.length !== files.length) {
+      return "只支持 PNG、JPEG、WEBP 图片和 PDF。";
+    }
+    const availableImageSlots = MAX_DRAFT_IMAGES - attachments.length;
+    if (availableImageSlots < imageFiles.length) {
       return `每条消息最多上传 ${MAX_DRAFT_IMAGES} 张图片。`;
     }
-    const hasInvalidType = files.some(
-      (file) => !ACCEPTED_DRAFT_IMAGE_TYPES.has(file.type as DraftImageInput["media_type"]),
-    );
-    if (hasInvalidType) return "只支持 PNG、JPEG 和 WEBP 图片。";
-    if (files.some((file) => file.size > MAX_DRAFT_IMAGE_BYTES)) {
+    const availableDocumentSlots = MAX_DRAFT_DOCUMENTS - documents.length;
+    if (availableDocumentSlots < pdfFiles.length) {
+      return `每条消息最多上传 ${MAX_DRAFT_DOCUMENTS} 个 PDF。`;
+    }
+    if (imageFiles.some((file) => file.size > MAX_DRAFT_IMAGE_BYTES)) {
       return "单张图片不能超过 8 MiB。";
+    }
+    if (pdfFiles.some((file) => file.size > MAX_DRAFT_PDF_BYTES)) {
+      return "单个 PDF 不能超过 20 MiB。";
     }
     const currentBytes = attachments.reduce(
       (total, attachment) => total + Math.ceil((attachment.data.length * 3) / 4),
       0,
     );
-    const incomingBytes = files.reduce((total, file) => total + file.size, 0);
+    const incomingBytes = imageFiles.reduce((total, file) => total + file.size, 0);
     if (currentBytes + incomingBytes > MAX_DRAFT_IMAGE_TOTAL_BYTES) {
       return "每条消息的图片总大小不能超过 16 MiB。";
     }
@@ -551,10 +728,20 @@ function CaptureWorkspace({
       return;
     }
     try {
-      const nextAttachments = await Promise.all(files.map(readImageAttachment));
+      const imageFiles = files.filter((file) =>
+        ACCEPTED_DRAFT_IMAGE_TYPES.has(file.type as DraftImageInput["media_type"]),
+      );
+      const pdfFiles = files.filter((file) => file.type === "application/pdf");
+      const nextAttachments = await Promise.all(imageFiles.map(readImageAttachment));
+      const nextDocuments = await Promise.all(pdfFiles.map(readDocumentAttachment));
+      if (nextAttachments.length) {
+        const nextDraft = nextAttachments.reduce(appendMarkdownImage, draft);
+        onDraftChange(nextDraft);
+      }
       setAttachments((current) => [...current, ...nextAttachments]);
+      setDocuments((current) => [...current, ...nextDocuments]);
     } catch {
-      setAttachmentError("图片读取失败，请重新选择。");
+      setAttachmentError("附件上传失败，请重新选择。");
     }
   }
 
@@ -611,6 +798,16 @@ function CaptureWorkspace({
                           unoptimized
                           width={180}
                         />
+                      ))}
+                    </div>
+                  ) : null}
+                  {message.attachments?.length ? (
+                    <div className="message-attachments" aria-label="消息附件">
+                      {message.attachments.map((attachment) => (
+                        <span key={attachment.id}>
+                          <LibraryIcon />
+                          {attachment.name}
+                        </span>
                       ))}
                     </div>
                   ) : null}
@@ -673,8 +870,8 @@ function CaptureWorkspace({
 
         <div className="composer-wrap">
           <form className="composer" onSubmit={submit}>
-            {attachments.length ? (
-              <div className="pending-images" aria-label="待发送图片">
+            {attachments.length || documents.length ? (
+              <div className="pending-images" aria-label="待发送附件">
                 {attachments.map((image) => (
                   <div key={image.id}>
                     <Image
@@ -698,16 +895,61 @@ function CaptureWorkspace({
                     <span>{image.name}</span>
                   </div>
                 ))}
+                {documents.map((document) => (
+                  <div className="pending-document" key={document.id}>
+                    <LibraryIcon />
+                    <button
+                      type="button"
+                      aria-label={`移除附件 ${document.name}`}
+                      onClick={() =>
+                        setDocuments((current) =>
+                          current.filter((attachment) => attachment.id !== document.id),
+                        )
+                      }
+                    >
+                      <CloseIcon />
+                    </button>
+                    <span>{document.name}</span>
+                  </div>
+                ))}
               </div>
             ) : null}
             <div className="composer-tools">
+              {modelOptions.length ? (
+                <label className="model-control">
+                  <SparkleIcon />
+                  <select
+                    aria-label="模型"
+                    value={selectedModelId ?? ""}
+                    onChange={(event) => changeModel(event.target.value || null)}
+                    disabled={refining}
+                  >
+                    {modelOptions.map((model) => (
+                      <option value={model.id} key={model.id}>
+                        {model.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <span className="model-unavailable">AI 未配置</span>
+              )}
               <label className={`search-mode-control is-${webSearchMode.toLowerCase()}`}>
                 <GlobeIcon />
                 <select
                   aria-label="联网模式"
                   value={webSearchMode}
-                  onChange={(event) => setWebSearchMode(event.target.value as WebSearchMode)}
-                  disabled={refining}
+                  onChange={(event) => {
+                    const nextMode = event.target.value as WebSearchMode;
+                    if (nextMode !== "DISABLED" && !canUseWeb) {
+                      setAttachmentError("当前模型不支持联网，请切换模型或关闭联网。");
+                      setWebSearchMode("DISABLED");
+                      return;
+                    }
+                    setAttachmentError("");
+                    setWebSearchMode(nextMode);
+                  }}
+                  disabled={refining || !canUseWeb}
                 >
                   <option value="AUTO">自动联网</option>
                   <option value="REQUIRED">本轮联网</option>
@@ -715,11 +957,13 @@ function CaptureWorkspace({
                 </select>
               </label>
               <span>
-                {webSearchMode === "AUTO"
-                  ? "需要最新信息时自动搜索"
-                  : webSearchMode === "REQUIRED"
-                    ? "发送后恢复自动"
-                    : "只使用对话与个人记忆"}
+                {!canUseWeb
+                  ? "当前模型不支持联网"
+                  : webSearchMode === "AUTO"
+                    ? "需要最新信息时自动搜索"
+                    : webSearchMode === "REQUIRED"
+                      ? "发送后恢复自动"
+                      : "只使用对话与个人记忆"}
               </span>
             </div>
             <div className="composer-row">
@@ -727,19 +971,27 @@ function CaptureWorkspace({
                 ref={imageInputRef}
                 className="image-input"
                 type="file"
-                accept="image/png,image/jpeg,image/webp"
+                accept={Array.from(ACCEPTED_ASSET_TYPES).join(",")}
                 multiple
-                aria-label="选择图片"
+                aria-label="选择图片或 PDF"
                 onChange={(event) => void selectImages(event)}
-                disabled={refining || attachments.length >= MAX_DRAFT_IMAGES}
+                disabled={
+                  refining ||
+                  (attachments.length >= MAX_DRAFT_IMAGES &&
+                    documents.length >= MAX_DRAFT_DOCUMENTS)
+                }
               />
               <button
                 className="attach-button"
                 type="button"
-                aria-label="上传图片"
-                title="上传图片"
+                aria-label="上传图片或 PDF"
+                title="上传图片或 PDF"
                 onClick={() => imageInputRef.current?.click()}
-                disabled={refining || attachments.length >= MAX_DRAFT_IMAGES}
+                disabled={
+                  refining ||
+                  (attachments.length >= MAX_DRAFT_IMAGES &&
+                    documents.length >= MAX_DRAFT_DOCUMENTS)
+                }
               >
                 <AttachmentIcon />
               </button>
@@ -758,7 +1010,10 @@ function CaptureWorkspace({
                 className="send-button"
                 type="submit"
                 aria-label="发送"
-                disabled={(!instruction.trim() && attachments.length === 0) || refining}
+                disabled={
+                  (!instruction.trim() && attachments.length === 0 && documents.length === 0) ||
+                  refining
+                }
               >
                 <SendIcon />
               </button>
@@ -769,7 +1024,7 @@ function CaptureWorkspace({
               {attachmentError}
             </p>
           ) : null}
-          <p>Enter 发送 · Shift + Enter 换行 · 可直接粘贴图片 · 对话不会自动保存</p>
+          <p>Enter 发送 · Shift + Enter 换行 · 可直接粘贴图片 · PDF 仅作本轮上下文</p>
         </div>
       </section>
 
@@ -790,14 +1045,17 @@ function CaptureWorkspace({
             </span>
           </div>
         </header>
-        <textarea
-          className="markdown-editor"
-          aria-label="Markdown 草稿"
-          value={draft}
-          onChange={(event) => onDraftChange(event.target.value)}
-          placeholder={"# 想法标题\n\n你的 Markdown 草稿会出现在这里。"}
-          spellCheck={false}
-        />
+        <div className="markdown-editor-grid">
+          <textarea
+            className="markdown-editor"
+            aria-label="Markdown 草稿"
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value)}
+            placeholder={"# 想法标题\n\n你的 Markdown 草稿会出现在这里。"}
+            spellCheck={false}
+          />
+          <MarkdownPreview value={draft} />
+        </div>
         <footer className="draft-footer">
           <div>
             <span>{draft.length.toLocaleString("zh-CN")} 字符</span>
@@ -979,7 +1237,7 @@ function MemoryDetail({
         </button>
       </header>
 
-      <div className="detail-editor-wrap">
+      <div className="detail-editor-wrap markdown-editor-grid">
         <textarea
           className="markdown-editor detail-editor"
           aria-label="记忆 Markdown"
@@ -987,6 +1245,7 @@ function MemoryDetail({
           onChange={(event) => onMarkdownChange(event.target.value)}
           spellCheck={false}
         />
+        <MarkdownPreview value={markdown} />
       </div>
 
       <div className="detail-tools">
@@ -1077,6 +1336,8 @@ export default function HomePage() {
   const [refiningDraft, setRefiningDraft] = useState(false);
   const [searchingWeb, setSearchingWeb] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [modelOptions, setModelOptions] = useState<DraftModel[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
 
   const [refiningMemory, setRefiningMemory] = useState(false);
   const [savingMode, setSavingMode] = useState<RevisionMode | null>(null);
@@ -1161,10 +1422,24 @@ export default function HomePage() {
         }
         setUser(resolvedUser);
         setSessionError("");
+        const modelResult = await api.GET("/drafts/models");
+        if (modelResult.data && modelResult.response.ok) {
+          setModelOptions(modelResult.data);
+          setSelectedModelId(
+            modelResult.data.find((model: DraftModel) => model.is_default)?.id ??
+              modelResult.data[0]?.id ??
+              null,
+          );
+        } else {
+          setModelOptions([]);
+          setSelectedModelId(null);
+        }
         await loadMemories(resolvedUser.id);
       } catch {
         setSessionError("无法进入个人空间，请刷新后重试。");
         setUser(null);
+        setModelOptions([]);
+        setSelectedModelId(null);
       } finally {
         setBooting(false);
       }
@@ -1213,13 +1488,16 @@ export default function HomePage() {
   async function refineCapture(
     instruction: string,
     images: DraftImageAttachment[],
+    documents: DraftDocumentAttachment[],
     webSearch: WebSearchMode,
+    modelId: string | null,
   ) {
     const userMessage: DraftMessage = {
       id: nextId("user"),
       role: "USER",
       content: instruction,
       images: images.map(({ id, name, previewUrl }) => ({ id, name, previewUrl })),
+      attachments: documents.map(({ id, name, mediaType }) => ({ id, name, mediaType })),
     };
     const priorConversation = messages
       .filter((message) => message.id !== "welcome")
@@ -1230,42 +1508,71 @@ export default function HomePage() {
           role: userMessage.role,
           content: userMessage.content,
           images: images.map(({ name, media_type, data }) => ({ name, media_type, data })),
+          attachments: [...images, ...documents].map((attachment) => ({
+            asset_id: attachment.assetId,
+          })),
         }
-      : { role: userMessage.role, content: userMessage.content };
+      : {
+          role: userMessage.role,
+          content: userMessage.content,
+          ...(documents.length
+            ? {
+                attachments: documents.map((attachment) => ({
+                  asset_id: attachment.assetId,
+                })),
+              }
+            : {}),
+        };
     const conversation = [...priorConversation, currentTurn];
     setMessages((current) => [...current, userMessage]);
     setRefiningDraft(true);
     setSearchingWeb(willSearchWeb(instruction, webSearch));
     try {
       const { data, response } = await api.POST("/drafts/chat", {
-        body: { markdown: draft, messages: conversation, web_search: webSearch },
+        body: {
+          markdown: draft,
+          messages: conversation,
+          web_search: webSearch,
+          ...(modelId ? { model_id: modelId } : {}),
+        },
       });
       if (!data || !response.ok) throw new Error("draft_chat_failed");
       setDraft(data.markdown);
+      const savedMemory = data.saved_memory;
+      if (savedMemory) {
+        setSavedBody(savedMemory.body);
+        setMemories((current) => [
+          savedMemory,
+          ...current.filter((memory) => memory.id !== savedMemory.id),
+        ]);
+      }
       setMessages((current) => [
         ...current,
         {
           id: nextId("assistant"),
           role: "ASSISTANT",
           content: data.assistant_message,
-          meta:
-            data.web_search_status === "AVAILABLE"
-              ? data.draft_changed
-                ? `已联网 · ${data.web_citations.length} 个来源 · Markdown 已同步`
-                : `已联网 · ${data.web_citations.length} 个来源 · Markdown 未改变`
-              : data.web_search_status === "DEGRADED"
-                ? "联网失败 · 草稿已安全保留"
-                : data.web_search_status === "DISABLED" && webSearch !== "DISABLED"
-                  ? "联网能力未启用 · 草稿已安全保留"
-                  : data.model_status === "AVAILABLE"
-                    ? data.draft_changed
-                      ? "右侧 Markdown 已同步"
-                      : data.citations.length
-                        ? `引用 ${data.citations.length} 条个人记忆`
-                        : "已回答，Markdown 未改变"
-                    : data.model_status === "DISABLED"
-                      ? "基础草稿模式"
-                      : "草稿已安全保留",
+          meta: savedMemory
+            ? "已自动保存为我的记忆"
+            : data.tool_events?.find((event) => event.name === "save_memory")?.status === "REJECTED"
+              ? "保存工具已拒绝 · 需要明确保存指令"
+              : data.web_search_status === "AVAILABLE"
+                ? data.draft_changed
+                  ? `已联网 · ${data.web_citations.length} 个来源 · Markdown 已同步`
+                  : `已联网 · ${data.web_citations.length} 个来源 · Markdown 未改变`
+                : data.web_search_status === "DEGRADED"
+                  ? "联网失败 · 草稿已安全保留"
+                  : data.web_search_status === "DISABLED" && webSearch !== "DISABLED"
+                    ? "联网能力未启用 · 草稿已安全保留"
+                    : data.model_status === "AVAILABLE"
+                      ? data.draft_changed
+                        ? "右侧 Markdown 已同步"
+                        : data.citations.length
+                          ? `引用 ${data.citations.length} 条个人记忆`
+                          : "已回答，Markdown 未改变"
+                      : data.model_status === "DISABLED"
+                        ? "基础草稿模式"
+                        : "草稿已安全保留",
           citations: data.citations,
           webCitations: data.web_citations,
         },
@@ -1412,6 +1719,8 @@ export default function HomePage() {
     await api.POST("/auth/logout");
     setUser(null);
     setMemories([]);
+    setModelOptions([]);
+    setSelectedModelId(null);
     setSelectedMemory(null);
     resetDraft();
   }
@@ -1496,10 +1805,13 @@ export default function HomePage() {
               searching={searchingWeb}
               saving={savingDraft}
               savedBody={savedBody}
+              modelOptions={modelOptions}
+              selectedModelId={selectedModelId}
               onDraftChange={setDraft}
               onRefine={refineCapture}
               onSave={saveDraft}
               onReset={resetDraft}
+              onModelChange={setSelectedModelId}
               onOpenCitation={openCitation}
             />
           </div>

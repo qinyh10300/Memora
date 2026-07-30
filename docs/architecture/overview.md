@@ -37,9 +37,12 @@ flowchart LR
 - 登录后，Web 通过受保护的 workspace 接口找到并激活当前用户的 `PERSONAL` 空间；所有业务接口仍从服务端 session 解析活动空间。
 - 一级导航只有“记录想法”和“记忆库”。
 - `POST /drafts/refine` 接收当前 Markdown 和用户指令，只返回修改后的草稿。它不创建 memory，也不把草稿正文写入审计日志。
-- `POST /drafts/chat` 可以接收当前轮受限图片输入。图片只在请求内存中解码、校验并
-  转发给 Chat 模型，不进入 PostgreSQL、审计或检索投影；只有用户确认后的 Markdown
-  可以通过现有 memory 接口保存。
+- `POST /assets` 保存当前用户在当前 workspace 上传的 PNG、JPEG、WEBP 或 PDF 受保护
+  资产。图片资产返回 `/api/assets/{id}/content` Markdown URL；读取 URL 必须重新验证
+  session、workspace 和作者或当前可访问的共享 Markdown 引用。
+- `POST /drafts/chat` 可以接收当前轮受限图片输入和受保护资产引用。图片在服务端校验
+  后既可以作为当前轮视觉输入，也可以通过 Markdown URL 随用户保存的正文长期显示。
+  PDF 不嵌入 Markdown；服务端只抽取有限文本作为当前轮不可信上下文。
 - `POST /drafts/chat` 同时接受 `AUTO`、`REQUIRED` 或 `DISABLED` 联网模式。联网阶段
   返回受预算约束的摘要和 URL 来源，最终 Chat 阶段统一决定回答或更新 Markdown；
   API 只返回搜索候选白名单中被模型实际使用的 HTTP(S) 引用。
@@ -154,6 +157,7 @@ apps/api/
 | `conversations` | 用户私有 Chatbot 会话及默认范围 | id, user_id, workspace_id, title, scope, updated_at, archived_at |
 | `messages` | 问题、回答、capture 关联和生成元数据 | conversation_id, role, content, memory_id, model, usage |
 | `message_citations` | 回答到原记录的可审计引用 | message_id, memory_id, excerpt |
+| `assets` | 受保护 Markdown 图片和当前轮附件 | id, workspace_id, owner_id, kind, content_type, size_bytes, sha256, content, deleted_at |
 | `jobs` | embedding 等异步任务 | type, payload_ref, status, attempts, next_run_at |
 | `audit_events` | 权限事件及不含正文的 AI 用量元数据 | actor_id, action, resource_id, model, input_tokens, output_tokens, created_at |
 
@@ -223,7 +227,12 @@ M5 的聊天 adapter 使用供应商兼容的 `v1/chat/completions` 端点；该
 多模态 capture 沿用相同端口。应用层只构造供应商无关的 `ChatImageInput`；兼容
 adapter 将其转换为 Chat Completions 的 `image_url` data URL。服务端在调用 adapter
 前重新校验 MIME、Base64、文件魔数、单图大小、数量和总大小，使用 `high` detail
-支持截图文字识别。图片及 OCR 中间结果不落库，供应商失败时保留当前 Markdown。
+支持截图文字识别。图片原始文件若由用户上传，会作为受保护 asset 存入 PostgreSQL；
+OCR 中间结果不落库，供应商失败时保留当前 Markdown。
+
+PDF 附件也先进入受保护 asset。草稿 Chatbot 只读取服务端从 PDF 中抽取并按页数与字符数
+截断的文本；抽取失败时把附件状态传给模型，不把 PDF 原文写入日志、审计、memory 正文
+或检索投影。
 
 联网搜索 adapter 使用 OpenAI-compatible Responses API 的原生 `web_search` 工具，
 而不是让应用任意抓取 URL。搜索与最终 Markdown 生成分为两次调用：搜索端口只获得

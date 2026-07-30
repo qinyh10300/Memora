@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Asset */
+        post: operations["upload_asset_assets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{asset_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Asset Content */
+        get: operations["get_asset_content_assets__asset_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -119,6 +153,23 @@ export interface paths {
         put?: never;
         /** Chat With Draft */
         post: operations["chat_with_draft_drafts_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/drafts/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Draft Models */
+        get: operations["list_draft_models_drafts_models_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -371,6 +422,35 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AssetResponse */
+        AssetResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "IMAGE" | "PDF";
+            /** Markdown Url */
+            markdown_url: string | null;
+            /**
+             * Media Type
+             * @enum {string}
+             */
+            media_type: "image/png" | "image/jpeg" | "image/webp" | "application/pdf";
+            /** Name */
+            name: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
         /** ChatRequest */
         ChatRequest: {
             /** Author Id */
@@ -528,6 +608,18 @@ export interface components {
              */
             updated_at: string;
         };
+        /** CreateAssetRequest */
+        CreateAssetRequest: {
+            /** Data */
+            data: string;
+            /**
+             * Media Type
+             * @enum {string}
+             */
+            media_type: "image/png" | "image/jpeg" | "image/webp" | "application/pdf";
+            /** Name */
+            name: string;
+        };
         /** CreateConversationRequest */
         CreateConversationRequest: {
             /**
@@ -575,6 +667,14 @@ export interface components {
             /** Workspace Name */
             workspace_name: string;
         };
+        /** DraftAttachmentInput */
+        DraftAttachmentInput: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+        };
         /** DraftChatRequest */
         DraftChatRequest: {
             /**
@@ -584,6 +684,8 @@ export interface components {
             markdown: string;
             /** Messages */
             messages: components["schemas"]["DraftChatTurn"][];
+            /** Model Id */
+            model_id?: string | null;
             /**
              * Web Search
              * @default AUTO
@@ -601,11 +703,16 @@ export interface components {
             draft_changed: boolean;
             /** Markdown */
             markdown: string;
+            /** Model Id */
+            model_id: string | null;
             /**
              * Model Status
              * @enum {string}
              */
             model_status: "AVAILABLE" | "DISABLED" | "DEGRADED";
+            saved_memory: components["schemas"]["MemoryResponse"] | null;
+            /** Tool Events */
+            tool_events: components["schemas"]["DraftToolEventResponse"][];
             /** Web Citations */
             web_citations: components["schemas"]["WebCitationResponse"][];
             /**
@@ -616,6 +723,8 @@ export interface components {
         };
         /** DraftChatTurn */
         DraftChatTurn: {
+            /** Attachments */
+            attachments?: components["schemas"]["DraftAttachmentInput"][];
             /** Content */
             content: string;
             /** Images */
@@ -637,6 +746,29 @@ export interface components {
             media_type: "image/png" | "image/jpeg" | "image/webp";
             /** Name */
             name: string;
+        };
+        /** DraftModelResponse */
+        DraftModelResponse: {
+            /** Capabilities */
+            capabilities: ("chat" | "vision" | "web_search" | "tools")[];
+            /** Id */
+            id: string;
+            /** Is Default */
+            is_default: boolean;
+            /** Label */
+            label: string;
+        };
+        /** DraftToolEventResponse */
+        DraftToolEventResponse: {
+            /** Message */
+            message: string;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "COMPLETED" | "REJECTED" | "FAILED";
         };
         /** EvidenceAuthorResponse */
         EvidenceAuthorResponse: {
@@ -972,6 +1104,70 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    upload_asset_assets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAssetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_asset_content_assets__asset_id__content_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     login_auth_login_post: {
         parameters: {
             query?: never;
@@ -1250,6 +1446,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_draft_models_drafts_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftModelResponse"][];
                 };
             };
         };

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from memora.identity.dependencies import Principal
 from memora.identity.models import User
+from memora.jobs.models import Job
 from memora.memories.models import Memory
 from memora.retrieval.models import MemoryEmbedding
 
@@ -29,6 +30,44 @@ def authorized_memories_statement(
             ),
         )
     )
+
+
+def add_private_memory_with_processing(
+    database: Session,
+    principal: Principal,
+    *,
+    memory_id: UUID,
+    body: str,
+    supersedes_id: UUID | None,
+    timeline_entry_id: UUID,
+    revision_kind: str,
+) -> tuple[Memory, MemoryEmbedding]:
+    memory = Memory(
+        id=memory_id,
+        workspace_id=principal.workspace_id,
+        author_id=principal.user_id,
+        body=body,
+        visibility="PRIVATE",
+        supersedes_id=supersedes_id,
+        timeline_entry_id=timeline_entry_id,
+        timeline_visible=True,
+        revision_kind=revision_kind,
+    )
+    database.add(memory)
+    # payload_ref 没有 ORM relationship；先 flush 可保证 PostgreSQL 在同一事务中
+    # 先插入 memory，再插入带外键的 outbox job。
+    database.flush()
+    projection = MemoryEmbedding(memory_id=memory.id, status="PENDING")
+    database.add(projection)
+    database.add(
+        Job(
+            workspace_id=principal.workspace_id,
+            type="EMBED_MEMORY",
+            payload_ref=memory.id,
+            status="PENDING",
+        )
+    )
+    return memory, projection
 
 
 def list_authorized_memories(

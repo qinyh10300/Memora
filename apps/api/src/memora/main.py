@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from memora.api.assets import router as assets_router
 from memora.api.auth import router as auth_router
 from memora.api.chat import router as chat_router
 from memora.api.conversations import router as conversations_router
@@ -51,6 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(auth_router)
     application.include_router(workspaces_router)
     application.include_router(conversations_router)
+    application.include_router(assets_router)
     application.include_router(drafts_router)
     application.include_router(memories_router)
     application.include_router(search_router)

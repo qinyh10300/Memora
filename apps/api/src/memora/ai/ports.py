@@ -1,5 +1,6 @@
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,38 @@ class ChatModelPort(Protocol):
     def model_id(self) -> str: ...
 
     def complete(self, messages: list[ChatMessage]) -> ChatResult: ...
+
+
+@dataclass(frozen=True)
+class ChatToolDefinition:
+    name: str
+    description: str
+    parameters: dict[str, object]
+
+
+@dataclass(frozen=True)
+class ChatToolCall:
+    id: str
+    name: str
+    arguments: dict[str, object]
+
+
+@dataclass(frozen=True)
+class ChatToolResult:
+    content: str
+
+
+ChatToolExecutor = Callable[[ChatToolCall], ChatToolResult]
+
+
+@runtime_checkable
+class ToolCallingChatModelPort(ChatModelPort, Protocol):
+    def complete_with_tools(
+        self,
+        messages: list[ChatMessage],
+        tools: list[ChatToolDefinition],
+        execute_tool: ChatToolExecutor,
+    ) -> ChatResult: ...
 
 
 WebSearchContextSize = Literal["low", "medium", "high"]

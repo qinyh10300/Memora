@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, update
 
+from memora.assets.service import cleanup_unreferenced_assets_for_deleted_markdown
 from memora.audit.models import AuditEvent
 from memora.conversations.models import Conversation, Message
 from memora.conversations.service import (
@@ -21,6 +22,7 @@ from memora.jobs.models import Job
 from memora.memories.models import Memory
 from memora.memories.schemas import MemoryResponse, memory_response_for
 from memora.memories.service import (
+    add_private_memory_with_processing,
     get_authorized_memory,
     get_memory_for_author_action,
     list_authorized_memories,
@@ -90,44 +92,6 @@ def _audit(database: DatabaseSession, principal: Principal, action: str, memory_
     )
 
 
-def _add_memory_with_processing(
-    database: DatabaseSession,
-    principal: Principal,
-    *,
-    memory_id: UUID,
-    body: str,
-    supersedes_id: UUID | None,
-    timeline_entry_id: UUID,
-    revision_kind: str,
-) -> tuple[Memory, MemoryEmbedding]:
-    memory = Memory(
-        id=memory_id,
-        workspace_id=principal.workspace_id,
-        author_id=principal.user_id,
-        body=body,
-        visibility="PRIVATE",
-        supersedes_id=supersedes_id,
-        timeline_entry_id=timeline_entry_id,
-        timeline_visible=True,
-        revision_kind=revision_kind,
-    )
-    database.add(memory)
-    # payload_ref 没有 ORM relationship；先 flush 可保证 PostgreSQL 在同一事务中
-    # 先插入 memory，再插入带外键的 outbox job。
-    database.flush()
-    projection = MemoryEmbedding(memory_id=memory.id, status="PENDING")
-    database.add(projection)
-    database.add(
-        Job(
-            workspace_id=principal.workspace_id,
-            type="EMBED_MEMORY",
-            payload_ref=memory.id,
-            status="PENDING",
-        )
-    )
-    return memory, projection
-
-
 @router.post("", response_model=MemoryResponse, status_code=status.HTTP_201_CREATED)
 def create_memory(
     payload: CreateMemoryRequest,
@@ -158,7 +122,7 @@ def create_memory(
             )
 
     memory_id = uuid4()
-    memory, projection = _add_memory_with_processing(
+    memory, projection = add_private_memory_with_processing(
         database,
         principal,
         memory_id=memory_id,
@@ -233,7 +197,7 @@ def create_memory_revision(
         timeline_entry_id = new_memory_id
         audit_action = "MEMORY_VERSION_CREATED"
 
-    memory, projection = _add_memory_with_processing(
+    memory, projection = add_private_memory_with_processing(
         database,
         principal,
         memory_id=new_memory_id,
@@ -393,8 +357,11 @@ def delete_memory(
         )
     ).all()
     deleted_at = datetime.now(UTC)
+    deleted_markdown_values: list[str] = []
     for revision in revisions:
         deleted_body = revision.body or ""
+        if deleted_body:
+            deleted_markdown_values.append(deleted_body)
         invalidate_cited_answers(
             database,
             memory_id=revision.id,
@@ -445,4 +412,6 @@ def delete_memory(
         revision.timeline_visible = False
         revision.deleted_at = deleted_at
         _audit(database, principal, "MEMORY_DELETED", revision.id)
+    database.flush()
+    cleanup_unreferenced_assets_for_deleted_markdown(database, principal, deleted_markdown_values)
     database.commit()

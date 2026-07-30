@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import HomePage from "./page";
 
 type Memory = components["schemas"]["MemoryResponse"];
+type DraftModel = components["schemas"]["DraftModelResponse"];
 
 const apiMocks = vi.hoisted(() => ({
   GET: vi.fn(),
@@ -60,6 +61,13 @@ const memory: Memory = {
   processing_status: "PENDING",
 };
 
+const draftModel: DraftModel = {
+  id: "balanced",
+  label: "Balanced",
+  capabilities: ["chat", "vision", "web_search", "tools"],
+  is_default: true,
+};
+
 function ok<T>(data: T, status = 200) {
   return { data, response: { ok: true, status } };
 }
@@ -74,6 +82,7 @@ function mockAuthenticatedSession(initialMemories: Memory[] = [memory]) {
 
   apiMocks.GET.mockImplementation((path: string) => {
     if (path === "/auth/me") return Promise.resolve(ok(activated ? personalUser : teamUser));
+    if (path === "/drafts/models") return Promise.resolve(ok([draftModel]));
     if (path === "/workspaces") {
       return Promise.resolve(
         ok([
@@ -95,13 +104,46 @@ function mockAuthenticatedSession(initialMemories: Memory[] = [memory]) {
       return Promise.resolve(ok({ ...personalWorkspace, is_current: true }));
     }
     if (path === "/auth/logout") return Promise.resolve(ok(undefined, 204));
+    if (path === "/assets") {
+      const body = (
+        options as {
+          body: {
+            name: string;
+            media_type: "image/png" | "image/jpeg" | "image/webp" | "application/pdf";
+            data: string;
+          };
+        }
+      ).body;
+      const id = body.media_type === "application/pdf" ? "asset-pdf" : "asset-image";
+      return Promise.resolve(
+        ok(
+          {
+            id,
+            name: body.name,
+            kind: body.media_type === "application/pdf" ? "PDF" : "IMAGE",
+            media_type: body.media_type,
+            size_bytes: body.data.length,
+            markdown_url:
+              body.media_type === "application/pdf" ? null : `/api/assets/${id}/content`,
+            created_at: "2026-07-30T08:00:00Z",
+          },
+          201,
+        ),
+      );
+    }
     if (path === "/drafts/chat") {
       const body = (
         options as {
           body: {
             markdown: string;
+            model_id?: string;
             web_search: "AUTO" | "REQUIRED" | "DISABLED";
-            messages: { role: "USER" | "ASSISTANT"; content: string }[];
+            messages: {
+              role: "USER" | "ASSISTANT";
+              content: string;
+              images?: unknown[];
+              attachments?: unknown[];
+            }[];
           };
         }
       ).body;
@@ -113,9 +155,40 @@ function mockAuthenticatedSession(initialMemories: Memory[] = [memory]) {
             assistant_message: "已联网核对并把重点整理到右侧。",
             draft_changed: true,
             model_status: "AVAILABLE",
+            model_id: body.model_id ?? null,
             citations: [],
             web_search_status: "AVAILABLE",
             web_citations: [{ url: "https://openai.com/", title: "OpenAI 官方" }],
+            tool_events: [],
+            saved_memory: null,
+          }),
+        );
+      }
+      if (body.messages.at(-1)?.content.includes("帮我保存")) {
+        const saved = {
+          ...memory,
+          id: "memory-auto",
+          body: body.markdown || "# 产品方向\n\n先验证个人记录和回顾。",
+        };
+        currentMemories = [saved, ...currentMemories];
+        return Promise.resolve(
+          ok({
+            markdown: saved.body,
+            assistant_message: "已保存到我的记忆。",
+            draft_changed: false,
+            model_status: "AVAILABLE",
+            model_id: body.model_id ?? null,
+            citations: [],
+            web_search_status: "NOT_USED",
+            web_citations: [],
+            tool_events: [
+              {
+                name: "save_memory",
+                status: "COMPLETED",
+                message: "已保存为个人私有记忆。",
+              },
+            ],
+            saved_memory: saved,
           }),
         );
       }
@@ -126,6 +199,7 @@ function mockAuthenticatedSession(initialMemories: Memory[] = [memory]) {
             assistant_message: "你以前记录过先验证个人记录和回顾。",
             draft_changed: false,
             model_status: "AVAILABLE",
+            model_id: body.model_id ?? null,
             citations: [
               {
                 memory_id: memory.id,
@@ -137,6 +211,8 @@ function mockAuthenticatedSession(initialMemories: Memory[] = [memory]) {
             ],
             web_search_status: "NOT_USED",
             web_citations: [],
+            tool_events: [],
+            saved_memory: null,
           }),
         );
       }
@@ -146,9 +222,12 @@ function mockAuthenticatedSession(initialMemories: Memory[] = [memory]) {
           assistant_message: "已按你的要求更新右侧草稿。保存前你还可以继续修改。",
           draft_changed: true,
           model_status: "AVAILABLE",
+          model_id: body.model_id ?? null,
           citations: [],
           web_search_status: "NOT_USED",
           web_citations: [],
+          tool_events: [],
+          saved_memory: null,
         }),
       );
     }
@@ -260,6 +339,7 @@ describe("Memora personal Markdown MVP", () => {
     expect(apiMocks.POST).toHaveBeenCalledWith("/drafts/chat", {
       body: {
         markdown: "",
+        model_id: "balanced",
         web_search: "AUTO",
         messages: [{ role: "USER", content: "我想先验证个人记录和回顾。" }],
       },
@@ -296,6 +376,7 @@ describe("Memora personal Markdown MVP", () => {
       expect(apiMocks.POST).toHaveBeenCalledWith("/drafts/chat", {
         body: {
           markdown: "",
+          model_id: "balanced",
           web_search: "REQUIRED",
           messages: [
             {
@@ -314,6 +395,24 @@ describe("Memora personal Markdown MVP", () => {
     expect(source).toHaveAttribute("target", "_blank");
     expect(screen.getByText(/已联网 · 1 个来源/)).toBeInTheDocument();
     expect(mode).toHaveValue("AUTO");
+    expect(apiMocks.POST).not.toHaveBeenCalledWith("/memories", expect.anything());
+  });
+
+  it("明确要求保存时展示自动保存回执且不再调用手动保存接口", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+
+    const composer = await screen.findByLabelText("告诉 Memora 你的想法");
+    fireEvent.change(composer, { target: { value: "我想先验证个人记录和回顾。" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    await screen.findByText("已按你的要求更新右侧草稿。保存前你还可以继续修改。");
+
+    fireEvent.change(composer, { target: { value: "帮我保存这条记忆。" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("已保存到我的记忆。")).toBeInTheDocument();
+    expect(screen.getByText("已自动保存为我的记忆")).toBeInTheDocument();
     expect(apiMocks.POST).not.toHaveBeenCalledWith("/memories", expect.anything());
   });
 
@@ -336,6 +435,7 @@ describe("Memora personal Markdown MVP", () => {
       expect(apiMocks.POST).toHaveBeenLastCalledWith("/drafts/chat", {
         body: {
           markdown: "# 产品方向\n\n先验证个人记录和回顾。",
+          model_id: "balanced",
           web_search: "AUTO",
           messages: [
             {
@@ -361,16 +461,20 @@ describe("Memora personal Markdown MVP", () => {
     const file = new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], "截图.png", {
       type: "image/png",
     });
-    const imageInput = await screen.findByLabelText("选择图片");
+    const imageInput = await screen.findByLabelText("选择图片或 PDF");
     fireEvent.change(imageInput, { target: { files: [file] } });
 
-    expect(await screen.findByAltText("截图.png")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "移除图片 截图.png" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Markdown 草稿")).toHaveValue(
+      "![截图.png](/api/assets/asset-image/content)",
+    );
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     await waitFor(() => {
       expect(apiMocks.POST).toHaveBeenCalledWith("/drafts/chat", {
         body: {
-          markdown: "",
+          markdown: "![截图.png](/api/assets/asset-image/content)",
+          model_id: "balanced",
           web_search: "AUTO",
           messages: [
             {
@@ -383,6 +487,7 @@ describe("Memora personal Markdown MVP", () => {
                   data: expect.any(String),
                 },
               ],
+              attachments: [{ asset_id: "asset-image" }],
             },
           ],
         },
@@ -401,6 +506,7 @@ describe("Memora personal Markdown MVP", () => {
       expect(apiMocks.POST).toHaveBeenLastCalledWith("/drafts/chat", {
         body: {
           markdown: "# 产品方向\n\n先验证个人记录和回顾。",
+          model_id: "balanced",
           web_search: "AUTO",
           messages: [
             {
@@ -424,12 +530,44 @@ describe("Memora personal Markdown MVP", () => {
     render(<HomePage />);
 
     const file = new File(["plain text"], "记录.txt", { type: "text/plain" });
-    fireEvent.change(await screen.findByLabelText("选择图片"), {
+    fireEvent.change(await screen.findByLabelText("选择图片或 PDF"), {
       target: { files: [file] },
     });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("只支持 PNG、JPEG 和 WEBP 图片");
+    expect(await screen.findByRole("alert")).toHaveTextContent("只支持 PNG、JPEG、WEBP 图片和 PDF");
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+  });
+
+  it("PDF 附件作为本轮上下文发送但不插入 Markdown", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+
+    const file = new File(["%PDF-1.4"], "方案.pdf", { type: "application/pdf" });
+    fireEvent.change(await screen.findByLabelText("选择图片或 PDF"), {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByRole("button", { name: "移除附件 方案.pdf" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Markdown 草稿")).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(apiMocks.POST).toHaveBeenCalledWith("/drafts/chat", {
+        body: {
+          markdown: "",
+          model_id: "balanced",
+          web_search: "AUTO",
+          messages: [
+            {
+              role: "USER",
+              content: "请阅读这些 PDF，把与当前想法相关的内容整理到右侧 Markdown。",
+              attachments: [{ asset_id: "asset-pdf" }],
+            },
+          ],
+        },
+      });
+    });
   });
 
   it("Chatbot 回答个人记忆问题时显示可打开的来源", async () => {
@@ -519,10 +657,10 @@ describe("Memora personal Markdown MVP", () => {
     render(<HomePage />);
 
     const composer = await screen.findByLabelText("告诉 Memora 你的想法");
-    const file = new File(["notes"], "notes.pdf", { type: "application/pdf" });
+    const file = new File(["notes"], "notes.txt", { type: "text/plain" });
     fireEvent.paste(composer, { clipboardData: { files: [file] } });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("只支持 PNG、JPEG 和 WEBP 图片。");
+    expect(await screen.findByRole("alert")).toHaveTextContent("只支持 PNG、JPEG、WEBP 图片和 PDF");
     expect(screen.queryByRole("button", { name: /移除图片/ })).not.toBeInTheDocument();
   });
 

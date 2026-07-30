@@ -1097,6 +1097,35 @@ button:active:not(:disabled) {
   transform: scale(1.02);
 }
 
+.message-attachments {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.message-attachments span {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-attachments svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
 .thinking-dots {
   display: flex;
   height: 28px;
@@ -1201,6 +1230,7 @@ button:active:not(:disabled) {
   white-space: nowrap;
 }
 
+.model-control,
 .search-mode-control {
   display: inline-flex;
   flex: 0 0 auto;
@@ -1218,6 +1248,8 @@ button:active:not(:disabled) {
     color var(--t-base) var(--ease);
 }
 
+.model-control:focus-within,
+.model-control:hover,
 .search-mode-control:focus-within,
 .search-mode-control:hover {
   border-color: var(--line-strong);
@@ -1245,6 +1277,7 @@ button:active:not(:disabled) {
   opacity: 0.62;
 }
 
+.model-control select,
 .search-mode-control select {
   max-width: 92px;
   padding: 0;
@@ -1255,6 +1288,17 @@ button:active:not(:disabled) {
   font: inherit;
   font-size: var(--fs-2xs);
   cursor: pointer;
+}
+
+.model-control select {
+  max-width: 132px;
+}
+
+.model-unavailable {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
 }
 
 .image-input {
@@ -1367,6 +1411,25 @@ button:active:not(:disabled) {
   animation: rise-in var(--t-base) var(--ease-spring) both;
 }
 
+.pending-images > .pending-document {
+  display: grid;
+  width: 132px;
+  min-height: 72px;
+  align-content: center;
+  justify-items: center;
+  gap: 5px;
+  padding: 10px 8px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.028);
+}
+
+.pending-document > svg {
+  width: 22px;
+  height: 22px;
+  color: var(--muted);
+}
+
 .pending-images img {
   display: block;
   width: 96px;
@@ -1413,6 +1476,12 @@ button:active:not(:disabled) {
   font-size: var(--fs-3xs);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pending-document span {
+  width: 100%;
+  margin-top: 0;
+  text-align: center;
 }
 
 .composer-wrap > p {
@@ -1521,6 +1590,81 @@ button:active:not(:disabled) {
 
 .markdown-editor::placeholder {
   color: #4e554f;
+}
+
+.markdown-editor-grid {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.82fr);
+  border-top: 1px solid var(--line);
+}
+
+.markdown-editor-grid .markdown-editor {
+  border-right: 1px solid var(--line);
+}
+
+.markdown-preview {
+  min-width: 0;
+  padding: 28px 30px;
+  overflow: auto;
+  background: rgba(255, 255, 255, 0.01);
+  color: var(--text-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.75;
+  scrollbar-color: #3b423c transparent;
+}
+
+.markdown-preview.is-empty {
+  display: grid;
+  place-items: center;
+  color: var(--faintest);
+  font-size: var(--fs-xs);
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview p,
+.markdown-preview figure {
+  margin: 0 0 16px;
+}
+
+.markdown-preview h1 {
+  color: var(--text);
+  font-size: var(--fs-xl);
+  line-height: 1.22;
+}
+
+.markdown-preview h2 {
+  color: var(--text);
+  font-size: var(--fs-lg);
+  line-height: 1.28;
+}
+
+.markdown-preview h3 {
+  color: var(--text-soft);
+  font-size: var(--fs-md);
+}
+
+.markdown-preview p {
+  white-space: pre-wrap;
+}
+
+.markdown-preview img {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.markdown-preview figcaption {
+  margin-top: 6px;
+  color: var(--faint);
+  font-size: var(--fs-3xs);
 }
 
 .draft-footer {
@@ -1969,6 +2113,10 @@ button:active:not(:disabled) {
   flex: 1;
 }
 
+.detail-editor-wrap.markdown-editor-grid {
+  display: grid;
+}
+
 .detail-editor {
   padding: 28px 32px;
 }
@@ -2401,6 +2549,21 @@ button:active:not(:disabled) {
   .markdown-editor {
     min-height: 180px;
     padding: 20px;
+  }
+
+  .markdown-editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .markdown-editor-grid .markdown-editor {
+    min-height: 180px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .markdown-preview {
+    max-height: 260px;
+    padding: 18px 20px;
   }
 
   .draft-footer {

@@ -1,12 +1,15 @@
 import base64
 import json
 from collections.abc import Iterator
+from io import BytesIO
 from typing import cast
 from uuid import UUID
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
+from pypdf import PdfWriter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,6 +17,9 @@ from memora.ai.ports import (
     AIProviderError,
     ChatMessage,
     ChatResult,
+    ChatToolCall,
+    ChatToolDefinition,
+    ChatToolExecutor,
     EmbeddingBatch,
     ModelUsage,
     WebSearchContextSize,
@@ -37,6 +43,22 @@ def draft_client() -> Iterator[TestClient]:
         app_env="test",
         database_url="sqlite+pysqlite:///:memory:",
         session_secret="draft-test-secret-not-for-production",
+    )
+    app = create_app(settings)
+    with TestClient(app) as client:
+        Base.metadata.create_all(app.state.engine)
+        seed_database(app.state.engine, settings)
+        yield client
+
+
+@pytest.fixture
+def tool_draft_client() -> Iterator[TestClient]:
+    settings = Settings(
+        app_env="test",
+        database_url="sqlite+pysqlite:///:memory:",
+        session_secret="draft-test-secret-not-for-production",
+        ai_chat_api_key=SecretStr("test-key"),
+        ai_chat_model="tool-provider-model",
     )
     app = create_app(settings)
     with TestClient(app) as client:
@@ -178,6 +200,51 @@ class WebGroundedDraftChatModel:
         )
 
 
+class SaveMemoryToolDraftModel:
+    model_id = "tool-chat-model"
+
+    def __init__(self, *, body: str) -> None:
+        self.body = body
+        self.tool_names: list[str] = []
+        self.tool_result = ""
+
+    def complete(self, messages: list[ChatMessage]) -> ChatResult:
+        raise AssertionError("tool-capable test model should use complete_with_tools")
+
+    def complete_with_tools(
+        self,
+        messages: list[ChatMessage],
+        tools: list[ChatToolDefinition],
+        execute_tool: ChatToolExecutor,
+    ) -> ChatResult:
+        self.tool_names = [tool.name for tool in tools]
+        result = execute_tool(
+            ChatToolCall(
+                id="call-save",
+                name="save_memory",
+                arguments={"body": self.body},
+            )
+        )
+        self.tool_result = result.content
+        saved = json.loads(result.content).get("status") == "saved"
+        return ChatResult(
+            content=json.dumps(
+                {
+                    "assistant_message": "已保存到我的记忆。"
+                    if saved
+                    else "我已准备好草稿，但没有保存。",
+                    "markdown": self.body,
+                    "draft_changed": True,
+                    "used_memory_ids": [],
+                    "used_web_source_urls": [],
+                },
+                ensure_ascii=False,
+            ),
+            model=self.model_id,
+            usage=ModelUsage(input_tokens=120, output_tokens=40),
+        )
+
+
 class FailingWebSearch:
     model_id = "failing-web-search"
 
@@ -194,13 +261,21 @@ def _png_base64(payload: bytes = b"image-test") -> str:
     return base64.b64encode(b"\x89PNG\r\n\x1a\n" + payload).decode()
 
 
+def _blank_pdf_base64() -> str:
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    output = BytesIO()
+    writer.write(output)
+    return base64.b64encode(output.getvalue()).decode()
+
+
 def test_refine_draft_updates_markdown_without_creating_memory_and_records_usage(
     draft_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     headers = _login(draft_client)
     model = CaptureDraftModel()
-    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings: model)
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
 
     response = draft_client.post(
         "/drafts/refine",
@@ -232,6 +307,20 @@ def test_refine_draft_updates_markdown_without_creating_memory_and_records_usage
     assert not hasattr(event, "body")
 
 
+def test_draft_models_fall_back_to_legacy_chat_model(tool_draft_client: TestClient) -> None:
+    response = tool_draft_client.get("/drafts/models")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": "default",
+            "label": "tool-provider-model",
+            "capabilities": ["chat", "tools", "web_search"],
+            "is_default": True,
+        }
+    ]
+
+
 def test_draft_chat_receives_conversation_and_only_authorized_personal_memory(
     draft_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -261,10 +350,10 @@ def test_draft_chat_receives_conversation_and_only_authorized_personal_memory(
     )
 
     model = CaptureDraftChatModel(memory_id=alex_memory.json()["id"])
-    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings: model)
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
     monkeypatch.setattr(
         "memora.api.drafts.build_embedding_model",
-        lambda _settings: FakeDraftEmbeddingModel(),
+        lambda _settings, **_kwargs: FakeDraftEmbeddingModel(),
     )
 
     def fake_semantic_search(
@@ -332,7 +421,7 @@ def test_draft_chat_sends_validated_current_turn_images_without_persisting_them(
 ) -> None:
     headers = _login(draft_client)
     model = CaptureDraftChatModel(memory_id="")
-    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings: model)
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
 
     response = draft_client.post(
         "/drafts/chat",
@@ -365,6 +454,48 @@ def test_draft_chat_sends_validated_current_turn_images_without_persisting_them(
     engine = cast(FastAPI, draft_client.app).state.engine
     with Session(engine) as database:
         assert database.scalars(select(Memory)).all() == []
+
+
+def test_draft_chat_resolves_pdf_attachment_context_from_protected_asset(
+    draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = _login(draft_client)
+    upload = draft_client.post(
+        "/assets",
+        headers=headers,
+        json={
+            "name": "proposal.pdf",
+            "media_type": "application/pdf",
+            "data": _blank_pdf_base64(),
+        },
+    )
+    assert upload.status_code == 201
+    model = CaptureDraftChatModel(memory_id="")
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+
+    response = draft_client.post(
+        "/drafts/chat",
+        headers=headers,
+        json={
+            "markdown": "",
+            "messages": [
+                {
+                    "role": "USER",
+                    "content": "阅读这个 PDF，整理成 Markdown。",
+                    "attachments": [{"asset_id": upload.json()["id"]}],
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    prompt = model.messages[-1].content
+    assert "ATTACHMENT_CONTEXT_JSON" in prompt
+    assert "proposal.pdf" in prompt
+    assert "NO_TEXT" in prompt
+    assert upload.json()["id"] in prompt
+    assert _blank_pdf_base64() not in prompt
 
 
 @pytest.mark.parametrize(
@@ -456,7 +587,9 @@ def test_draft_chat_restores_first_user_message_without_model_rewrite(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     headers = _login(draft_client)
-    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings: FailingDraftModel())
+    monkeypatch.setattr(
+        "memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: FailingDraftModel()
+    )
 
     response = draft_client.post(
         "/drafts/chat",
@@ -485,9 +618,12 @@ def test_draft_chat_restores_first_user_message_without_model_rewrite(
         ),
         "draft_changed": True,
         "model_status": "AVAILABLE",
+        "model_id": None,
         "citations": [],
         "web_search_status": "NOT_USED",
         "web_citations": [],
+        "tool_events": [],
+        "saved_memory": None,
     }
 
     engine = cast(FastAPI, draft_client.app).state.engine
@@ -517,12 +653,17 @@ def test_draft_chat_keeps_working_copy_when_model_is_disabled_or_fails(
         "assistant_message": "AI 尚未配置，我已把你的原话放到右侧草稿；请检查后再保存。",
         "draft_changed": True,
         "model_status": "DISABLED",
+        "model_id": None,
         "citations": [],
         "web_search_status": "DISABLED",
         "web_citations": [],
+        "tool_events": [],
+        "saved_memory": None,
     }
 
-    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings: FailingDraftModel())
+    monkeypatch.setattr(
+        "memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: FailingDraftModel()
+    )
     degraded = draft_client.post(
         "/drafts/chat",
         headers=headers,
@@ -537,10 +678,25 @@ def test_draft_chat_keeps_working_copy_when_model_is_disabled_or_fails(
         "assistant_message": "这次没有成功调用 AI，当前 Markdown 保持不变。",
         "draft_changed": False,
         "model_status": "DEGRADED",
+        "model_id": None,
         "citations": [],
         "web_search_status": "NOT_USED",
         "web_citations": [],
+        "tool_events": [],
+        "saved_memory": None,
     }
+
+    first_turn_failure = draft_client.post(
+        "/drafts/chat",
+        headers=headers,
+        json={
+            "markdown": "",
+            "messages": [{"role": "USER", "content": "首次原话不能丢。"}],
+        },
+    )
+    assert first_turn_failure.status_code == 200
+    assert first_turn_failure.json()["markdown"] == "# 新想法\n\n首次原话不能丢。"
+    assert first_turn_failure.json()["model_status"] == "DISABLED"
 
 
 def test_draft_chat_can_force_web_search_and_only_returns_used_allowed_sources(
@@ -550,8 +706,8 @@ def test_draft_chat_can_force_web_search_and_only_returns_used_allowed_sources(
     headers = _login(draft_client)
     search = CaptureWebSearch()
     model = WebGroundedDraftChatModel()
-    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings: model)
-    monkeypatch.setattr("memora.api.drafts.build_web_search", lambda _settings: search)
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+    monkeypatch.setattr("memora.api.drafts.build_web_search", lambda _settings, **_kwargs: search)
 
     response = draft_client.post(
         "/drafts/chat",
@@ -605,8 +761,8 @@ def test_draft_chat_auto_searches_only_for_explicit_web_intent_and_can_be_disabl
     headers = _login(draft_client)
     search = CaptureWebSearch()
     model = WebGroundedDraftChatModel()
-    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings: model)
-    monkeypatch.setattr("memora.api.drafts.build_web_search", lambda _settings: search)
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+    monkeypatch.setattr("memora.api.drafts.build_web_search", lambda _settings, **_kwargs: search)
 
     plain = draft_client.post(
         "/drafts/chat",
@@ -653,8 +809,10 @@ def test_draft_chat_web_search_failure_preserves_markdown_and_skips_generation(
 ) -> None:
     headers = _login(draft_client)
     model = WebGroundedDraftChatModel()
-    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings: model)
-    monkeypatch.setattr("memora.api.drafts.build_web_search", lambda _settings: FailingWebSearch())
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+    monkeypatch.setattr(
+        "memora.api.drafts.build_web_search", lambda _settings, **_kwargs: FailingWebSearch()
+    )
     current_markdown = "# 不能丢失\n\n用户已经确认的内容"
 
     response = draft_client.post(
@@ -675,11 +833,96 @@ def test_draft_chat_web_search_failure_preserves_markdown_and_skips_generation(
         ),
         "draft_changed": False,
         "model_status": "AVAILABLE",
+        "model_id": None,
         "citations": [],
         "web_search_status": "DEGRADED",
         "web_citations": [],
+        "tool_events": [],
+        "saved_memory": None,
     }
     assert model.messages == []
+
+
+def test_draft_chat_save_memory_tool_runs_only_for_explicit_save_request(
+    tool_draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = _login(tool_draft_client)
+    model = SaveMemoryToolDraftModel(body="# 保存的想法\n\n用户明确要求保存。")
+    monkeypatch.setattr(
+        "memora.api.drafts.build_chat_model",
+        lambda _settings, **_kwargs: model,
+    )
+
+    response = tool_draft_client.post(
+        "/drafts/chat",
+        headers=headers,
+        json={
+            "markdown": "# 保存的想法\n\n用户明确要求保存。",
+            "messages": [{"role": "USER", "content": "帮我保存这条记忆。"}],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["saved_memory"]["body"] == "# 保存的想法\n\n用户明确要求保存。"
+    assert body["saved_memory"]["visibility"] == "PRIVATE"
+    assert body["tool_events"] == [
+        {
+            "name": "save_memory",
+            "status": "COMPLETED",
+            "message": "已保存为个人私有记忆。",
+        }
+    ]
+    assert "save_memory" in model.tool_names
+    assert json.loads(model.tool_result)["status"] == "saved"
+
+    engine = cast(FastAPI, tool_draft_client.app).state.engine
+    with Session(engine) as database:
+        memories = database.scalars(select(Memory)).all()
+        event = database.scalar(
+            select(AuditEvent).where(AuditEvent.action == "MEMORY_CREATED_BY_DRAFT_TOOL")
+        )
+    assert len(memories) == 1
+    assert memories[0].visibility == "PRIVATE"
+    assert event is not None
+
+
+def test_draft_chat_save_memory_tool_is_rejected_without_explicit_save_request(
+    tool_draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = _login(tool_draft_client)
+    model = SaveMemoryToolDraftModel(body="# 不应保存\n\n用户只是要求整理。")
+    monkeypatch.setattr(
+        "memora.api.drafts.build_chat_model",
+        lambda _settings, **_kwargs: model,
+    )
+
+    response = tool_draft_client.post(
+        "/drafts/chat",
+        headers=headers,
+        json={
+            "markdown": "# 不应保存\n\n用户只是要求整理。",
+            "messages": [{"role": "USER", "content": "帮我整理得更清楚。"}],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["saved_memory"] is None
+    assert body["tool_events"] == [
+        {
+            "name": "save_memory",
+            "status": "REJECTED",
+            "message": "用户本轮没有明确要求保存，已拒绝自动保存。",
+        }
+    ]
+    assert json.loads(model.tool_result)["status"] == "rejected"
+
+    engine = cast(FastAPI, tool_draft_client.app).state.engine
+    with Session(engine) as database:
+        assert database.scalars(select(Memory)).all() == []
 
 
 def test_refine_draft_has_safe_disabled_and_degraded_fallbacks(
@@ -708,7 +951,9 @@ def test_refine_draft_has_safe_disabled_and_degraded_fallbacks(
     assert unchanged.json()["markdown"] == existing
     assert unchanged.json()["model_status"] == "DISABLED"
 
-    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings: FailingDraftModel())
+    monkeypatch.setattr(
+        "memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: FailingDraftModel()
+    )
     degraded = draft_client.post(
         "/drafts/refine",
         headers=headers,
@@ -720,6 +965,15 @@ def test_refine_draft_has_safe_disabled_and_degraded_fallbacks(
         "assistant_message": "这次没有成功调用 AI，草稿保持不变。",
         "model_status": "DEGRADED",
     }
+
+    first_draft_failure = draft_client.post(
+        "/drafts/refine",
+        headers=headers,
+        json={"markdown": "", "instruction": "记录这句原文"},
+    )
+    assert first_draft_failure.status_code == 200
+    assert first_draft_failure.json()["markdown"] == "# 新想法\n\n记录这句原文"
+    assert first_draft_failure.json()["model_status"] == "DISABLED"
 
 
 def test_refine_draft_requires_auth_and_rejects_blank_instruction(

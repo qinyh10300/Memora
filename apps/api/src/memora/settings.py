@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     ai_chat_base_url: str = "https://yunwu.ai/v1"
     ai_chat_api_key: SecretStr = SecretStr("")
     ai_chat_model: str = ""
+    ai_model_registry_json: str = ""
     ai_embedding_base_url: str = "https://yunwu.ai/v1"
     ai_embedding_api_key: SecretStr = SecretStr("")
     ai_embedding_model: str = ""

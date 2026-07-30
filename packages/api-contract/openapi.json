@@ -1,6 +1,68 @@
 {
   "components": {
     "schemas": {
+      "AssetResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "IMAGE",
+              "PDF"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "markdown_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Markdown Url"
+          },
+          "media_type": {
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp",
+              "application/pdf"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "media_type",
+          "size_bytes",
+          "markdown_url",
+          "created_at"
+        ],
+        "title": "AssetResponse",
+        "type": "object"
+      },
       "ChatRequest": {
         "properties": {
           "author_id": {
@@ -404,6 +466,38 @@
         "title": "ConversationSummaryResponse",
         "type": "object"
       },
+      "CreateAssetRequest": {
+        "properties": {
+          "data": {
+            "minLength": 1,
+            "title": "Data",
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp",
+              "application/pdf"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "media_type",
+          "data"
+        ],
+        "title": "CreateAssetRequest",
+        "type": "object"
+      },
       "CreateConversationRequest": {
         "properties": {
           "title": {
@@ -533,6 +627,20 @@
         "title": "CurrentUserResponse",
         "type": "object"
       },
+      "DraftAttachmentInput": {
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id"
+        ],
+        "title": "DraftAttachmentInput",
+        "type": "object"
+      },
       "DraftChatRequest": {
         "properties": {
           "markdown": {
@@ -549,6 +657,19 @@
             "minItems": 1,
             "title": "Messages",
             "type": "array"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
           },
           "web_search": {
             "default": "AUTO",
@@ -588,6 +709,17 @@
             "title": "Markdown",
             "type": "string"
           },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
           "model_status": {
             "enum": [
               "AVAILABLE",
@@ -596,6 +728,23 @@
             ],
             "title": "Model Status",
             "type": "string"
+          },
+          "saved_memory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemoryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tool_events": {
+            "items": {
+              "$ref": "#/components/schemas/DraftToolEventResponse"
+            },
+            "title": "Tool Events",
+            "type": "array"
           },
           "web_citations": {
             "items": {
@@ -620,15 +769,26 @@
           "assistant_message",
           "draft_changed",
           "model_status",
+          "model_id",
           "citations",
           "web_search_status",
-          "web_citations"
+          "web_citations",
+          "tool_events",
+          "saved_memory"
         ],
         "title": "DraftChatResponse",
         "type": "object"
       },
       "DraftChatTurn": {
         "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/DraftAttachmentInput"
+            },
+            "maxItems": 5,
+            "title": "Attachments",
+            "type": "array"
+          },
           "content": {
             "maxLength": 4000,
             "minLength": 1,
@@ -689,6 +849,75 @@
           "data"
         ],
         "title": "DraftImageInput",
+        "type": "object"
+      },
+      "DraftModelResponse": {
+        "properties": {
+          "capabilities": {
+            "items": {
+              "enum": [
+                "chat",
+                "vision",
+                "web_search",
+                "tools"
+              ],
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "capabilities",
+          "is_default"
+        ],
+        "title": "DraftModelResponse",
+        "type": "object"
+      },
+      "DraftToolEventResponse": {
+        "properties": {
+          "message": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "COMPLETED",
+              "REJECTED",
+              "FAILED"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "message"
+        ],
+        "title": "DraftToolEventResponse",
         "type": "object"
       },
       "EvidenceAuthorResponse": {
@@ -1479,6 +1708,88 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/assets": {
+      "post": {
+        "operationId": "upload_asset_assets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAssetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Asset",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/assets/{asset_id}/content": {
+      "get": {
+        "operationId": "get_asset_content_assets__asset_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Asset Content",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
     "/auth/login": {
       "post": {
         "operationId": "login_auth_login_post",
@@ -1830,6 +2141,31 @@
           }
         },
         "summary": "Chat With Draft",
+        "tags": [
+          "drafts"
+        ]
+      }
+    },
+    "/drafts/models": {
+      "get": {
+        "operationId": "list_draft_models_drafts_models_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DraftModelResponse"
+                  },
+                  "title": "Response List Draft Models Drafts Models Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Draft Models",
         "tags": [
           "drafts"
         ]

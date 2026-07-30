@@ -12,6 +12,9 @@ from memora.ai.ports import (
     ChatMessage,
     ChatModelPort,
     ChatResult,
+    ChatToolCall,
+    ChatToolDefinition,
+    ChatToolExecutor,
     EmbeddingBatch,
     EmbeddingModelPort,
     ModelUsage,
@@ -161,7 +164,7 @@ class OpenAICompatibleChatModel(ChatModelPort):
     def model_id(self) -> str:
         return self._model
 
-    def complete(self, messages: list[ChatMessage]) -> ChatResult:
+    def _provider_messages_for(self, messages: list[ChatMessage]) -> list[dict[str, object]]:
         if not messages or any(
             not message.content.strip() and not message.images for message in messages
         ):
@@ -185,6 +188,10 @@ class OpenAICompatibleChatModel(ChatModelPort):
                 for image in message.images
             )
             provider_messages.append({"role": message.role, "content": content_parts})
+        return provider_messages
+
+    def complete(self, messages: list[ChatMessage]) -> ChatResult:
+        provider_messages = self._provider_messages_for(messages)
         response = self._transport.post(
             f"{self._base_url}/chat/completions",
             headers={
@@ -218,6 +225,117 @@ class OpenAICompatibleChatModel(ChatModelPort):
                 output_tokens=output_tokens if isinstance(output_tokens, int) else 0,
             ),
         )
+
+    def complete_with_tools(
+        self,
+        messages: list[ChatMessage],
+        tools: list[ChatToolDefinition],
+        execute_tool: ChatToolExecutor,
+    ) -> ChatResult:
+        if not tools:
+            return self.complete(messages)
+        provider_messages = self._provider_messages_for(messages)
+        provider_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters,
+                },
+            }
+            for tool in tools
+        ]
+        total_usage = ModelUsage()
+        response_model = self._model
+        for _attempt in range(5):
+            response = self._transport.post(
+                f"{self._base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                payload={
+                    "model": self._model,
+                    "messages": provider_messages,
+                    "tools": provider_tools,
+                    "tool_choice": "auto",
+                    "max_tokens": self._max_output_tokens,
+                    "stream": False,
+                },
+                timeout=self._timeout_seconds,
+            )
+            usage = response.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0) if isinstance(usage, dict) else 0
+            output_tokens = usage.get("completion_tokens", 0) if isinstance(usage, dict) else 0
+            total_usage = ModelUsage(
+                input_tokens=total_usage.input_tokens
+                + (input_tokens if isinstance(input_tokens, int) else 0),
+                output_tokens=total_usage.output_tokens
+                + (output_tokens if isinstance(output_tokens, int) else 0),
+            )
+            raw_response_model = response.get("model")
+            if isinstance(raw_response_model, str):
+                response_model = raw_response_model
+
+            choices = response.get("choices")
+            if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+                raise AIProviderError("invalid_provider_response", retryable=True)
+            message = choices[0].get("message")
+            if not isinstance(message, dict):
+                raise AIProviderError("invalid_provider_response", retryable=True)
+            tool_calls = message.get("tool_calls")
+            if not isinstance(tool_calls, list) or not tool_calls:
+                content = message.get("content")
+                if not isinstance(content, str) or not content.strip() or len(content) > 20_000:
+                    raise AIProviderError("invalid_provider_response", retryable=True)
+                return ChatResult(
+                    content=content.strip(),
+                    model=response_model,
+                    usage=total_usage,
+                )
+
+            provider_messages.append(
+                {
+                    "role": "assistant",
+                    "content": message.get("content")
+                    if isinstance(message.get("content"), str)
+                    else "",
+                    "tool_calls": tool_calls,
+                }
+            )
+            for raw_call in tool_calls:
+                if not isinstance(raw_call, dict):
+                    raise AIProviderError("invalid_provider_response", retryable=True)
+                call_id = raw_call.get("id")
+                function = raw_call.get("function")
+                if not isinstance(call_id, str) or not isinstance(function, dict):
+                    raise AIProviderError("invalid_provider_response", retryable=True)
+                name = function.get("name")
+                raw_arguments = function.get("arguments")
+                if not isinstance(name, str) or not isinstance(raw_arguments, str):
+                    raise AIProviderError("invalid_provider_response", retryable=True)
+                try:
+                    decoded_arguments = json.loads(raw_arguments) if raw_arguments.strip() else {}
+                except json.JSONDecodeError as error:
+                    raise AIProviderError("invalid_provider_response", retryable=True) from error
+                if not isinstance(decoded_arguments, dict):
+                    raise AIProviderError("invalid_provider_response", retryable=True)
+                result = execute_tool(
+                    ChatToolCall(
+                        id=call_id,
+                        name=name,
+                        arguments=cast(dict[str, object], decoded_arguments),
+                    )
+                )
+                provider_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "content": result.content,
+                    }
+                )
+        raise AIProviderError("tool_loop_exceeded", retryable=True)
 
 
 def _valid_http_url(value: object) -> str | None:
@@ -365,28 +483,28 @@ def build_embedding_model(settings: Settings) -> EmbeddingModelPort | None:
     )
 
 
-def build_chat_model(settings: Settings) -> ChatModelPort | None:
+def build_chat_model(settings: Settings, *, model: str | None = None) -> ChatModelPort | None:
     api_key = settings.ai_chat_api_key.get_secret_value()
-    model = settings.ai_chat_model.strip()
-    if not api_key or not model:
+    resolved_model = (model or settings.ai_chat_model).strip()
+    if not api_key or not resolved_model:
         return None
     return OpenAICompatibleChatModel(
         base_url=settings.ai_chat_base_url,
         api_key=api_key,
-        model=model,
+        model=resolved_model,
         timeout_seconds=settings.ai_request_timeout_seconds,
         max_output_tokens=settings.ai_chat_max_output_tokens,
     )
 
 
-def build_web_search(settings: Settings) -> WebSearchPort | None:
+def build_web_search(settings: Settings, *, model: str | None = None) -> WebSearchPort | None:
     api_key = settings.ai_chat_api_key.get_secret_value()
-    model = settings.ai_chat_model.strip()
-    if not settings.ai_web_search_enabled or not api_key or not model:
+    resolved_model = (model or settings.ai_chat_model).strip()
+    if not settings.ai_web_search_enabled or not api_key or not resolved_model:
         return None
     return OpenAICompatibleWebSearch(
         base_url=settings.ai_chat_base_url,
         api_key=api_key,
-        model=model,
+        model=resolved_model,
         timeout_seconds=settings.ai_web_search_timeout_seconds,
     )
