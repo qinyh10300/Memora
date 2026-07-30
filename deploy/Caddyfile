@@ -24,3 +24,7 @@
 		format json
 	}
 }
+
+:80 {
+	respond "not found" 404
+}

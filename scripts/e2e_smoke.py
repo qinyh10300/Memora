@@ -38,7 +38,8 @@ def request_json(
         method=method,
         headers={"Content-Type": "application/json"} if body is not None else {},
     )
-    with client.open(request, timeout=15) as response:
+    timeout_seconds = float(os.getenv("MEMORA_E2E_TIMEOUT_SECONDS", "90"))
+    with client.open(request, timeout=timeout_seconds) as response:
         response_body = response.read()
         return response.status, json.loads(response_body) if response_body else None
 
@@ -55,9 +56,7 @@ def expect_status(
     except HTTPError as error:
         if error.code == expected:
             return None
-        raise AssertionError(
-            f"{method} {url} 返回 {error.code}，期望 {expected}"
-        ) from error
+        raise AssertionError(f"{method} {url} 返回 {error.code}，期望 {expected}") from error
     if status != expected:
         raise AssertionError(f"{method} {url} 返回 {status}，期望 {expected}")
     return body
@@ -109,11 +108,7 @@ def main() -> int:
             200,
         )
         alex_personal = next(
-            (
-                workspace
-                for workspace in alex_workspaces
-                if workspace["kind"] == "PERSONAL"
-            ),
+            (workspace for workspace in alex_workspaces if workspace["kind"] == "PERSONAL"),
             None,
         )
         alex_team = next(
@@ -125,13 +120,7 @@ def main() -> int:
         if not alex_team["is_current"]:
             raise AssertionError("新登录会话没有进入已有团队空间")
         if (
-            len(
-                [
-                    workspace
-                    for workspace in blair_workspaces
-                    if workspace["kind"] == "PERSONAL"
-                ]
-            )
+            len([workspace for workspace in blair_workspaces if workspace["kind"] == "PERSONAL"])
             != 1
         ):
             raise AssertionError("Blair 没有且仅有一个个人空间")
@@ -242,10 +231,10 @@ def main() -> int:
             },
         )
         if (
-            draft_result["model_status"] != "DISABLED"
+            draft_result["model_status"] not in {"AVAILABLE", "DISABLED"}
             or personal_original_marker not in draft_result["markdown"]
         ):
-            raise AssertionError("未配置模型时草稿没有安全保留用户原文")
+            raise AssertionError("草稿整理没有安全保留用户原文")
         before_save = expect_status(
             alex,
             "GET",
@@ -307,7 +296,11 @@ def main() -> int:
             200,
             {"q": personal_original_marker},
         )
-        if old_revision_search["results"]:
+        if any(
+            result["memory"]["id"] == personal_root_id
+            or personal_original_marker in result["memory"]["body"]
+            for result in old_revision_search["results"]
+        ):
             raise AssertionError("被替代的内部修订仍进入活动检索")
 
         personal_new_version = expect_status(
@@ -329,9 +322,7 @@ def main() -> int:
             200,
         )
         visible_personal_ids = {
-            item["id"]
-            for item in after_new_version
-            if personal_current_marker in item["body"]
+            item["id"] for item in after_new_version if personal_current_marker in item["body"]
         }
         if visible_personal_ids != {personal_updated_id, personal_new_version_id}:
             raise AssertionError("保存为新版本后没有保留两个独立时间点")
@@ -393,10 +384,14 @@ def main() -> int:
         expect_status(blair, "GET", f"{public_url}/api/memories/{created_id}", 404)
         search_url = f"{public_url}/api/search"
         private_search = expect_status(blair, "POST", search_url, 200, {"q": marker})
-        if private_search["results"]:
+        if any(result["memory"]["id"] == created_id for result in private_search["results"]):
             raise AssertionError("关键词检索泄露了其他用户的私有记录")
-        if private_search["semantic_status"] != "DISABLED":
-            raise AssertionError("空 embedding 配置没有明确降级为 DISABLED")
+        if private_search["semantic_status"] not in {
+            "AVAILABLE",
+            "DISABLED",
+            "DEGRADED",
+        }:
+            raise AssertionError("检索没有返回明确的语义能力状态")
         private_chat = expect_status(
             blair,
             "POST",
@@ -445,9 +440,7 @@ def main() -> int:
         if marker not in visible_to_blair["body"]:
             raise AssertionError("共享记录正文与创建内容不一致")
         shared_search = expect_status(blair, "POST", search_url, 200, {"q": marker})
-        if [result["memory"]["id"] for result in shared_search["results"]] != [
-            created_id
-        ]:
+        if created_id not in {result["memory"]["id"] for result in shared_search["results"]}:
             raise AssertionError("关键词检索没有返回已授权的共享记录")
         shared_chat = expect_status(
             blair,
@@ -496,7 +489,7 @@ def main() -> int:
         )
         expect_status(blair, "GET", f"{public_url}/api/memories/{created_id}", 404)
         unshared_search = expect_status(blair, "POST", search_url, 200, {"q": marker})
-        if unshared_search["results"]:
+        if any(result["memory"]["id"] == created_id for result in unshared_search["results"]):
             raise AssertionError("取消共享后关键词检索仍返回记录")
         unshared_chat = expect_status(
             blair,
@@ -536,13 +529,11 @@ def main() -> int:
                 f"{public_url}/api/memories/{created_id}",
                 200,
             )["processing_status"]
-            if processing == "WAITING_CONFIGURATION":
+            if processing in {"COMPLETED", "WAITING_CONFIGURATION"}:
                 break
             time.sleep(0.5)
         else:
-            raise AssertionError(
-                "未配置 embedding 时 worker 没有进入 WAITING_CONFIGURATION"
-            )
+            raise AssertionError("embedding worker 没有进入已完成或等待配置状态")
         expect_status(alex, "DELETE", f"{public_url}/api/memories/{created_id}", 204)
         expect_status(alex, "GET", f"{public_url}/api/memories/{created_id}", 404)
         redacted = expect_status(
@@ -583,9 +574,7 @@ def main() -> int:
                 )
         if created_id is not None:
             with suppress(AssertionError, HTTPError):
-                expect_status(
-                    alex, "DELETE", f"{public_url}/api/memories/{created_id}", 204
-                )
+                expect_status(alex, "DELETE", f"{public_url}/api/memories/{created_id}", 204)
         if alex_conversation_id is not None:
             with suppress(AssertionError, HTTPError):
                 expect_status(

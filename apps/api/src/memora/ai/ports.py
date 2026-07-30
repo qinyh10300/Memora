@@ -23,9 +23,17 @@ class EmbeddingModelPort(Protocol):
 
 
 @dataclass(frozen=True)
+class ChatImageInput:
+    media_type: Literal["image/png", "image/jpeg", "image/webp"]
+    data: str
+    detail: Literal["low", "high", "auto"] = "high"
+
+
+@dataclass(frozen=True)
 class ChatMessage:
     role: Literal["system", "user", "assistant"]
     content: str
+    images: tuple[ChatImageInput, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -40,6 +48,35 @@ class ChatModelPort(Protocol):
     def model_id(self) -> str: ...
 
     def complete(self, messages: list[ChatMessage]) -> ChatResult: ...
+
+
+WebSearchContextSize = Literal["low", "medium", "high"]
+
+
+@dataclass(frozen=True)
+class WebSource:
+    url: str
+    title: str
+
+
+@dataclass(frozen=True)
+class WebSearchResult:
+    content: str
+    sources: tuple[WebSource, ...]
+    model: str
+    usage: ModelUsage
+
+
+class WebSearchPort(Protocol):
+    @property
+    def model_id(self) -> str: ...
+
+    def search(
+        self,
+        query: str,
+        *,
+        context_size: WebSearchContextSize,
+    ) -> WebSearchResult: ...
 
 
 class AIProviderError(RuntimeError):

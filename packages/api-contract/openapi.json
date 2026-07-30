@@ -533,6 +533,164 @@
         "title": "CurrentUserResponse",
         "type": "object"
       },
+      "DraftChatRequest": {
+        "properties": {
+          "markdown": {
+            "default": "",
+            "maxLength": 10000,
+            "title": "Markdown",
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/DraftChatTurn"
+            },
+            "maxItems": 24,
+            "minItems": 1,
+            "title": "Messages",
+            "type": "array"
+          },
+          "web_search": {
+            "default": "AUTO",
+            "enum": [
+              "AUTO",
+              "REQUIRED",
+              "DISABLED"
+            ],
+            "title": "Web Search",
+            "type": "string"
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "title": "DraftChatRequest",
+        "type": "object"
+      },
+      "DraftChatResponse": {
+        "properties": {
+          "assistant_message": {
+            "title": "Assistant Message",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceCitationResponse"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "draft_changed": {
+            "title": "Draft Changed",
+            "type": "boolean"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "model_status": {
+            "enum": [
+              "AVAILABLE",
+              "DISABLED",
+              "DEGRADED"
+            ],
+            "title": "Model Status",
+            "type": "string"
+          },
+          "web_citations": {
+            "items": {
+              "$ref": "#/components/schemas/WebCitationResponse"
+            },
+            "title": "Web Citations",
+            "type": "array"
+          },
+          "web_search_status": {
+            "enum": [
+              "NOT_USED",
+              "AVAILABLE",
+              "DISABLED",
+              "DEGRADED"
+            ],
+            "title": "Web Search Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "markdown",
+          "assistant_message",
+          "draft_changed",
+          "model_status",
+          "citations",
+          "web_search_status",
+          "web_citations"
+        ],
+        "title": "DraftChatResponse",
+        "type": "object"
+      },
+      "DraftChatTurn": {
+        "properties": {
+          "content": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/DraftImageInput"
+            },
+            "maxItems": 3,
+            "title": "Images",
+            "type": "array"
+          },
+          "role": {
+            "enum": [
+              "USER",
+              "ASSISTANT"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "DraftChatTurn",
+        "type": "object"
+      },
+      "DraftImageInput": {
+        "properties": {
+          "data": {
+            "maxLength": 11184812,
+            "minLength": 1,
+            "title": "Data",
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "media_type",
+          "data"
+        ],
+        "title": "DraftImageInput",
+        "type": "object"
+      },
       "EvidenceAuthorResponse": {
         "properties": {
           "display_name": {
@@ -1225,6 +1383,28 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "WebCitationResponse": {
+        "properties": {
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "title"
+        ],
+        "title": "WebCitationResponse",
+        "type": "object"
+      },
       "WorkspaceMemberResponse": {
         "properties": {
           "display_name": {
@@ -1611,6 +1791,47 @@
         "summary": "Update Conversation",
         "tags": [
           "conversations"
+        ]
+      }
+    },
+    "/drafts/chat": {
+      "post": {
+        "operationId": "chat_with_draft_drafts_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftChatResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Chat With Draft",
+        "tags": [
+          "drafts"
         ]
       }
     },

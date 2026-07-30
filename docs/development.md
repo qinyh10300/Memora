@@ -112,6 +112,7 @@ make down
 这些是提交到仓库的非生产开发凭据，只能用于本机。公网部署前必须通过 `SEED_USER_1_*` 到 `SEED_USER_4_*` 环境变量覆盖邮箱、显示名和每个账号的独立初始密码；生产 seed 会拒绝上述 `memora-local-*` 密码。seed 是幂等的，不会在每次启动时覆盖已有账号密码。
 
 本地与单台 Linux 服务器使用同一份 `compose.yaml` 和镜像构建方式，环境差异只通过 `.env` 注入。服务器部署时必须替换数据库密码、会话密钥、AI 配置和 `CADDY_SITE_ADDRESS`，并在 M7 完成 HTTPS、备份恢复和部署 smoke test 后才视为可公开测试。
+部署代理只把 `CADDY_SITE_ADDRESS` 配置的主机名或 IP 作为有效站点；其他 Host 会返回 404，避免同一实例意外暴露在多个访问名下。
 
 ## Native hot-reload development
 
@@ -147,6 +148,60 @@ Web 通过同源 `/api` 和由 OpenAPI 生成的类型化客户端调用后端�
 | `make e2e` | 对已运行环境执行登录、默认私有、授权搜索/Chat/报告、分享、取消共享、worker 降级和删除的可清理 smoke test |
 
 `make check` 不需要真实 AI Key，也不会调用外部模型。真实供应商契约测试单独标记，不能混入默认离线 CI。
+
+## AI quick start
+
+`.env.example` 已提供一组低成本起步模型：
+
+- Chat：`gpt-5.6-terra`（文字与图片，多模态质量/成本平衡档）
+- Embedding：`text-embedding-3-small`
+
+先创建本地配置：
+
+```bash
+cp .env.example .env
+```
+
+然后只在被 Git 忽略的 `.env` 中填写：
+
+```dotenv
+AI_CHAT_API_KEY=你的云雾专用低额度Key
+AI_EMBEDDING_API_KEY=你的云雾专用低额度Key
+```
+
+如果暂时只需要 Markdown AI 整理，可以只填写 `AI_CHAT_API_KEY`；此时记忆仍会保存和参与关键词检索，但 embedding 状态会显示为 `WAITING_CONFIGURATION`。如果云雾账号没有模板中的模型，使用 `GET https://yunwu.ai/v1/models` 返回的实际模型 ID 替换对应 `AI_*_MODEL`。
+
+Capture Chatbot 支持在当前消息附加最多 3 张 PNG、JPEG 或 WEBP 图片：单张最多
+8 MiB，解码后总计最多 16 MiB。浏览器只把当前轮图片发送给 API，API 校验后使用
+`high` detail 调用视觉模型；后续轮次只保留文字会话与当前 Markdown，不重复发送旧图。
+图片、Base64 和 OCR 中间结果不写入数据库或审计，只有用户明确保存的 Markdown
+成为正式记忆。生产测试前应把“附加图片会发送到外部模型”纳入用户披露。
+
+联网搜索复用 `AI_CHAT_BASE_URL`、`AI_CHAT_API_KEY` 和 `AI_CHAT_MODEL`，但通过独立
+`WebSearchPort` 调用 Responses API。默认开启，可在 `.env` 中独立控制：
+
+```dotenv
+AI_WEB_SEARCH_ENABLED=true
+AI_WEB_SEARCH_TIMEOUT_SECONDS=90
+```
+
+页面支持自动联网、本轮联网和关闭联网。自动模式不会让普通记录每轮都搜索；搜索结果
+必须带可点击引用，经过第二阶段整理后才可进入右侧 Markdown。搜索可能比普通聊天慢，
+且会产生额外 token；无引用或失败时草稿保持不变。生产测试前还应披露：联网查询会
+发送到外部 AI 服务，但个人记忆正文不会发送给搜索阶段。
+
+配置后重建相关服务：
+
+```bash
+docker compose up --detach --build api worker
+```
+
+不要把真实 Key 写入 `.env.example`、README、测试、日志或聊天记录。云雾 Key 应单独创建并设置额度，而不是复用其他项目的无限额 Key。
+
+Compose 为需要访问外部模型的 API 和 worker 显式配置了
+`DOCKER_DNS_PRIMARY` 与 `DOCKER_DNS_SECONDARY`。默认值用于修复部分
+macOS/Colima 环境没有给容器提供上游 DNS 的问题；服务器或企业网络可以在
+`.env` 中替换成自己的递归解析器。
 
 ## Retrieval and embedding worker
 
@@ -257,6 +312,20 @@ docker compose logs db migrate api
 ```
 
 `/health` 只说明 API 进程存活，`/ready` 才表示数据库依赖可用。
+
+### AI 请求降级为 `provider_unavailable`
+
+先检查 API 和 worker 是否能从容器解析供应商域名：
+
+```bash
+docker compose exec api getent hosts yunwu.ai
+docker compose exec worker getent hosts yunwu.ai
+```
+
+如果宿主机可以解析、容器却没有结果，检查容器中的 `/etc/resolv.conf`。对于
+本地 Colima，可保留 `.env.example` 的 DNS 默认值；服务器或受管网络应把
+`DOCKER_DNS_PRIMARY` 和 `DOCKER_DNS_SECONDARY` 改为运维提供的解析器。
+不要把供应商域名固定写入 `/etc/hosts`，其地址可能变化。
 
 ### OpenAPI contract drift
 

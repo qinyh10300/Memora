@@ -37,6 +37,12 @@ flowchart LR
 - 登录后，Web 通过受保护的 workspace 接口找到并激活当前用户的 `PERSONAL` 空间；所有业务接口仍从服务端 session 解析活动空间。
 - 一级导航只有“记录想法”和“记忆库”。
 - `POST /drafts/refine` 接收当前 Markdown 和用户指令，只返回修改后的草稿。它不创建 memory，也不把草稿正文写入审计日志。
+- `POST /drafts/chat` 可以接收当前轮受限图片输入。图片只在请求内存中解码、校验并
+  转发给 Chat 模型，不进入 PostgreSQL、审计或检索投影；只有用户确认后的 Markdown
+  可以通过现有 memory 接口保存。
+- `POST /drafts/chat` 同时接受 `AUTO`、`REQUIRED` 或 `DISABLED` 联网模式。联网阶段
+  返回受预算约束的摘要和 URL 来源，最终 Chat 阶段统一决定回答或更新 Markdown；
+  API 只返回搜索候选白名单中被模型实际使用的 HTTP(S) 引用。
 - 模型未配置时，空草稿确定性地保留用户原文；非空草稿保持不变。供应商失败时也不覆盖当前内容。
 - `POST /memories` 仍是唯一的新记忆保存动作；当前 Web 只创建 `PRIVATE` 记录。
 - 记忆库调用现有授权列表，并额外指定当前作者和私有范围。
@@ -202,10 +208,11 @@ M4 的投影列使用 pgvector 可变维度 `vector`，查询必须同时硬过�
 
 ## AI provider boundary
 
-定义两个独立端口：
+定义三个独立端口：
 
-- `ChatModelPort`：流式或非流式生成、结构化输出、用量和错误归一化。
+- `ChatModelPort`：流式或非流式生成、结构化输出、受限图片输入、用量和错误归一化。
 - `EmbeddingModelPort`：批量 embedding、模型标识、维度和用量。
+- `WebSearchPort`：查询、搜索上下文深度、证据摘要、网页来源、用量和错误归一化。
 
 基础设施 adapter 从环境变量读取 base URL、API Key、模型名、超时和重试配置。领域和应用模块只依赖端口，不引用云雾或任一模型 SDK 的专用类型。
 
@@ -213,7 +220,26 @@ M4 的投影列使用 pgvector 可变维度 `vector`，查询必须同时硬过�
 
 M5 的聊天 adapter 使用供应商兼容的 `v1/chat/completions` 端点；该端点仍被当前 OpenAI 文本模型列为支持的接口，例如 [Chat Latest 模型页](https://developers.openai.com/api/docs/models/chat-latest)。adapter 只负责 HTTP 契约和错误归一化，不读取数据库、不选择证据，也不决定引用。
 
+多模态 capture 沿用相同端口。应用层只构造供应商无关的 `ChatImageInput`；兼容
+adapter 将其转换为 Chat Completions 的 `image_url` data URL。服务端在调用 adapter
+前重新校验 MIME、Base64、文件魔数、单图大小、数量和总大小，使用 `high` detail
+支持截图文字识别。图片及 OCR 中间结果不落库，供应商失败时保留当前 Markdown。
+
+联网搜索 adapter 使用 OpenAI-compatible Responses API 的原生 `web_search` 工具，
+而不是让应用任意抓取 URL。搜索与最终 Markdown 生成分为两次调用：搜索端口只获得
+当前用户查询并产出带来源的证据；Chat 端口再结合对话、当前 Markdown、授权个人记忆
+和网页证据生成结构化响应。网页摘要与来源均是不可信数据，数量、字符数和 URL 协议
+受限。搜索无引用、超时或失败时不调用最终生成覆盖草稿。
+
 `POST /drafts/refine` 复用 `ChatModelPort`，把当前 Markdown 作为不可信数据、把用户修改要求作为独立字段发送。模型只能返回完整 Markdown，不能执行保存。调用成功、禁用或失败都只写入不含正文的审计事件；成功调用同时记录模型和 token 用量。
+
+个人 capture 界面使用独立的草稿 Chatbot endpoint，把有长度上限的本次会话、
+当前 Markdown 和服务端授权筛选的个人记忆作为三个独立的不可信数据区传入模型。
+模型返回结构化的聊天回复、草稿变更标记和完整 Markdown；服务端负责解析和长度
+校验，并在模型声明不修改草稿时强制保留当前版本。个人记忆上下文必须来自统一授权
+查询；优先在整个当前用户个人记忆向量投影上召回相关记录，embedding 不可用时降级
+到最近记录。两种路径都设置记录数、单条正文和总字符预算，不能由前端上传记录正文
+冒充检索结果。
 
 `POST /chat/questions` 要求客户端显式传入范围和检索主题，问题与主题都放在 JSON body 中。服务端先用统一授权查询生成最多 12 条证据，再结束数据库事务并调用外部模型。模型输入中的 memory 正文被当作不可信数据；返回前重新授权所有证据，若生成期间发生撤回或删除，则丢弃模型答案并用剩余证据重建。无模型配置或供应商失败时使用确定性证据回答；没有证据时明确返回不知道。
 

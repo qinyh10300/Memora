@@ -1,7 +1,10 @@
 "use client";
 
 import type { components } from "@memora/api-contract";
+import Image from "next/image";
 import {
+  ChangeEvent,
+  ClipboardEvent,
   FormEvent,
   KeyboardEvent,
   ReactNode,
@@ -17,15 +20,57 @@ import { api } from "@/lib/api";
 type CurrentUser = components["schemas"]["CurrentUserResponse"];
 type Workspace = components["schemas"]["WorkspaceResponse"];
 type Memory = components["schemas"]["MemoryResponse"];
+type EvidenceCitation = components["schemas"]["EvidenceCitationResponse"];
+type WebCitation = components["schemas"]["WebCitationResponse"];
+type DraftImageInput = components["schemas"]["DraftImageInput"];
+type WebSearchMode = components["schemas"]["DraftChatRequest"]["web_search"];
 type RevisionMode = components["schemas"]["CreateMemoryRevisionRequest"]["mode"];
 type AppView = "CAPTURE" | "LIBRARY";
+
+type DraftImageAttachment = DraftImageInput & {
+  id: string;
+  previewUrl: string;
+};
+
+type DraftImagePreview = Pick<DraftImageAttachment, "id" | "name" | "previewUrl">;
 
 type DraftMessage = {
   id: string;
   role: "USER" | "ASSISTANT";
   content: string;
   meta?: string;
+  citations?: EvidenceCitation[];
+  webCitations?: WebCitation[];
+  images?: DraftImagePreview[];
 };
+
+const MAX_DRAFT_IMAGES = 3;
+const MAX_DRAFT_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_DRAFT_IMAGE_TOTAL_BYTES = 16 * 1024 * 1024;
+const ACCEPTED_DRAFT_IMAGE_TYPES = new Set<DraftImageInput["media_type"]>([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
+const IMAGE_ONLY_INSTRUCTION = "请读取这些图片，提取其中的文字，并整理到右侧 Markdown。";
+const AUTO_WEB_SEARCH_MARKERS = [
+  "联网",
+  "上网",
+  "搜索",
+  "搜一下",
+  "查一下",
+  "查最新",
+  "最新消息",
+  "最新进展",
+  "官网",
+  "新闻",
+  "近期动态",
+  "最近发布",
+  "当前价格",
+  "现在的价格",
+  "web search",
+  "latest news",
+];
 
 const demoAccounts = [
   { name: "Alex", email: "alex@memora.local" },
@@ -48,6 +93,39 @@ function nextId(prefix: string) {
   return `${prefix}-${Date.now()}-${localId}`;
 }
 
+function willSearchWeb(instruction: string, mode: WebSearchMode) {
+  if (mode === "DISABLED") return false;
+  if (mode === "REQUIRED") return true;
+  const normalized = instruction.toLocaleLowerCase();
+  return AUTO_WEB_SEARCH_MARKERS.some((marker) => normalized.includes(marker));
+}
+
+function readImageAttachment(file: File): Promise<DraftImageAttachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("image_read_failed"));
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("image_read_failed"));
+        return;
+      }
+      const commaIndex = reader.result.indexOf(",");
+      if (commaIndex < 0) {
+        reject(new Error("image_read_failed"));
+        return;
+      }
+      resolve({
+        id: nextId("image"),
+        name: file.name || "未命名图片",
+        media_type: file.type as DraftImageInput["media_type"],
+        data: reader.result.slice(commaIndex + 1),
+        previewUrl: reader.result,
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
@@ -63,6 +141,14 @@ function formatTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function sourceHostname(value: string) {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return value;
+  }
 }
 
 function dayKey(value: string) {
@@ -105,7 +191,7 @@ function memoryExcerpt(body: string) {
 function Logo() {
   return (
     <span className="logo-mark" aria-hidden="true">
-      M
+      <Image alt="" height={1024} src="/memora-logo-owl-minimal-tight.png" width={1024} />
     </span>
   );
 }
@@ -150,6 +236,23 @@ function SendIcon() {
   return (
     <Icon>
       <path d="M12 19V5m0 0-6 6m6-6 6 6" />
+    </Icon>
+  );
+}
+
+function AttachmentIcon() {
+  return (
+    <Icon>
+      <path d="m20.5 11.5-8.7 8.7a6 6 0 0 1-8.5-8.5l9.4-9.4a4 4 0 0 1 5.7 5.7L9 17.4a2 2 0 0 1-2.8-2.8l8.7-8.7" />
+    </Icon>
+  );
+}
+
+function GlobeIcon() {
+  return (
+    <Icon size={16}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
     </Icon>
   );
 }
@@ -213,7 +316,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: CurrentUser) => void }) {
           <span>Memora</span>
         </div>
         <div className="login-copy">
-          <p className="overline">YOUR PRIVATE MEMORY</p>
+          <p className="overline">私人记忆</p>
           <h1 id="login-title">把想法留下来</h1>
           <p>和 Memora 对话，把零散想法整理成属于你的 Markdown 记忆。</p>
         </div>
@@ -342,25 +445,38 @@ function CaptureWorkspace({
   draft,
   messages,
   refining,
+  searching,
   saving,
   savedBody,
   onDraftChange,
   onRefine,
   onSave,
   onReset,
+  onOpenCitation,
 }: {
   draft: string;
   messages: DraftMessage[];
   refining: boolean;
+  searching: boolean;
   saving: boolean;
   savedBody: string | null;
   onDraftChange: (value: string) => void;
-  onRefine: (instruction: string) => Promise<void>;
+  onRefine: (
+    instruction: string,
+    images: DraftImageAttachment[],
+    webSearch: WebSearchMode,
+  ) => Promise<void>;
   onSave: () => Promise<void>;
   onReset: () => void;
+  onOpenCitation: (memoryId: string) => Promise<void>;
 }) {
   const [instruction, setInstruction] = useState("");
+  const [attachments, setAttachments] = useState<DraftImageAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [webSearchMode, setWebSearchMode] = useState<WebSearchMode>("AUTO");
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const normalizedDraft = draft.trim();
   const isSaved = Boolean(normalizedDraft && normalizedDraft === savedBody);
 
@@ -368,12 +484,32 @@ function CaptureWorkspace({
     messageEndRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
   }, [messages, refining]);
 
+  // Grow the composer with its content up to the CSS max-height, then scroll.
+  useEffect(() => {
+    const node = composerRef.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${node.scrollHeight}px`;
+  }, [instruction]);
+
+  // Return focus to the composer once a turn finishes so typing can continue.
+  useEffect(() => {
+    if (!refining) composerRef.current?.focus?.();
+  }, [refining]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = instruction.trim();
-    if (!value || refining) return;
+    if ((!value && attachments.length === 0) || refining) return;
+    const message = value || IMAGE_ONLY_INSTRUCTION;
+    const selectedAttachments = attachments;
     setInstruction("");
-    await onRefine(value);
+    setAttachments([]);
+    setAttachmentError("");
+    if (imageInputRef.current) imageInputRef.current.value = "";
+    const selectedWebSearchMode = webSearchMode;
+    if (selectedWebSearchMode === "REQUIRED") setWebSearchMode("AUTO");
+    await onRefine(message, selectedAttachments, selectedWebSearchMode);
   }
 
   function composerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -383,12 +519,65 @@ function CaptureWorkspace({
     }
   }
 
+  // Returns an error message, or "" when the batch may be attached.
+  function validateFiles(files: File[]) {
+    const availableSlots = MAX_DRAFT_IMAGES - attachments.length;
+    if (availableSlots <= 0 || files.length > availableSlots) {
+      return `每条消息最多上传 ${MAX_DRAFT_IMAGES} 张图片。`;
+    }
+    const hasInvalidType = files.some(
+      (file) => !ACCEPTED_DRAFT_IMAGE_TYPES.has(file.type as DraftImageInput["media_type"]),
+    );
+    if (hasInvalidType) return "只支持 PNG、JPEG 和 WEBP 图片。";
+    if (files.some((file) => file.size > MAX_DRAFT_IMAGE_BYTES)) {
+      return "单张图片不能超过 8 MiB。";
+    }
+    const currentBytes = attachments.reduce(
+      (total, attachment) => total + Math.ceil((attachment.data.length * 3) / 4),
+      0,
+    );
+    const incomingBytes = files.reduce((total, file) => total + file.size, 0);
+    if (currentBytes + incomingBytes > MAX_DRAFT_IMAGE_TOTAL_BYTES) {
+      return "每条消息的图片总大小不能超过 16 MiB。";
+    }
+    return "";
+  }
+
+  async function attachFiles(files: File[]) {
+    setAttachmentError("");
+    const validationError = validateFiles(files);
+    if (validationError) {
+      setAttachmentError(validationError);
+      return;
+    }
+    try {
+      const nextAttachments = await Promise.all(files.map(readImageAttachment));
+      setAttachments((current) => [...current, ...nextAttachments]);
+    } catch {
+      setAttachmentError("图片读取失败，请重新选择。");
+    }
+  }
+
+  async function selectImages(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+    await attachFiles(files);
+    event.target.value = "";
+  }
+
+  async function pasteIntoComposer(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(event.clipboardData?.files ?? []);
+    if (!files.length || refining) return;
+    event.preventDefault();
+    await attachFiles(files);
+  }
+
   return (
     <div className="capture-workspace">
       <section className="conversation-panel" aria-label="草稿对话">
         <header className="panel-header">
           <div>
-            <p className="eyebrow">CAPTURE</p>
+            <p className="eyebrow">记录</p>
             <h1>记录想法</h1>
           </div>
           <span className="private-status">
@@ -411,17 +600,70 @@ function CaptureWorkspace({
                 {message.role === "ASSISTANT" ? <Logo /> : null}
                 <div>
                   <p>{message.content}</p>
+                  {message.images?.length ? (
+                    <div className="message-images" aria-label="消息图片">
+                      {message.images.map((image) => (
+                        <Image
+                          alt={image.name}
+                          height={120}
+                          key={image.id}
+                          src={image.previewUrl}
+                          unoptimized
+                          width={180}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                   {message.meta ? <small>{message.meta}</small> : null}
+                  {message.citations?.length ? (
+                    <div className="chat-citations" aria-label="回答来源">
+                      {message.citations.map((citation, index) => (
+                        <button
+                          type="button"
+                          key={citation.memory_id}
+                          onClick={() => void onOpenCitation(citation.memory_id)}
+                        >
+                          <span>来源 {index + 1}</span>
+                          <strong>{citation.author.display_name}</strong>
+                          <time dateTime={citation.created_at}>
+                            {formatDateTime(citation.created_at)}
+                          </time>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {message.webCitations?.length ? (
+                    <div className="web-citations" aria-label="网页来源">
+                      {message.webCitations.map((citation, index) => (
+                        <a
+                          href={citation.url}
+                          key={citation.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <span>网页 {index + 1}</span>
+                          <strong>{citation.title}</strong>
+                          <small>{sourceHostname(citation.url)}</small>
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </article>
             ))}
             {refining ? (
               <article className="chat-message is-assistant">
                 <Logo />
-                <div className="thinking-dots" aria-label="Memora 正在整理">
-                  <span />
-                  <span />
-                  <span />
+                <div className="thinking-indicator" role="status">
+                  <div
+                    className="thinking-dots"
+                    aria-label={searching ? "Memora 正在联网搜索并整理" : "Memora 正在整理"}
+                  >
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <small>{searching ? "正在联网搜索并整理…" : "正在整理…"}</small>
                 </div>
               </article>
             ) : null}
@@ -431,27 +673,110 @@ function CaptureWorkspace({
 
         <div className="composer-wrap">
           <form className="composer" onSubmit={submit}>
-            <textarea
-              aria-label="告诉 Memora 你的想法"
-              placeholder={draft ? "继续说，或告诉我怎样修改草稿…" : "输入一个想法…"}
-              rows={1}
-              value={instruction}
-              onChange={(event) => setInstruction(event.target.value)}
-              onKeyDown={composerKeyDown}
-              disabled={refining}
-            />
-            <button type="submit" aria-label="发送" disabled={!instruction.trim() || refining}>
-              <SendIcon />
-            </button>
+            {attachments.length ? (
+              <div className="pending-images" aria-label="待发送图片">
+                {attachments.map((image) => (
+                  <div key={image.id}>
+                    <Image
+                      alt={image.name}
+                      height={72}
+                      src={image.previewUrl}
+                      unoptimized
+                      width={96}
+                    />
+                    <button
+                      type="button"
+                      aria-label={`移除图片 ${image.name}`}
+                      onClick={() =>
+                        setAttachments((current) =>
+                          current.filter((attachment) => attachment.id !== image.id),
+                        )
+                      }
+                    >
+                      <CloseIcon />
+                    </button>
+                    <span>{image.name}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <div className="composer-tools">
+              <label className={`search-mode-control is-${webSearchMode.toLowerCase()}`}>
+                <GlobeIcon />
+                <select
+                  aria-label="联网模式"
+                  value={webSearchMode}
+                  onChange={(event) => setWebSearchMode(event.target.value as WebSearchMode)}
+                  disabled={refining}
+                >
+                  <option value="AUTO">自动联网</option>
+                  <option value="REQUIRED">本轮联网</option>
+                  <option value="DISABLED">关闭联网</option>
+                </select>
+              </label>
+              <span>
+                {webSearchMode === "AUTO"
+                  ? "需要最新信息时自动搜索"
+                  : webSearchMode === "REQUIRED"
+                    ? "发送后恢复自动"
+                    : "只使用对话与个人记忆"}
+              </span>
+            </div>
+            <div className="composer-row">
+              <input
+                ref={imageInputRef}
+                className="image-input"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                multiple
+                aria-label="选择图片"
+                onChange={(event) => void selectImages(event)}
+                disabled={refining || attachments.length >= MAX_DRAFT_IMAGES}
+              />
+              <button
+                className="attach-button"
+                type="button"
+                aria-label="上传图片"
+                title="上传图片"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={refining || attachments.length >= MAX_DRAFT_IMAGES}
+              >
+                <AttachmentIcon />
+              </button>
+              <textarea
+                ref={composerRef}
+                aria-label="告诉 Memora 你的想法"
+                placeholder={draft ? "继续说，或告诉我怎样修改草稿…" : "输入想法或上传图片…"}
+                rows={1}
+                value={instruction}
+                onChange={(event) => setInstruction(event.target.value)}
+                onKeyDown={composerKeyDown}
+                onPaste={(event) => void pasteIntoComposer(event)}
+                disabled={refining}
+              />
+              <button
+                className="send-button"
+                type="submit"
+                aria-label="发送"
+                disabled={(!instruction.trim() && attachments.length === 0) || refining}
+              >
+                <SendIcon />
+              </button>
+            </div>
           </form>
-          <p>Enter 发送 · Shift + Enter 换行 · 对话不会自动保存</p>
+          {attachmentError ? (
+            <p className="attachment-error" role="alert">
+              {attachmentError}
+            </p>
+          ) : null}
+          <p>Enter 发送 · Shift + Enter 换行 · 可直接粘贴图片 · 对话不会自动保存</p>
         </div>
       </section>
 
       <section className="markdown-panel" aria-label="Markdown 草稿编辑器">
         <header className="markdown-header">
           <div>
-            <p className="eyebrow">MARKDOWN</p>
+            <p className="eyebrow">草稿</p>
             <h2>草稿</h2>
           </div>
           <div className="draft-header-actions">
@@ -521,14 +846,25 @@ function Timeline({
     <section className="timeline-panel" aria-label="个人记忆时间线">
       <header className="library-list-header">
         <div>
-          <p className="eyebrow">PRIVATE MEMORY</p>
+          <p className="eyebrow">个人记忆</p>
           <h1>记忆库</h1>
         </div>
         <span>{memories.length}</span>
       </header>
       <div className="timeline-scroll">
         {loading ? (
-          <div className="timeline-empty">正在读取记忆…</div>
+          <div className="timeline-skeleton" role="status" aria-label="正在读取记忆…">
+            {[0, 1, 2, 3].map((row) => (
+              <div key={row}>
+                <span className="skeleton-line" />
+                <span className="skeleton-node" />
+                <span className="skeleton-copy">
+                  <span className="skeleton-line" />
+                  <span className="skeleton-line" />
+                </span>
+              </div>
+            ))}
+          </div>
         ) : groups.length === 0 ? (
           <div className="timeline-empty">
             <LibraryIcon />
@@ -628,7 +964,7 @@ function MemoryDetail({
     <section className="memory-detail" aria-label="记忆详情">
       <header className="detail-header">
         <div>
-          <p className="eyebrow">MEMORY DETAIL</p>
+          <p className="eyebrow">记忆详情</p>
           <h2>{memoryTitle(baseline)}</h2>
           <p>{formatDateTime(memory.created_at)} · 仅自己可见</p>
         </div>
@@ -673,7 +1009,7 @@ function MemoryDetail({
           </p>
         ) : null}
 
-        <div className="revision-actions">
+        <div className={dirty ? "revision-actions is-dirty" : "revision-actions"}>
           <div>
             <strong>{dirty ? "有尚未保存的修改" : "内容已保存"}</strong>
             <small>
@@ -739,6 +1075,7 @@ export default function HomePage() {
   const [savedBody, setSavedBody] = useState<string | null>(null);
   const [messages, setMessages] = useState<DraftMessage[]>([initialMessage]);
   const [refiningDraft, setRefiningDraft] = useState(false);
+  const [searchingWeb, setSearchingWeb] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
 
   const [refiningMemory, setRefiningMemory] = useState(false);
@@ -746,10 +1083,29 @@ export default function HomePage() {
   const [deletingMemory, setDeletingMemory] = useState(false);
   const [memoryAiStatus, setMemoryAiStatus] = useState("");
   const [toast, setToast] = useState("");
+  const [toastLeaving, setToastLeaving] = useState(false);
+  const toastTimers = useRef<number[]>([]);
 
   const showToast = useCallback((message: string) => {
+    toastTimers.current.forEach(window.clearTimeout);
+    toastTimers.current = [];
+    setToastLeaving(false);
     setToast(message);
-    window.setTimeout(() => setToast(""), 3200);
+    // Start the exit animation first, then unmount once it has played.
+    toastTimers.current.push(window.setTimeout(() => setToastLeaving(true), 3200));
+    toastTimers.current.push(
+      window.setTimeout(() => {
+        setToast("");
+        setToastLeaving(false);
+      }, 3400),
+    );
+  }, []);
+
+  useEffect(() => {
+    const timers = toastTimers;
+    return () => {
+      timers.current.forEach(window.clearTimeout);
+    };
   }, []);
 
   const loadMemories = useCallback(async (userId: string) => {
@@ -854,17 +1210,37 @@ export default function HomePage() {
     setRevisions(data && response.ok ? data : [memory]);
   }
 
-  async function refineCapture(instruction: string) {
-    setMessages((current) => [
-      ...current,
-      { id: nextId("user"), role: "USER", content: instruction },
-    ]);
+  async function refineCapture(
+    instruction: string,
+    images: DraftImageAttachment[],
+    webSearch: WebSearchMode,
+  ) {
+    const userMessage: DraftMessage = {
+      id: nextId("user"),
+      role: "USER",
+      content: instruction,
+      images: images.map(({ id, name, previewUrl }) => ({ id, name, previewUrl })),
+    };
+    const priorConversation = messages
+      .filter((message) => message.id !== "welcome")
+      .slice(-23)
+      .map((message) => ({ role: message.role, content: message.content }));
+    const currentTurn = images.length
+      ? {
+          role: userMessage.role,
+          content: userMessage.content,
+          images: images.map(({ name, media_type, data }) => ({ name, media_type, data })),
+        }
+      : { role: userMessage.role, content: userMessage.content };
+    const conversation = [...priorConversation, currentTurn];
+    setMessages((current) => [...current, userMessage]);
     setRefiningDraft(true);
+    setSearchingWeb(willSearchWeb(instruction, webSearch));
     try {
-      const { data, response } = await api.POST("/drafts/refine", {
-        body: { markdown: draft, instruction },
+      const { data, response } = await api.POST("/drafts/chat", {
+        body: { markdown: draft, messages: conversation, web_search: webSearch },
       });
-      if (!data || !response.ok) throw new Error("draft_refine_failed");
+      if (!data || !response.ok) throw new Error("draft_chat_failed");
       setDraft(data.markdown);
       setMessages((current) => [
         ...current,
@@ -873,11 +1249,25 @@ export default function HomePage() {
           role: "ASSISTANT",
           content: data.assistant_message,
           meta:
-            data.model_status === "AVAILABLE"
-              ? "右侧草稿已更新"
-              : data.model_status === "DISABLED"
-                ? "基础草稿模式"
-                : "草稿已安全保留",
+            data.web_search_status === "AVAILABLE"
+              ? data.draft_changed
+                ? `已联网 · ${data.web_citations.length} 个来源 · Markdown 已同步`
+                : `已联网 · ${data.web_citations.length} 个来源 · Markdown 未改变`
+              : data.web_search_status === "DEGRADED"
+                ? "联网失败 · 草稿已安全保留"
+                : data.web_search_status === "DISABLED" && webSearch !== "DISABLED"
+                  ? "联网能力未启用 · 草稿已安全保留"
+                  : data.model_status === "AVAILABLE"
+                    ? data.draft_changed
+                      ? "右侧 Markdown 已同步"
+                      : data.citations.length
+                        ? `引用 ${data.citations.length} 条个人记忆`
+                        : "已回答，Markdown 未改变"
+                    : data.model_status === "DISABLED"
+                      ? "基础草稿模式"
+                      : "草稿已安全保留",
+          citations: data.citations,
+          webCitations: data.web_citations,
         },
       ]);
     } catch {
@@ -891,6 +1281,7 @@ export default function HomePage() {
       ]);
     } finally {
       setRefiningDraft(false);
+      setSearchingWeb(false);
     }
   }
 
@@ -926,6 +1317,23 @@ export default function HomePage() {
     setDraft("");
     setSavedBody(null);
     setMessages([initialMessage]);
+  }
+
+  async function openCitation(memoryId: string) {
+    let resolved = memories.find((memory) => memory.id === memoryId);
+    if (!resolved) {
+      const { data, response } = await api.GET("/memories/{memory_id}", {
+        params: { path: { memory_id: memoryId } },
+      });
+      if (!data || !response.ok) {
+        showToast("这条来源当前不可访问");
+        return;
+      }
+      resolved = data;
+      setMemories((current) => [data, ...current.filter((memory) => memory.id !== data.id)]);
+    }
+    setView("LIBRARY");
+    await selectMemory(resolved);
   }
 
   async function refineSelectedMemory(instruction: string) {
@@ -1080,19 +1488,23 @@ export default function HomePage() {
         ) : null}
 
         {view === "CAPTURE" ? (
-          <CaptureWorkspace
-            draft={draft}
-            messages={messages}
-            refining={refiningDraft}
-            saving={savingDraft}
-            savedBody={savedBody}
-            onDraftChange={setDraft}
-            onRefine={refineCapture}
-            onSave={saveDraft}
-            onReset={resetDraft}
-          />
+          <div className="view-transition" key="capture">
+            <CaptureWorkspace
+              draft={draft}
+              messages={messages}
+              refining={refiningDraft}
+              searching={searchingWeb}
+              saving={savingDraft}
+              savedBody={savedBody}
+              onDraftChange={setDraft}
+              onRefine={refineCapture}
+              onSave={saveDraft}
+              onReset={resetDraft}
+              onOpenCitation={openCitation}
+            />
+          </div>
         ) : (
-          <div className="library-workspace">
+          <div className="library-workspace view-transition" key="library">
             <Timeline
               memories={memories}
               selectedId={selectedMemory?.id ?? null}
@@ -1118,7 +1530,7 @@ export default function HomePage() {
         )}
       </section>
       {toast ? (
-        <div className="toast" role="status">
+        <div className={toastLeaving ? "toast is-leaving" : "toast"} role="status">
           {toast}
         </div>
       ) : null}

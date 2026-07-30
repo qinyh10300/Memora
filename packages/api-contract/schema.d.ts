@@ -108,6 +108,23 @@ export interface paths {
         patch: operations["update_conversation_conversations__conversation_id__patch"];
         trace?: never;
     };
+    "/drafts/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Chat With Draft */
+        post: operations["chat_with_draft_drafts_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/drafts/refine": {
         parameters: {
             query?: never;
@@ -558,6 +575,69 @@ export interface components {
             /** Workspace Name */
             workspace_name: string;
         };
+        /** DraftChatRequest */
+        DraftChatRequest: {
+            /**
+             * Markdown
+             * @default
+             */
+            markdown: string;
+            /** Messages */
+            messages: components["schemas"]["DraftChatTurn"][];
+            /**
+             * Web Search
+             * @default AUTO
+             * @enum {string}
+             */
+            web_search: "AUTO" | "REQUIRED" | "DISABLED";
+        };
+        /** DraftChatResponse */
+        DraftChatResponse: {
+            /** Assistant Message */
+            assistant_message: string;
+            /** Citations */
+            citations: components["schemas"]["EvidenceCitationResponse"][];
+            /** Draft Changed */
+            draft_changed: boolean;
+            /** Markdown */
+            markdown: string;
+            /**
+             * Model Status
+             * @enum {string}
+             */
+            model_status: "AVAILABLE" | "DISABLED" | "DEGRADED";
+            /** Web Citations */
+            web_citations: components["schemas"]["WebCitationResponse"][];
+            /**
+             * Web Search Status
+             * @enum {string}
+             */
+            web_search_status: "NOT_USED" | "AVAILABLE" | "DISABLED" | "DEGRADED";
+        };
+        /** DraftChatTurn */
+        DraftChatTurn: {
+            /** Content */
+            content: string;
+            /** Images */
+            images?: components["schemas"]["DraftImageInput"][];
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "USER" | "ASSISTANT";
+        };
+        /** DraftImageInput */
+        DraftImageInput: {
+            /** Data */
+            data: string;
+            /**
+             * Media Type
+             * @enum {string}
+             */
+            media_type: "image/png" | "image/jpeg" | "image/webp";
+            /** Name */
+            name: string;
+        };
         /** EvidenceAuthorResponse */
         EvidenceAuthorResponse: {
             /** Display Name */
@@ -845,6 +925,13 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WebCitationResponse */
+        WebCitationResponse: {
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+        };
         /** WorkspaceMemberResponse */
         WorkspaceMemberResponse: {
             /** Display Name */
@@ -1121,6 +1208,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationSummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_with_draft_drafts_chat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftChatResponse"];
                 };
             };
             /** @description Validation Error */

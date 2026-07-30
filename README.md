@@ -125,6 +125,8 @@ Memora separates AI capabilities from product correctness:
   and provider errors.
 - `EmbeddingModelPort` handles batch embeddings, model identity, dimensions,
   and usage.
+- `WebSearchPort` normalizes on-demand web evidence, source URLs, usage, and
+  provider errors without giving the search provider database access.
 - PostgreSQL full-text/keyword search remains available when semantic search is
   disabled or degraded.
 - pgvector results are isolated by embedding model and dimensions.
@@ -297,6 +299,13 @@ Chat and embedding settings are independent:
 - `AI_CHAT_BASE_URL`, `AI_CHAT_API_KEY`, `AI_CHAT_MODEL`
 - `AI_EMBEDDING_BASE_URL`, `AI_EMBEDDING_API_KEY`,
   `AI_EMBEDDING_MODEL`
+- `AI_WEB_SEARCH_ENABLED`, `AI_WEB_SEARCH_TIMEOUT_SECONDS` control the separate
+  web-search port, which currently reuses the Chat provider credentials.
+
+The example defaults to the multimodal `gpt-5.6-terra` for Chat and
+`text-embedding-3-small` for embeddings, while leaving both API keys empty.
+Copy it to the ignored `.env`, add a dedicated low-quota key, and verify model
+IDs against the provider's `/v1/models` response before deployment.
 
 Production also requires unique database credentials, a strong session secret,
 production seed accounts, a real `CADDY_SITE_ADDRESS`, and a reviewed backup

@@ -33,3 +33,4 @@ htmlcov/
 artifacts/
 playwright-report/
 test-results/
+.gitnexus

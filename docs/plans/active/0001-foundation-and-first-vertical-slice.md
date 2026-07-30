@@ -4,7 +4,7 @@ Status: in-progress
 
 Owner: product team and coding agent
 
-Last updated: 2026-07-22
+Last updated: 2026-07-26
 
 ## Outcome
 
@@ -46,7 +46,7 @@ Last updated: 2026-07-22
 - [x] 批准产品简报、架构 overview 和 ADR-0001。
 - [x] 在真实名单确定前使用四个可由环境变量覆盖的 seed 账号；生产初始密码只通过服务器环境变量注入。
 - [ ] 确定服务器 Linux 发行版、SSH 访问、域名和 DNS 控制权。
-- [ ] 在云雾控制台创建 Memora 专用低额度测试 Key，不把 Key 发到聊天或提交 Git。
+- [ ] 在云雾控制台轮换 Memora 专用低额度测试 Key；旧 Key 因本地联调日志意外暴露，必须撤销，且新 Key 只能保存在 `.env`。
 - [ ] 验证云雾实际 base URL、聊天模型、流式协议、embedding endpoint 和模型。
 - [ ] 确定删除后的备份保留策略。
 - [x] v0.1 报告不猜测默认范围，UI 和 API 都要求显式时间范围。
@@ -146,6 +146,12 @@ Last updated: 2026-07-22
 - 2026-07-22：团队报告只包含 `WORKSPACE` 记录；原因是团队报告可能被当成可共享产物，不能把生成者自己的私有内容静默混入团队叙事。
 - 2026-07-22：第一版报告不持久化和导出；原因是按需查看已满足四人验证闭环，长期保存会引入来源撤回、文件权限和删除传播的新生命周期。
 - 2026-07-22：Web 使用单一对话外壳编排现有授权 API；原因是用户心智应聚焦“告诉 Memora 或询问 Memora”，但默认私有、显式共享、范围过滤和引用仍必须由服务端接口保证，不能交给模型猜测。
+- 2026-07-26：本地真实 Key 联调发现 macOS/Colima 没有向 Docker 内置解析器注入任何上游 DNS，导致聊天和 embedding 在发出 HTTP 请求前统一降级为 `provider_unavailable`。为 API/worker 增加可由环境覆盖的容器 DNS，并验证云雾 `/v1/models` 返回 200、`gpt-4o-mini` 非流式草稿整理成功、`text-embedding-3-small` 返回 1536 维向量；流式协议仍未启用或验收。
+- 2026-07-26：真实 `.env` 还暴露出默认 pytest 会读取开发者 AI 配置并调用外部模型；新增测试级环境隔离，确保 `make check` 无论本地是否配置 Key 都保持离线。修复后 56 个 API 测试、14 个 Web 测试、契约检查和生产构建全部通过。
+- 2026-07-26：检查 Compose 展开配置时误将当前 Key 写入本次任务工具日志；Key 未写入 Git，但已按暴露处理，轮换前不得用于生产或扩大额度。
+- 2026-07-30：个人 Markdown 界面完成一轮视觉质感优化；浏览器验收发现 Web
+  standalone 生产镜像未携带 `public/` 静态资源，补充镜像复制规则后以 Logo 真实请求、
+  容器健康状态和桌面页面截图复验。
 
 ## Completion summary
 

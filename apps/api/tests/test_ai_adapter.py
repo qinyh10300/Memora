@@ -6,10 +6,12 @@ from pydantic import SecretStr
 from memora.ai.openai_compatible import (
     OpenAICompatibleChatModel,
     OpenAICompatibleEmbeddingModel,
+    OpenAICompatibleWebSearch,
     build_chat_model,
     build_embedding_model,
+    build_web_search,
 )
-from memora.ai.ports import AIProviderError, ChatMessage
+from memora.ai.ports import AIProviderError, ChatImageInput, ChatMessage, ModelUsage
 from memora.settings import Settings
 
 
@@ -151,6 +153,59 @@ def test_chat_adapter_uses_compatible_contract_and_records_usage() -> None:
     assert timeout == 15
 
 
+def test_chat_adapter_translates_provider_independent_images() -> None:
+    transport = FakeTransport(
+        {
+            "choices": [{"message": {"role": "assistant", "content": "图片内容是 Memora"}}],
+            "model": "vision-model-v1",
+            "usage": {"prompt_tokens": 45, "completion_tokens": 7},
+        }
+    )
+    model = OpenAICompatibleChatModel(
+        base_url="https://relay.example/v1",
+        api_key="test-secret-key",
+        model="vision-model-v1",
+        timeout_seconds=15,
+        max_output_tokens=900,
+        transport=transport,
+    )
+
+    result = model.complete(
+        [
+            ChatMessage(
+                role="user",
+                content="读取这张图",
+                images=(
+                    ChatImageInput(
+                        media_type="image/png",
+                        data="dGVzdC1pbWFnZQ==",
+                        detail="high",
+                    ),
+                ),
+            )
+        ]
+    )
+
+    assert result.content == "图片内容是 Memora"
+    assert transport.request is not None
+    payload = transport.request[2]
+    assert payload["messages"] == [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "读取这张图"},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "data:image/png;base64,dGVzdC1pbWFnZQ==",
+                        "detail": "high",
+                    },
+                },
+            ],
+        }
+    ]
+
+
 @pytest.mark.parametrize("response", [{}, {"choices": []}, {"choices": [{"message": {}}]}])
 def test_chat_adapter_rejects_malformed_responses(response: dict[str, Any]) -> None:
     model = OpenAICompatibleChatModel(
@@ -173,3 +228,119 @@ def test_chat_factory_requires_key_and_model() -> None:
         Settings(ai_chat_api_key=SecretStr("test-key"), ai_chat_model="chat-model")
     )
     assert model is not None and model.model_id == "chat-model"
+
+
+def test_web_search_adapter_uses_responses_contract_and_collects_safe_sources() -> None:
+    transport = FakeTransport(
+        {
+            "output": [
+                {
+                    "type": "web_search_call",
+                    "action": {
+                        "sources": [
+                            {"url": "https://official.example/report", "title": "官方报告"},
+                            {"url": "javascript:alert(1)", "title": "不安全链接"},
+                        ]
+                    },
+                },
+                {
+                    "type": "message",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "官方在 2026 年发布了报告。",
+                            "annotations": [
+                                {
+                                    "type": "url_citation",
+                                    "url": "https://official.example/report",
+                                    "title": "官方报告",
+                                },
+                                {
+                                    "type": "url_citation",
+                                    "url": "https://research.example/analysis",
+                                    "title": "研究分析",
+                                },
+                            ],
+                        }
+                    ],
+                },
+            ],
+            "model": "search-model-v1",
+            "usage": {"input_tokens": 120, "output_tokens": 18},
+        }
+    )
+    model = OpenAICompatibleWebSearch(
+        base_url="https://relay.example/v1/",
+        api_key="test-secret-key",
+        model="search-model-v1",
+        timeout_seconds=90,
+        transport=transport,
+    )
+
+    result = model.search("查询最新官方报告", context_size="medium")
+
+    assert result.content == "官方在 2026 年发布了报告。"
+    assert [source.url for source in result.sources] == [
+        "https://official.example/report",
+        "https://research.example/analysis",
+    ]
+    assert result.usage == ModelUsage(input_tokens=120, output_tokens=18)
+    assert transport.request is not None
+    url, headers, payload, timeout = transport.request
+    assert url == "https://relay.example/v1/responses"
+    assert headers["Authorization"] == "Bearer test-secret-key"
+    assert payload == {
+        "model": "search-model-v1",
+        "tools": [
+            {
+                "type": "web_search",
+                "search_context_size": "medium",
+                "external_web_access": True,
+            }
+        ],
+        "tool_choice": "required",
+        "include": ["web_search_call.action.sources"],
+        "input": "查询最新官方报告",
+    }
+    assert timeout == 90
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        {},
+        {"output": []},
+        {
+            "output": [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "没有可验证来源"}],
+                }
+            ]
+        },
+    ],
+)
+def test_web_search_adapter_rejects_uncited_or_malformed_responses(
+    response: dict[str, Any],
+) -> None:
+    model = OpenAICompatibleWebSearch(
+        base_url="https://relay.example/v1",
+        api_key="test-secret-key",
+        model="search-model-v1",
+        timeout_seconds=90,
+        transport=FakeTransport(response),
+    )
+
+    with pytest.raises(AIProviderError, match="invalid_provider_response"):
+        model.search("查询", context_size="low")
+
+
+def test_web_search_factory_can_be_disabled_without_disabling_chat() -> None:
+    settings = Settings(
+        ai_chat_api_key=SecretStr("test-key"),
+        ai_chat_model="chat-model",
+        ai_web_search_enabled=False,
+    )
+
+    assert build_chat_model(settings) is not None
+    assert build_web_search(settings) is None
