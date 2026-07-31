@@ -2,11 +2,15 @@
 
 import type { components } from "@memora/api-contract";
 import Image from "next/image";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ChangeEvent,
   ClipboardEvent,
+  CSSProperties,
   FormEvent,
   KeyboardEvent,
+  PointerEvent as ReactPointerEvent,
   ReactNode,
   useCallback,
   useEffect,
@@ -95,6 +99,13 @@ const AUTO_WEB_SEARCH_MARKERS = [
   "web search",
   "latest news",
 ];
+const SPLIT_GUTTER_PX = 8;
+const SPLIT_KEY_STEP = 4;
+const SPLIT_KEY_LARGE_STEP = 10;
+const COMPOSER_DEFAULT_HEIGHT = 184;
+const COMPOSER_MIN_HEIGHT = 156;
+const COMPOSER_MAX_HEIGHT = 360;
+const COMPOSER_KEY_STEP = 18;
 
 const demoAccounts = [
   { name: "Alex", email: "alex@memora.local" },
@@ -115,6 +126,17 @@ let localId = 0;
 function nextId(prefix: string) {
   localId += 1;
   return `${prefix}-${Date.now()}-${localId}`;
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function splitBounds(containerWidth: number, minLeftPx: number, minRightPx: number) {
+  const width = Math.max(containerWidth, minLeftPx + minRightPx + SPLIT_GUTTER_PX);
+  const min = (minLeftPx / width) * 100;
+  const max = ((width - minRightPx - SPLIT_GUTTER_PX) / width) * 100;
+  return max > min ? { min, max } : { min: 0, max: 100 };
 }
 
 function willSearchWeb(instruction: string, mode: WebSearchMode) {
@@ -271,45 +293,48 @@ function safeMarkdownImageSrc(value: string) {
 }
 
 function MarkdownPreview({ value }: { value: string }) {
-  const blocks = value.trim() ? value.trim().split(/\n{2,}/) : [];
-  if (!blocks.length) {
-    return (
-      <div className="markdown-preview is-empty">
-        <span>预览会显示 Markdown 图片和正文</span>
-      </div>
-    );
-  }
   return (
-    <div className="markdown-preview" aria-label="Markdown 预览">
-      {blocks.map((block, index) => {
-        const image = block.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
-        if (image) {
-          const src = safeMarkdownImageSrc(image[2].trim());
-          return src ? (
-            <figure key={`${index}-${src}`}>
-              <Image
-                src={src}
-                alt={image[1].trim() || "Markdown 图片"}
-                width={640}
-                height={360}
-                unoptimized
-              />
-              {image[1].trim() ? <figcaption>{image[1].trim()}</figcaption> : null}
-            </figure>
-          ) : (
-            <p key={index}>{block}</p>
-          );
-        }
-        const heading = block.match(/^(#{1,3})\s+(.+)$/);
-        if (heading) {
-          const level = heading[1].length;
-          const text = heading[2].trim();
-          if (level === 1) return <h1 key={index}>{text}</h1>;
-          if (level === 2) return <h2 key={index}>{text}</h2>;
-          return <h3 key={index}>{text}</h3>;
-        }
-        return <p key={index}>{block}</p>;
-      })}
+    <div className="markdown-preview-pane" aria-label="Markdown 预览">
+      <div className="markdown-preview-toolbar">
+        <span>预览</span>
+        <small>GFM</small>
+      </div>
+      <div className={`markdown-preview ${value.trim() ? "" : "is-empty"}`}>
+        {value.trim() ? (
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              a: ({ children, href }) => (
+                <a
+                  href={href}
+                  target={href?.startsWith("http") ? "_blank" : undefined}
+                  rel={href?.startsWith("http") ? "noopener noreferrer" : undefined}
+                >
+                  {children}
+                </a>
+              ),
+              img: ({ alt, src }) => {
+                const safeSrc = typeof src === "string" ? safeMarkdownImageSrc(src) : null;
+                return safeSrc ? (
+                  <Image
+                    src={safeSrc}
+                    alt={alt || "Markdown 图片"}
+                    width={1280}
+                    height={720}
+                    unoptimized
+                  />
+                ) : (
+                  <span className="markdown-image-error">图片地址不可用</span>
+                );
+              },
+            }}
+          >
+            {value}
+          </ReactMarkdown>
+        ) : (
+          <span>暂无预览</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -404,6 +429,16 @@ function CloseIcon() {
   return (
     <Icon>
       <path d="m6 6 12 12M18 6 6 18" />
+    </Icon>
+  );
+}
+
+function PreviewIcon({ hidden = false }: { hidden?: boolean }) {
+  return (
+    <Icon size={16}>
+      <path d="M2.5 12s3.4-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.4 5.5-9.5 5.5S2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="2.5" />
+      {hidden ? <path d="m4 4 16 16" /> : null}
     </Icon>
   );
 }
@@ -567,6 +602,272 @@ function Sidebar({
   );
 }
 
+function ResizableSplit({
+  className,
+  label,
+  defaultLeftPercent,
+  minLeftPx,
+  minRightPx,
+  left,
+  right,
+}: {
+  className: string;
+  label: string;
+  defaultLeftPercent: number;
+  minLeftPx: number;
+  minRightPx: number;
+  left: ReactNode;
+  right: ReactNode;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [leftPercent, setLeftPercent] = useState(defaultLeftPercent);
+  const [dragging, setDragging] = useState(false);
+
+  const clampSplitPercent = useCallback(
+    (value: number) => {
+      const width =
+        containerRef.current?.getBoundingClientRect().width ??
+        minLeftPx + minRightPx + SPLIT_GUTTER_PX;
+      const { min, max } = splitBounds(width, minLeftPx, minRightPx);
+      return clampNumber(value, min, max);
+    },
+    [minLeftPx, minRightPx],
+  );
+
+  function percentFromClientX(clientX: number) {
+    const container = containerRef.current;
+    if (!container) return leftPercent;
+    const rect = container.getBoundingClientRect();
+    const width = rect.width || minLeftPx + minRightPx + SPLIT_GUTTER_PX;
+    const raw = ((clientX - rect.left) / width) * 100;
+    const { min, max } = splitBounds(width, minLeftPx, minRightPx);
+    return clampNumber(raw, min, max);
+  }
+
+  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setDragging(true);
+    document.body.classList.add("is-resizing-panels");
+    setLeftPercent(percentFromClientX(event.clientX));
+
+    const resize = (moveEvent: globalThis.PointerEvent) => {
+      moveEvent.preventDefault();
+      setLeftPercent(percentFromClientX(moveEvent.clientX));
+    };
+    const stopResize = () => {
+      setDragging(false);
+      document.body.classList.remove("is-resizing-panels");
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+    };
+
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
+  }
+
+  function resizeWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? SPLIT_KEY_LARGE_STEP : SPLIT_KEY_STEP;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setLeftPercent((current) => clampSplitPercent(current - step));
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setLeftPercent((current) => clampSplitPercent(current + step));
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      const width =
+        containerRef.current?.getBoundingClientRect().width ??
+        minLeftPx + minRightPx + SPLIT_GUTTER_PX;
+      const { min, max } = splitBounds(width, minLeftPx, minRightPx);
+      setLeftPercent(event.key === "Home" ? min : max);
+    }
+  }
+
+  const splitStyle = {
+    "--split-left": `${leftPercent.toFixed(2)}%`,
+    "--split-left-min": `${minLeftPx}px`,
+    "--split-right-min": `${minRightPx}px`,
+    "--split-gutter": `${SPLIT_GUTTER_PX}px`,
+  } as CSSProperties;
+
+  return (
+    <div
+      ref={containerRef}
+      className={`${className} resizable-split ${dragging ? "is-dragging" : ""}`}
+      style={splitStyle}
+    >
+      {left}
+      <div
+        className="split-handle"
+        role="separator"
+        aria-label={label}
+        aria-orientation="vertical"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(leftPercent)}
+        tabIndex={0}
+        onPointerDown={startResize}
+        onKeyDown={resizeWithKeyboard}
+      >
+        <span />
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function ComposerResizeHandle({
+  height,
+  onHeightChange,
+}: {
+  height: number;
+  onHeightChange: (height: number) => void;
+}) {
+  const dragOrigin = useRef<{ clientY: number; height: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  useEffect(() => {
+    if (!dragging) return;
+
+    const resize = (event: globalThis.PointerEvent) => {
+      const origin = dragOrigin.current;
+      if (!origin) return;
+      event.preventDefault();
+      onHeightChange(
+        clampNumber(
+          origin.height + origin.clientY - event.clientY,
+          COMPOSER_MIN_HEIGHT,
+          COMPOSER_MAX_HEIGHT,
+        ),
+      );
+    };
+    const stopResize = () => {
+      dragOrigin.current = null;
+      setDragging(false);
+    };
+
+    document.body.classList.add("is-resizing-composer");
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
+
+    return () => {
+      document.body.classList.remove("is-resizing-composer");
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+    };
+  }, [dragging, onHeightChange]);
+
+  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    dragOrigin.current = { clientY: event.clientY, height };
+    setDragging(true);
+  }
+
+  function resizeWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      onHeightChange(
+        clampNumber(height + COMPOSER_KEY_STEP, COMPOSER_MIN_HEIGHT, COMPOSER_MAX_HEIGHT),
+      );
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      onHeightChange(
+        clampNumber(height - COMPOSER_KEY_STEP, COMPOSER_MIN_HEIGHT, COMPOSER_MAX_HEIGHT),
+      );
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      onHeightChange(event.key === "Home" ? COMPOSER_MIN_HEIGHT : COMPOSER_MAX_HEIGHT);
+    }
+  }
+
+  return (
+    <div
+      className={`composer-resize-handle ${dragging ? "is-dragging" : ""}`}
+      role="separator"
+      aria-label="调整输入区高度"
+      aria-orientation="horizontal"
+      aria-valuemin={COMPOSER_MIN_HEIGHT}
+      aria-valuemax={COMPOSER_MAX_HEIGHT}
+      aria-valuenow={Math.round(height)}
+      tabIndex={0}
+      onPointerDown={startResize}
+      onKeyDown={resizeWithKeyboard}
+    >
+      <span />
+    </div>
+  );
+}
+
+function PreviewToggle({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
+  const label = visible ? "隐藏 Markdown 预览" : "显示 Markdown 预览";
+  return (
+    <button
+      className={`preview-toggle ${visible ? "is-active" : ""}`}
+      type="button"
+      aria-label={label}
+      aria-pressed={visible}
+      title={label}
+      onClick={onToggle}
+    >
+      <PreviewIcon hidden={!visible} />
+      <span>{visible ? "预览" : "已隐藏"}</span>
+    </button>
+  );
+}
+
+function MarkdownWorkspace({
+  value,
+  onChange,
+  ariaLabel,
+  placeholder,
+  previewVisible,
+  className = "",
+  editorClassName = "",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  ariaLabel: string;
+  placeholder?: string;
+  previewVisible: boolean;
+  className?: string;
+  editorClassName?: string;
+}) {
+  const editor = (
+    <textarea
+      className={`markdown-editor ${editorClassName}`}
+      aria-label={ariaLabel}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+      spellCheck={false}
+    />
+  );
+
+  if (!previewVisible) {
+    return <div className={`${className} markdown-editor-grid is-preview-hidden`}>{editor}</div>;
+  }
+
+  return (
+    <ResizableSplit
+      className={`${className} markdown-editor-grid`}
+      label="调整 Markdown 编辑和预览宽度"
+      defaultLeftPercent={52}
+      minLeftPx={160}
+      minRightPx={170}
+      left={editor}
+      right={<MarkdownPreview value={value} />}
+    />
+  );
+}
+
 function CaptureWorkspace({
   draft,
   messages,
@@ -609,6 +910,8 @@ function CaptureWorkspace({
   const [documents, setDocuments] = useState<DraftDocumentAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [webSearchMode, setWebSearchMode] = useState<WebSearchMode>("AUTO");
+  const [composerHeight, setComposerHeight] = useState(COMPOSER_DEFAULT_HEIGHT);
+  const [draftPreviewVisible, setDraftPreviewVisible] = useState(true);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -621,14 +924,6 @@ function CaptureWorkspace({
   useEffect(() => {
     messageEndRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
   }, [messages, refining]);
-
-  // Grow the composer with its content up to the CSS max-height, then scroll.
-  useEffect(() => {
-    const node = composerRef.current;
-    if (!node) return;
-    node.style.height = "auto";
-    node.style.height = `${node.scrollHeight}px`;
-  }, [instruction]);
 
   // Return focus to the composer once a turn finishes so typing can continue.
   useEffect(() => {
@@ -738,6 +1033,9 @@ function CaptureWorkspace({
         const nextDraft = nextAttachments.reduce(appendMarkdownImage, draft);
         onDraftChange(nextDraft);
       }
+      if (nextAttachments.length || nextDocuments.length) {
+        setComposerHeight((current) => Math.max(current, 248));
+      }
       setAttachments((current) => [...current, ...nextAttachments]);
       setDocuments((current) => [...current, ...nextDocuments]);
     } catch {
@@ -760,318 +1058,332 @@ function CaptureWorkspace({
   }
 
   return (
-    <div className="capture-workspace">
-      <section className="conversation-panel" aria-label="草稿对话">
-        <header className="panel-header">
-          <div>
-            <p className="eyebrow">记录</p>
-            <h1>记录想法</h1>
-          </div>
-          <span className="private-status">
-            <span className="privacy-dot" />
-            默认私有
-          </span>
-        </header>
-
-        <div className="conversation-scroll">
-          <div className="conversation-intro">
-            <span className="intro-mark">
-              <Logo />
+    <ResizableSplit
+      className="capture-workspace"
+      label="调整记录和草稿宽度"
+      defaultLeftPercent={54}
+      minLeftPx={360}
+      minRightPx={340}
+      left={
+        <section
+          className="conversation-panel"
+          aria-label="草稿对话"
+          style={{ "--composer-height": `${composerHeight}px` } as CSSProperties}
+        >
+          <header className="panel-header">
+            <div>
+              <p className="eyebrow">记录</p>
+              <h1>记录想法</h1>
+            </div>
+            <span className="private-status">
+              <span className="privacy-dot" />
+              默认私有
             </span>
-            <h2>今天在想什么？</h2>
-            <p>说出原始想法，Memora 会帮你整理到右侧。</p>
-          </div>
-          <div className="message-list" aria-live="polite">
-            {messages.map((message) => (
-              <article className={`chat-message is-${message.role.toLowerCase()}`} key={message.id}>
-                {message.role === "ASSISTANT" ? <Logo /> : null}
-                <div>
-                  <p>{message.content}</p>
-                  {message.images?.length ? (
-                    <div className="message-images" aria-label="消息图片">
-                      {message.images.map((image) => (
-                        <Image
-                          alt={image.name}
-                          height={120}
-                          key={image.id}
-                          src={image.previewUrl}
-                          unoptimized
-                          width={180}
-                        />
-                      ))}
-                    </div>
-                  ) : null}
-                  {message.attachments?.length ? (
-                    <div className="message-attachments" aria-label="消息附件">
-                      {message.attachments.map((attachment) => (
-                        <span key={attachment.id}>
-                          <LibraryIcon />
-                          {attachment.name}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                  {message.meta ? <small>{message.meta}</small> : null}
-                  {message.citations?.length ? (
-                    <div className="chat-citations" aria-label="回答来源">
-                      {message.citations.map((citation, index) => (
-                        <button
-                          type="button"
-                          key={citation.memory_id}
-                          onClick={() => void onOpenCitation(citation.memory_id)}
-                        >
-                          <span>来源 {index + 1}</span>
-                          <strong>{citation.author.display_name}</strong>
-                          <time dateTime={citation.created_at}>
-                            {formatDateTime(citation.created_at)}
-                          </time>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  {message.webCitations?.length ? (
-                    <div className="web-citations" aria-label="网页来源">
-                      {message.webCitations.map((citation, index) => (
-                        <a
-                          href={citation.url}
-                          key={citation.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <span>网页 {index + 1}</span>
-                          <strong>{citation.title}</strong>
-                          <small>{sourceHostname(citation.url)}</small>
-                        </a>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </article>
-            ))}
-            {refining ? (
-              <article className="chat-message is-assistant">
-                <Logo />
-                <div className="thinking-indicator" role="status">
-                  <div
-                    className="thinking-dots"
-                    aria-label={searching ? "Memora 正在联网搜索并整理" : "Memora 正在整理"}
-                  >
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                  <small>{searching ? "正在联网搜索并整理…" : "正在整理…"}</small>
-                </div>
-              </article>
-            ) : null}
-            <div ref={messageEndRef} />
-          </div>
-        </div>
+          </header>
 
-        <div className="composer-wrap">
-          <form className="composer" onSubmit={submit}>
-            {attachments.length || documents.length ? (
-              <div className="pending-images" aria-label="待发送附件">
-                {attachments.map((image) => (
-                  <div key={image.id}>
-                    <Image
-                      alt={image.name}
-                      height={72}
-                      src={image.previewUrl}
-                      unoptimized
-                      width={96}
-                    />
-                    <button
-                      type="button"
-                      aria-label={`移除图片 ${image.name}`}
-                      onClick={() =>
-                        setAttachments((current) =>
-                          current.filter((attachment) => attachment.id !== image.id),
-                        )
-                      }
-                    >
-                      <CloseIcon />
-                    </button>
-                    <span>{image.name}</span>
+          <div className="conversation-scroll">
+            <div className="conversation-intro">
+              <span className="intro-mark">
+                <Logo />
+              </span>
+              <h2>今天在想什么？</h2>
+            </div>
+            <div className="message-list" aria-live="polite">
+              {messages.map((message) => (
+                <article
+                  className={`chat-message is-${message.role.toLowerCase()}`}
+                  key={message.id}
+                >
+                  {message.role === "ASSISTANT" ? <Logo /> : null}
+                  <div>
+                    <p>{message.content}</p>
+                    {message.images?.length ? (
+                      <div className="message-images" aria-label="消息图片">
+                        {message.images.map((image) => (
+                          <Image
+                            alt={image.name}
+                            height={120}
+                            key={image.id}
+                            src={image.previewUrl}
+                            unoptimized
+                            width={180}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                    {message.attachments?.length ? (
+                      <div className="message-attachments" aria-label="消息附件">
+                        {message.attachments.map((attachment) => (
+                          <span key={attachment.id}>
+                            <LibraryIcon />
+                            {attachment.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {message.meta ? <small>{message.meta}</small> : null}
+                    {message.citations?.length ? (
+                      <div className="chat-citations" aria-label="回答来源">
+                        {message.citations.map((citation, index) => (
+                          <button
+                            type="button"
+                            key={citation.memory_id}
+                            onClick={() => void onOpenCitation(citation.memory_id)}
+                          >
+                            <span>来源 {index + 1}</span>
+                            <strong>{citation.author.display_name}</strong>
+                            <time dateTime={citation.created_at}>
+                              {formatDateTime(citation.created_at)}
+                            </time>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {message.webCitations?.length ? (
+                      <div className="web-citations" aria-label="网页来源">
+                        {message.webCitations.map((citation, index) => (
+                          <a
+                            href={citation.url}
+                            key={citation.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <span>网页 {index + 1}</span>
+                            <strong>{citation.title}</strong>
+                            <small>{sourceHostname(citation.url)}</small>
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                ))}
-                {documents.map((document) => (
-                  <div className="pending-document" key={document.id}>
-                    <LibraryIcon />
-                    <button
-                      type="button"
-                      aria-label={`移除附件 ${document.name}`}
-                      onClick={() =>
-                        setDocuments((current) =>
-                          current.filter((attachment) => attachment.id !== document.id),
-                        )
-                      }
+                </article>
+              ))}
+              {refining ? (
+                <article className="chat-message is-assistant">
+                  <Logo />
+                  <div className="thinking-indicator" role="status">
+                    <div
+                      className="thinking-dots"
+                      aria-label={searching ? "Memora 正在联网搜索并整理" : "Memora 正在整理"}
                     >
-                      <CloseIcon />
-                    </button>
-                    <span>{document.name}</span>
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                    <small>{searching ? "正在联网搜索并整理…" : "正在整理…"}</small>
                   </div>
-                ))}
-              </div>
-            ) : null}
-            <div className="composer-tools">
-              {modelOptions.length ? (
-                <label className="model-control">
-                  <SparkleIcon />
+                </article>
+              ) : null}
+              <div ref={messageEndRef} />
+            </div>
+          </div>
+
+          <ComposerResizeHandle height={composerHeight} onHeightChange={setComposerHeight} />
+          <div className="composer-wrap">
+            <form className="composer" onSubmit={submit}>
+              {attachments.length || documents.length ? (
+                <div className="pending-images" aria-label="待发送附件">
+                  {attachments.map((image) => (
+                    <div key={image.id}>
+                      <Image
+                        alt={image.name}
+                        height={72}
+                        src={image.previewUrl}
+                        unoptimized
+                        width={96}
+                      />
+                      <button
+                        type="button"
+                        aria-label={`移除图片 ${image.name}`}
+                        onClick={() =>
+                          setAttachments((current) =>
+                            current.filter((attachment) => attachment.id !== image.id),
+                          )
+                        }
+                      >
+                        <CloseIcon />
+                      </button>
+                      <span>{image.name}</span>
+                    </div>
+                  ))}
+                  {documents.map((document) => (
+                    <div className="pending-document" key={document.id}>
+                      <LibraryIcon />
+                      <button
+                        type="button"
+                        aria-label={`移除附件 ${document.name}`}
+                        onClick={() =>
+                          setDocuments((current) =>
+                            current.filter((attachment) => attachment.id !== document.id),
+                          )
+                        }
+                      >
+                        <CloseIcon />
+                      </button>
+                      <span>{document.name}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <div className="composer-tools">
+                {modelOptions.length ? (
+                  <label className="model-control">
+                    <SparkleIcon />
+                    <select
+                      aria-label="模型"
+                      value={selectedModelId ?? ""}
+                      onChange={(event) => changeModel(event.target.value || null)}
+                      disabled={refining}
+                    >
+                      {modelOptions.map((model) => (
+                        <option value={model.id} key={model.id}>
+                          {model.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <span className="model-unavailable">AI 未配置</span>
+                )}
+                <label className={`search-mode-control is-${webSearchMode.toLowerCase()}`}>
+                  <GlobeIcon />
                   <select
-                    aria-label="模型"
-                    value={selectedModelId ?? ""}
-                    onChange={(event) => changeModel(event.target.value || null)}
-                    disabled={refining}
+                    aria-label="联网模式"
+                    value={webSearchMode}
+                    onChange={(event) => {
+                      const nextMode = event.target.value as WebSearchMode;
+                      if (nextMode !== "DISABLED" && !canUseWeb) {
+                        setAttachmentError("当前模型不支持联网，请切换模型或关闭联网。");
+                        setWebSearchMode("DISABLED");
+                        return;
+                      }
+                      setAttachmentError("");
+                      setWebSearchMode(nextMode);
+                    }}
+                    disabled={refining || !canUseWeb}
                   >
-                    {modelOptions.map((model) => (
-                      <option value={model.id} key={model.id}>
-                        {model.label}
-                      </option>
-                    ))}
+                    <option value="AUTO">自动联网</option>
+                    <option value="REQUIRED">本轮联网</option>
+                    <option value="DISABLED">关闭联网</option>
                   </select>
                 </label>
-              ) : (
-                <span className="model-unavailable">AI 未配置</span>
-              )}
-              <label className={`search-mode-control is-${webSearchMode.toLowerCase()}`}>
-                <GlobeIcon />
-                <select
-                  aria-label="联网模式"
-                  value={webSearchMode}
-                  onChange={(event) => {
-                    const nextMode = event.target.value as WebSearchMode;
-                    if (nextMode !== "DISABLED" && !canUseWeb) {
-                      setAttachmentError("当前模型不支持联网，请切换模型或关闭联网。");
-                      setWebSearchMode("DISABLED");
-                      return;
-                    }
-                    setAttachmentError("");
-                    setWebSearchMode(nextMode);
-                  }}
-                  disabled={refining || !canUseWeb}
+                <span>
+                  {!canUseWeb
+                    ? "当前模型不支持联网"
+                    : webSearchMode === "AUTO"
+                      ? "需要最新信息时自动搜索"
+                      : webSearchMode === "REQUIRED"
+                        ? "发送后恢复自动"
+                        : "只使用对话与个人记忆"}
+                </span>
+              </div>
+              <div className="composer-row">
+                <input
+                  ref={imageInputRef}
+                  className="image-input"
+                  type="file"
+                  accept={Array.from(ACCEPTED_ASSET_TYPES).join(",")}
+                  multiple
+                  aria-label="选择图片或 PDF"
+                  onChange={(event) => void selectImages(event)}
+                  disabled={
+                    refining ||
+                    (attachments.length >= MAX_DRAFT_IMAGES &&
+                      documents.length >= MAX_DRAFT_DOCUMENTS)
+                  }
+                />
+                <button
+                  className="attach-button"
+                  type="button"
+                  aria-label="上传图片或 PDF"
+                  title="上传图片或 PDF"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={
+                    refining ||
+                    (attachments.length >= MAX_DRAFT_IMAGES &&
+                      documents.length >= MAX_DRAFT_DOCUMENTS)
+                  }
                 >
-                  <option value="AUTO">自动联网</option>
-                  <option value="REQUIRED">本轮联网</option>
-                  <option value="DISABLED">关闭联网</option>
-                </select>
-              </label>
-              <span>
-                {!canUseWeb
-                  ? "当前模型不支持联网"
-                  : webSearchMode === "AUTO"
-                    ? "需要最新信息时自动搜索"
-                    : webSearchMode === "REQUIRED"
-                      ? "发送后恢复自动"
-                      : "只使用对话与个人记忆"}
+                  <AttachmentIcon />
+                </button>
+                <textarea
+                  ref={composerRef}
+                  aria-label="告诉 Memora 你的想法"
+                  placeholder={draft ? "继续说，或告诉我怎样修改草稿…" : "输入想法或上传图片…"}
+                  rows={1}
+                  value={instruction}
+                  onChange={(event) => setInstruction(event.target.value)}
+                  onKeyDown={composerKeyDown}
+                  onPaste={(event) => void pasteIntoComposer(event)}
+                  disabled={refining}
+                />
+                <button
+                  className="send-button"
+                  type="submit"
+                  aria-label="发送"
+                  disabled={
+                    (!instruction.trim() && attachments.length === 0 && documents.length === 0) ||
+                    refining
+                  }
+                >
+                  <SendIcon />
+                </button>
+              </div>
+            </form>
+            {attachmentError ? (
+              <p className="attachment-error" role="alert">
+                {attachmentError}
+              </p>
+            ) : null}
+          </div>
+        </section>
+      }
+      right={
+        <section className="markdown-panel" aria-label="Markdown 草稿编辑器">
+          <header className="markdown-header">
+            <div>
+              <p className="eyebrow">草稿</p>
+              <h2>草稿</h2>
+            </div>
+            <div className="draft-header-actions">
+              <PreviewToggle
+                visible={draftPreviewVisible}
+                onToggle={() => setDraftPreviewVisible((visible) => !visible)}
+              />
+              {draft ? (
+                <button className="text-button" type="button" onClick={onReset}>
+                  新想法
+                </button>
+              ) : null}
+              <span className={isSaved ? "save-state is-saved" : "save-state"}>
+                {isSaved ? "已保存" : "未保存"}
               </span>
             </div>
-            <div className="composer-row">
-              <input
-                ref={imageInputRef}
-                className="image-input"
-                type="file"
-                accept={Array.from(ACCEPTED_ASSET_TYPES).join(",")}
-                multiple
-                aria-label="选择图片或 PDF"
-                onChange={(event) => void selectImages(event)}
-                disabled={
-                  refining ||
-                  (attachments.length >= MAX_DRAFT_IMAGES &&
-                    documents.length >= MAX_DRAFT_DOCUMENTS)
-                }
-              />
-              <button
-                className="attach-button"
-                type="button"
-                aria-label="上传图片或 PDF"
-                title="上传图片或 PDF"
-                onClick={() => imageInputRef.current?.click()}
-                disabled={
-                  refining ||
-                  (attachments.length >= MAX_DRAFT_IMAGES &&
-                    documents.length >= MAX_DRAFT_DOCUMENTS)
-                }
-              >
-                <AttachmentIcon />
-              </button>
-              <textarea
-                ref={composerRef}
-                aria-label="告诉 Memora 你的想法"
-                placeholder={draft ? "继续说，或告诉我怎样修改草稿…" : "输入想法或上传图片…"}
-                rows={1}
-                value={instruction}
-                onChange={(event) => setInstruction(event.target.value)}
-                onKeyDown={composerKeyDown}
-                onPaste={(event) => void pasteIntoComposer(event)}
-                disabled={refining}
-              />
-              <button
-                className="send-button"
-                type="submit"
-                aria-label="发送"
-                disabled={
-                  (!instruction.trim() && attachments.length === 0 && documents.length === 0) ||
-                  refining
-                }
-              >
-                <SendIcon />
-              </button>
-            </div>
-          </form>
-          {attachmentError ? (
-            <p className="attachment-error" role="alert">
-              {attachmentError}
-            </p>
-          ) : null}
-          <p>Enter 发送 · Shift + Enter 换行 · 可直接粘贴图片 · PDF 仅作本轮上下文</p>
-        </div>
-      </section>
-
-      <section className="markdown-panel" aria-label="Markdown 草稿编辑器">
-        <header className="markdown-header">
-          <div>
-            <p className="eyebrow">草稿</p>
-            <h2>草稿</h2>
-          </div>
-          <div className="draft-header-actions">
-            {draft ? (
-              <button className="text-button" type="button" onClick={onReset}>
-                新想法
-              </button>
-            ) : null}
-            <span className={isSaved ? "save-state is-saved" : "save-state"}>
-              {isSaved ? "已保存" : "未保存"}
-            </span>
-          </div>
-        </header>
-        <div className="markdown-editor-grid">
-          <textarea
-            className="markdown-editor"
-            aria-label="Markdown 草稿"
+          </header>
+          <MarkdownWorkspace
             value={draft}
-            onChange={(event) => onDraftChange(event.target.value)}
+            onChange={onDraftChange}
+            ariaLabel="Markdown 草稿"
             placeholder={"# 想法标题\n\n你的 Markdown 草稿会出现在这里。"}
-            spellCheck={false}
+            previewVisible={draftPreviewVisible}
           />
-          <MarkdownPreview value={draft} />
-        </div>
-        <footer className="draft-footer">
-          <div>
-            <span>{draft.length.toLocaleString("zh-CN")} 字符</span>
-            <small>你可以直接修改，也可以继续让 AI 修改</small>
-          </div>
-          <button
-            className="primary-action"
-            type="button"
-            disabled={!normalizedDraft || saving || isSaved}
-            onClick={() => void onSave()}
-          >
-            {saving ? "正在保存…" : isSaved ? "已保存" : "保存为我的记忆"}
-          </button>
-        </footer>
-      </section>
-    </div>
+          <footer className="draft-footer">
+            <div>
+              <span>{draft.length.toLocaleString("zh-CN")} 字符</span>
+              <small>{draftPreviewVisible ? "Markdown · 实时预览" : "Markdown · 专注编辑"}</small>
+            </div>
+            <button
+              className="primary-action"
+              type="button"
+              disabled={!normalizedDraft || saving || isSaved}
+              onClick={() => void onSave()}
+            >
+              {saving ? "正在保存…" : isSaved ? "已保存" : "保存为我的记忆"}
+            </button>
+          </footer>
+        </section>
+      }
+    />
   );
 }
 
@@ -1188,6 +1500,7 @@ function MemoryDetail({
 }) {
   const [instruction, setInstruction] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [previewVisible, setPreviewVisible] = useState(true);
   const dirty = Boolean(memory && markdown.trim() && markdown.trim() !== baseline.trim());
 
   if (!memory) {
@@ -1226,27 +1539,31 @@ function MemoryDetail({
           <h2>{memoryTitle(baseline)}</h2>
           <p>{formatDateTime(memory.created_at)} · 仅自己可见</p>
         </div>
-        <button
-          className={confirmingDelete ? "delete-button is-confirming" : "delete-button"}
-          type="button"
-          disabled={deleting}
-          onClick={() => void requestDelete()}
-          onBlur={() => setConfirmingDelete(false)}
-        >
-          {deleting ? "正在删除…" : confirmingDelete ? "确认删除" : "删除"}
-        </button>
+        <div className="detail-header-actions">
+          <PreviewToggle
+            visible={previewVisible}
+            onToggle={() => setPreviewVisible((visible) => !visible)}
+          />
+          <button
+            className={confirmingDelete ? "delete-button is-confirming" : "delete-button"}
+            type="button"
+            disabled={deleting}
+            onClick={() => void requestDelete()}
+            onBlur={() => setConfirmingDelete(false)}
+          >
+            {deleting ? "正在删除…" : confirmingDelete ? "确认删除" : "删除"}
+          </button>
+        </div>
       </header>
 
-      <div className="detail-editor-wrap markdown-editor-grid">
-        <textarea
-          className="markdown-editor detail-editor"
-          aria-label="记忆 Markdown"
-          value={markdown}
-          onChange={(event) => onMarkdownChange(event.target.value)}
-          spellCheck={false}
-        />
-        <MarkdownPreview value={markdown} />
-      </div>
+      <MarkdownWorkspace
+        className="detail-editor-wrap"
+        editorClassName="detail-editor"
+        value={markdown}
+        onChange={onMarkdownChange}
+        ariaLabel="记忆 Markdown"
+        previewVisible={previewVisible}
+      />
 
       <div className="detail-tools">
         <form className="ai-edit-bar" onSubmit={submitAi}>
@@ -1816,29 +2133,39 @@ export default function HomePage() {
             />
           </div>
         ) : (
-          <div className="library-workspace view-transition" key="library">
-            <Timeline
-              memories={memories}
-              selectedId={selectedMemory?.id ?? null}
-              loading={loadingMemories}
-              onSelect={(memory) => void selectMemory(memory)}
-            />
-            <MemoryDetail
-              key={selectedMemory?.id ?? "empty-memory"}
-              memory={selectedMemory}
-              markdown={memoryMarkdown}
-              baseline={memoryBaseline}
-              revisions={revisions}
-              refining={refiningMemory}
-              savingMode={savingMode}
-              deleting={deletingMemory}
-              aiStatus={memoryAiStatus}
-              onMarkdownChange={setMemoryMarkdown}
-              onRefine={refineSelectedMemory}
-              onSaveRevision={saveRevision}
-              onDelete={deleteSelectedMemory}
-            />
-          </div>
+          <ResizableSplit
+            className="library-workspace view-transition"
+            key="library"
+            label="调整记忆列表和详情宽度"
+            defaultLeftPercent={34}
+            minLeftPx={260}
+            minRightPx={360}
+            left={
+              <Timeline
+                memories={memories}
+                selectedId={selectedMemory?.id ?? null}
+                loading={loadingMemories}
+                onSelect={(memory) => void selectMemory(memory)}
+              />
+            }
+            right={
+              <MemoryDetail
+                key={selectedMemory?.id ?? "empty-memory"}
+                memory={selectedMemory}
+                markdown={memoryMarkdown}
+                baseline={memoryBaseline}
+                revisions={revisions}
+                refining={refiningMemory}
+                savingMode={savingMode}
+                deleting={deletingMemory}
+                aiStatus={memoryAiStatus}
+                onMarkdownChange={setMemoryMarkdown}
+                onRefine={refineSelectedMemory}
+                onSaveRevision={saveRevision}
+                onDelete={deleteSelectedMemory}
+              />
+            }
+          />
         )}
       </section>
       {toast ? (

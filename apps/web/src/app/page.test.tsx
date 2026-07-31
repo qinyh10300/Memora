@@ -303,6 +303,90 @@ describe("Memora personal Markdown MVP", () => {
     expect(screen.queryByRole("button", { name: "分析" })).not.toBeInTheDocument();
   });
 
+  it("桌面分栏可以用拖动和键盘调整宽度", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+
+    const separator = await screen.findByRole("separator", { name: "调整记录和草稿宽度" });
+    const split = separator.parentElement as HTMLElement;
+    vi.spyOn(split, "getBoundingClientRect").mockReturnValue({
+      bottom: 720,
+      height: 720,
+      left: 0,
+      right: 1000,
+      top: 0,
+      width: 1000,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    fireEvent.pointerDown(separator, { button: 0, clientX: 580, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 620, pointerId: 1 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+
+    expect(split.style.getPropertyValue("--split-left")).toBe("62.00%");
+    expect(separator).toHaveAttribute("aria-valuenow", "62");
+
+    fireEvent.keyDown(separator, { key: "ArrowLeft" });
+    expect(split.style.getPropertyValue("--split-left")).toBe("58.00%");
+    expect(separator).toHaveAttribute("aria-valuenow", "58");
+
+    fireEvent.click(screen.getByRole("button", { name: "记忆库" }));
+    expect(await screen.findByRole("separator", { name: "调整记忆列表和详情宽度" })).toBeVisible();
+  });
+
+  it("聊天输入区可以拖动并用键盘调整高度", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+
+    const separator = await screen.findByRole("separator", { name: "调整输入区高度" });
+    const panel = separator.parentElement as HTMLElement;
+
+    expect(panel.style.getPropertyValue("--composer-height")).toBe("184px");
+
+    fireEvent.pointerDown(separator, { button: 0, clientY: 520, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientY: 460, pointerId: 1 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+
+    expect(panel.style.getPropertyValue("--composer-height")).toBe("244px");
+    expect(separator).toHaveAttribute("aria-valuenow", "244");
+
+    fireEvent.keyDown(separator, { key: "ArrowDown" });
+    expect(panel.style.getPropertyValue("--composer-height")).toBe("226px");
+    expect(separator).toHaveAttribute("aria-valuenow", "226");
+  });
+
+  it("Markdown 编译预览可以调宽、隐藏并渲染 GFM", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+
+    const editor = await screen.findByLabelText("Markdown 草稿");
+    fireEvent.change(editor, {
+      target: {
+        value:
+          "# 产品方向\n\n- 快速记录\n- 长期可见\n\n| 能力 | 状态 |\n| --- | --- |\n| 预览 | 完成 |",
+      },
+    });
+
+    expect(screen.getByRole("heading", { name: "产品方向" })).toBeInTheDocument();
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByRole("separator", { name: "调整 Markdown 编辑和预览宽度" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "隐藏 Markdown 预览" }));
+    expect(screen.queryByLabelText("Markdown 预览")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("separator", { name: "调整 Markdown 编辑和预览宽度" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Markdown 草稿")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "显示 Markdown 预览" }));
+    expect(await screen.findByLabelText("Markdown 预览")).toBeVisible();
+  });
+
   it("个人空间激活失败时停止写入界面，避免保存到团队空间", async () => {
     apiMocks.GET.mockImplementation((path: string) => {
       if (path === "/auth/me") return Promise.resolve(ok(teamUser));
@@ -390,9 +474,12 @@ describe("Memora personal Markdown MVP", () => {
     expect(
       ((await screen.findByLabelText("Markdown 草稿")) as HTMLTextAreaElement).value,
     ).toContain("## 来源");
-    const source = await screen.findByRole("link", { name: /OpenAI 官方/ });
-    expect(source).toHaveAttribute("href", "https://openai.com/");
-    expect(source).toHaveAttribute("target", "_blank");
+    const sources = await screen.findAllByRole("link", { name: /OpenAI 官方/ });
+    expect(sources).toHaveLength(2);
+    sources.forEach((source) => {
+      expect(source).toHaveAttribute("href", "https://openai.com/");
+      expect(source).toHaveAttribute("target", "_blank");
+    });
     expect(screen.getByText(/已联网 · 1 个来源/)).toBeInTheDocument();
     expect(mode).toHaveValue("AUTO");
     expect(apiMocks.POST).not.toHaveBeenCalledWith("/memories", expect.anything());
