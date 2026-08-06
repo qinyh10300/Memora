@@ -37,8 +37,9 @@ flowchart LR
 
 - 注册或新登录后，Web 优先进入用户的 `PERSONAL` 空间；已有 session 启动时恢复数据库会话
   中最近活动的空间。所有业务接口仍从服务端 session 解析活动空间。
-- 侧栏列出当前用户具有 membership 的空间，并通过受保护的激活接口切换。桌面侧栏可收起
-  为品牌窄栏，移动端保持完整抽屉；未保存草稿会阻止切换。
+- 侧栏列出当前用户具有 membership 的空间，并通过受保护的激活接口切换。桌面侧栏宽度和
+  主工作区 split 比例是仅存于浏览器 localStorage 的可选布局偏好；pane 接近最小宽度时
+  吸附隐藏，侧栏最小态仍保留品牌窄栏。移动端保持完整抽屉；未保存草稿会阻止切换。
 - `TEAM` workspace 使用唯一可空的 12 位 `join_code`。`POST /workspaces/join` 在限流和
   代码校验后写入独立的 pending 申请，不创建 membership，也不激活团队；代码只在请求正文
   传输。
