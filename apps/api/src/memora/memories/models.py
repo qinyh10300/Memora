@@ -56,6 +56,7 @@ class Memory(Base):
     author_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
+    title: Mapped[str | None] = mapped_column(String(240))
     body: Mapped[str | None] = mapped_column(Text)
     visibility: Mapped[str] = mapped_column(String(20), default="PRIVATE")
     supersedes_id: Mapped[UUID | None] = mapped_column(

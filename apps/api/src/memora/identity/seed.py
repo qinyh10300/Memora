@@ -8,6 +8,7 @@ from memora.identity.models import User
 from memora.identity.security import hash_password, normalize_email
 from memora.settings import Settings, get_settings
 from memora.workspaces.models import Workspace, WorkspaceMembership
+from memora.workspaces.service import generate_unique_join_code
 
 LOCAL_PASSWORD_PREFIX = "memora-local-"
 
@@ -66,11 +67,14 @@ def seed_database(engine: Engine, settings: Settings) -> tuple[int, int]:
                 slug="memora-test",
                 name="Memora 测试工作区",
                 kind="TEAM",
+                join_code=generate_unique_join_code(database),
             )
             database.add(team_workspace)
             database.flush()
         else:
             team_workspace.kind = "TEAM"
+            if team_workspace.join_code is None:
+                team_workspace.join_code = generate_unique_join_code(database)
 
         for index, seed_user in enumerate(seed_users):
             email = normalize_email(seed_user.email)

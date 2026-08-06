@@ -16,6 +16,16 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(512))
     display_name: Mapped[str] = mapped_column(String(120))
+    avatar_asset_id: Mapped[UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey(
+            "assets.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_users_avatar_asset_id_assets",
+        ),
+        index=True,
+    )
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

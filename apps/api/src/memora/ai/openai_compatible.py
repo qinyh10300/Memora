@@ -499,7 +499,7 @@ def build_chat_model(settings: Settings, *, model: str | None = None) -> ChatMod
 
 def build_web_search(settings: Settings, *, model: str | None = None) -> WebSearchPort | None:
     api_key = settings.ai_chat_api_key.get_secret_value()
-    resolved_model = (model or settings.ai_chat_model).strip()
+    resolved_model = (settings.ai_web_search_model or model or settings.ai_chat_model).strip()
     if not settings.ai_web_search_enabled or not api_key or not resolved_model:
         return None
     return OpenAICompatibleWebSearch(

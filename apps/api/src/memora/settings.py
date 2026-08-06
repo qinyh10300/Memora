@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     ai_embedding_model: str = ""
     ai_request_timeout_seconds: float = Field(default=60, gt=0, le=300)
     ai_web_search_enabled: bool = True
+    ai_web_search_model: str = ""
     ai_web_search_timeout_seconds: float = Field(default=90, gt=0, le=300)
     ai_chat_max_output_tokens: int = Field(default=2400, ge=100, le=8000)
     ai_embedding_max_attempts: int = Field(default=5, ge=1, le=20)

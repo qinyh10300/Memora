@@ -13,6 +13,7 @@ from memora.memories.service import authorized_memories_statement
 from memora.retrieval.models import MemoryEmbedding
 
 MatchReason = Literal["KEYWORD", "SEMANTIC"]
+SearchField = Literal["ALL", "TITLE"]
 
 
 @dataclass(frozen=True)
@@ -52,13 +53,18 @@ def keyword_search(
     visibility: str | None = None,
     created_from: datetime | None = None,
     created_to: datetime | None = None,
+    search_field: SearchField = "ALL",
     limit: int = 20,
 ) -> list[RetrievedMemory]:
+    statement = authorized_memories_statement(principal)
+    if query:
+        searched_column = Memory.title if search_field == "TITLE" else Memory.body
+        statement = statement.where(
+            searched_column.is_not(None),
+            searched_column.icontains(query, autoescape=True),
+        )
     statement = _apply_filters(
-        authorized_memories_statement(principal).where(
-            Memory.body.is_not(None),
-            Memory.body.icontains(query, autoescape=True),
-        ),
+        statement,
         author_id=author_id,
         visibility=visibility,
         created_from=created_from,
@@ -75,7 +81,7 @@ def keyword_search(
             author=author,
             projection=projection,
             score=1.0,
-            reasons=("KEYWORD",),
+            reasons=("KEYWORD",) if query else (),
         )
         for memory, author, projection in rows
     ]

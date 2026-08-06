@@ -14,7 +14,10 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/api-contract/package.json packages/api-contract/package.json
 
-RUN pnpm install --frozen-lockfile --filter @memora/web...
+RUN --mount=type=cache,id=memora-pnpm-store,target=/pnpm/store \
+    pnpm install --frozen-lockfile --filter @memora/web... \
+    --fetch-retries=5 \
+    --fetch-timeout=300000
 
 FROM dependencies AS builder
 

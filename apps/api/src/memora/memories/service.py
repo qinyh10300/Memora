@@ -11,6 +11,17 @@ from memora.memories.models import Memory
 from memora.retrieval.models import MemoryEmbedding
 
 
+def memory_title_for(body: str) -> str | None:
+    for raw_line in body.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            line = line.lstrip("#").strip()
+        return line[:240] or None
+    return None
+
+
 def authorized_memories_statement(
     principal: Principal,
 ) -> Select[tuple[Memory, User, MemoryEmbedding | None]]:
@@ -46,6 +57,7 @@ def add_private_memory_with_processing(
         id=memory_id,
         workspace_id=principal.workspace_id,
         author_id=principal.user_id,
+        title=memory_title_for(body),
         body=body,
         visibility="PRIVATE",
         supersedes_id=supersedes_id,

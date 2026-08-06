@@ -29,6 +29,7 @@ from memora.memories.service import (
     list_owned_memory_revisions,
 )
 from memora.retrieval.models import MemoryEmbedding
+from memora.workspaces.models import Workspace
 
 router = APIRouter(prefix="/memories", tags=["memories"])
 MemoryVisibility = Literal["PRIVATE", "WORKSPACE"]
@@ -37,6 +38,7 @@ MemoryRevisionMode = Literal["UPDATE_CURRENT", "NEW_VERSION"]
 
 class CreateMemoryRequest(BaseModel):
     body: str = Field(min_length=1, max_length=10_000)
+    visibility: MemoryVisibility = "PRIVATE"
     supersedes_id: UUID | None = None
     conversation_id: UUID | None = None
 
@@ -92,12 +94,26 @@ def _audit(database: DatabaseSession, principal: Principal, action: str, memory_
     )
 
 
+def _require_team_workspace(database: DatabaseSession, principal: Principal) -> None:
+    workspace_kind = database.scalar(
+        select(Workspace.kind).where(Workspace.id == principal.workspace_id)
+    )
+    if workspace_kind != "TEAM":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="个人空间不能共享给团队",
+        )
+
+
 @router.post("", response_model=MemoryResponse, status_code=status.HTTP_201_CREATED)
 def create_memory(
     payload: CreateMemoryRequest,
     principal: CurrentPrincipal,
     database: DatabaseSession,
 ) -> MemoryResponse:
+    if payload.visibility == "WORKSPACE":
+        _require_team_workspace(database, principal)
+
     conversation = (
         get_owned_conversation(database, principal, payload.conversation_id)
         if payload.conversation_id is not None
@@ -131,7 +147,12 @@ def create_memory(
         timeline_entry_id=memory_id,
         revision_kind="NEW_VERSION" if payload.supersedes_id is not None else "ROOT",
     )
+    if payload.visibility == "WORKSPACE":
+        memory.visibility = "WORKSPACE"
+        memory.shared_at = datetime.now(UTC)
     _audit(database, principal, "MEMORY_CREATED", memory.id)
+    if payload.visibility == "WORKSPACE":
+        _audit(database, principal, "MEMORY_SHARED", memory.id)
     if conversation is not None:
         persist_capture(
             database,
@@ -206,6 +227,9 @@ def create_memory_revision(
         timeline_entry_id=timeline_entry_id,
         revision_kind=payload.mode,
     )
+    if payload.mode == "UPDATE_CURRENT" and locked_source.visibility == "WORKSPACE":
+        memory.visibility = "WORKSPACE"
+        memory.shared_at = locked_source.shared_at or datetime.now(UTC)
     _audit(database, principal, audit_action, memory.id)
     database.commit()
     database.refresh(memory)
@@ -275,6 +299,7 @@ def share_memory(
 ) -> MemoryResponse:
     memory, author, projection = _author_row_or_error(database, principal, memory_id)
     if memory.visibility != "WORKSPACE":
+        _require_team_workspace(database, principal)
         memory.visibility = "WORKSPACE"
         memory.shared_at = datetime.now(UTC)
         _audit(database, principal, "MEMORY_SHARED", memory.id)
@@ -407,6 +432,7 @@ def delete_memory(
             )
         )
         revision.body = None
+        revision.title = None
         revision.visibility = "PRIVATE"
         revision.shared_at = None
         revision.timeline_visible = False

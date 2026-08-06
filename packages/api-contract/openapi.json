@@ -542,6 +542,15 @@
               }
             ],
             "title": "Supersedes Id"
+          },
+          "visibility": {
+            "default": "PRIVATE",
+            "enum": [
+              "PRIVATE",
+              "WORKSPACE"
+            ],
+            "title": "Visibility",
+            "type": "string"
           }
         },
         "required": [
@@ -591,6 +600,17 @@
       },
       "CurrentUserResponse": {
         "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
           "display_name": {
             "title": "Display Name",
             "type": "string"
@@ -620,6 +640,7 @@
           "id",
           "email",
           "display_name",
+          "avatar_url",
           "workspace_id",
           "workspace_name",
           "role"
@@ -746,6 +767,16 @@
             "title": "Tool Events",
             "type": "array"
           },
+          "trace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DraftTraceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "web_citations": {
             "items": {
               "$ref": "#/components/schemas/WebCitationResponse"
@@ -777,6 +808,74 @@
           "saved_memory"
         ],
         "title": "DraftChatResponse",
+        "type": "object"
+      },
+      "DraftChatStreamErrorEvent": {
+        "properties": {
+          "code": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "trace": {
+            "$ref": "#/components/schemas/DraftTraceResponse"
+          },
+          "type": {
+            "const": "error",
+            "default": "error",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "trace"
+        ],
+        "title": "DraftChatStreamErrorEvent",
+        "type": "object"
+      },
+      "DraftChatStreamProgressEvent": {
+        "properties": {
+          "step": {
+            "$ref": "#/components/schemas/DraftTraceStepResponse"
+          },
+          "type": {
+            "const": "progress",
+            "default": "progress",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step"
+        ],
+        "title": "DraftChatStreamProgressEvent",
+        "type": "object"
+      },
+      "DraftChatStreamResultEvent": {
+        "properties": {
+          "response": {
+            "$ref": "#/components/schemas/DraftChatResponse"
+          },
+          "type": {
+            "const": "result",
+            "default": "result",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "response"
+        ],
+        "title": "DraftChatStreamResultEvent",
         "type": "object"
       },
       "DraftChatTurn": {
@@ -920,6 +1019,142 @@
         "title": "DraftToolEventResponse",
         "type": "object"
       },
+      "DraftTraceResponse": {
+        "properties": {
+          "duration_ms": {
+            "minimum": 0.0,
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "minimum": 0.0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "output_tokens": {
+            "minimum": 0.0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/DraftTraceStepResponse"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "duration_ms",
+          "model",
+          "input_tokens",
+          "output_tokens",
+          "steps"
+        ],
+        "title": "DraftTraceResponse",
+        "type": "object"
+      },
+      "DraftTraceStepResponse": {
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "elapsed_ms": {
+            "minimum": 0.0,
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "item_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Count"
+          },
+          "kind": {
+            "enum": [
+              "ANALYSIS",
+              "ATTACHMENT",
+              "RETRIEVAL",
+              "MODEL",
+              "TOOL",
+              "OUTPUT"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "RUNNING",
+              "COMPLETED",
+              "SKIPPED",
+              "DEGRADED",
+              "REJECTED",
+              "FAILED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "title",
+          "elapsed_ms"
+        ],
+        "title": "DraftTraceStepResponse",
+        "type": "object"
+      },
       "EvidenceAuthorResponse": {
         "properties": {
           "display_name": {
@@ -1008,6 +1243,73 @@
           "version"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "InviteWorkspaceMemberRequest": {
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "InviteWorkspaceMemberRequest",
+        "type": "object"
+      },
+      "JoinWorkspaceRequest": {
+        "properties": {
+          "code": {
+            "maxLength": 32,
+            "minLength": 6,
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "JoinWorkspaceRequest",
+        "type": "object"
+      },
+      "JoinWorkspaceResponse": {
+        "properties": {
+          "join_request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceJoinRequestResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "ACTIVE"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "JoinWorkspaceResponse",
         "type": "object"
       },
       "LoginRequest": {
@@ -1126,6 +1428,17 @@
             "title": "Timeline Visible",
             "type": "boolean"
           },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
           "visibility": {
             "enum": [
               "PRIVATE",
@@ -1137,6 +1450,7 @@
         },
         "required": [
           "id",
+          "title",
           "body",
           "visibility",
           "author",
@@ -1218,6 +1532,37 @@
           "model_status"
         ],
         "title": "RefineDraftResponse",
+        "type": "object"
+      },
+      "RegisterRequest": {
+        "properties": {
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 128,
+            "minLength": 10,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "display_name",
+          "email",
+          "password"
+        ],
+        "title": "RegisterRequest",
         "type": "object"
       },
       "ReportRequest": {
@@ -1447,16 +1792,34 @@
             ],
             "title": "Created To"
           },
+          "field": {
+            "default": "ALL",
+            "enum": [
+              "ALL",
+              "TITLE"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
           "limit": {
             "default": 20,
-            "maximum": 50.0,
+            "maximum": 200.0,
             "minimum": 1.0,
             "title": "Limit",
             "type": "integer"
           },
+          "mode": {
+            "default": "HYBRID",
+            "enum": [
+              "HYBRID",
+              "KEYWORD"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
           "q": {
+            "default": "",
             "maxLength": 500,
-            "minLength": 1,
             "title": "Q",
             "type": "string"
           },
@@ -1476,9 +1839,6 @@
             "title": "Visibility"
           }
         },
-        "required": [
-          "q"
-        ],
         "title": "SearchRequest",
         "type": "object"
       },
@@ -1542,6 +1902,37 @@
         "title": "SearchResultResponse",
         "type": "object"
       },
+      "UpdateAvatarRequest": {
+        "properties": {
+          "data": {
+            "minLength": 1,
+            "title": "Data",
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "media_type",
+          "data"
+        ],
+        "title": "UpdateAvatarRequest",
+        "type": "object"
+      },
       "UpdateConversationRequest": {
         "properties": {
           "archived": {
@@ -1570,6 +1961,47 @@
           }
         },
         "title": "UpdateConversationRequest",
+        "type": "object"
+      },
+      "UpdatePasswordRequest": {
+        "properties": {
+          "current_password": {
+            "format": "password",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Current Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "new_password": {
+            "format": "password",
+            "maxLength": 128,
+            "minLength": 10,
+            "title": "New Password",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "UpdatePasswordRequest",
+        "type": "object"
+      },
+      "UpdateProfileRequest": {
+        "properties": {
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "title": "UpdateProfileRequest",
         "type": "object"
       },
       "ValidationError": {
@@ -1634,6 +2066,65 @@
         "title": "WebCitationResponse",
         "type": "object"
       },
+      "WorkspaceJoinRequestResponse": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          },
+          "workspace_name": {
+            "title": "Workspace Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "workspace_name",
+          "user_id",
+          "display_name",
+          "status",
+          "requested_at",
+          "reviewed_at"
+        ],
+        "title": "WorkspaceJoinRequestResponse",
+        "type": "object"
+      },
       "WorkspaceMemberResponse": {
         "properties": {
           "display_name": {
@@ -1644,7 +2135,20 @@
             "title": "Id",
             "type": "string"
           },
+          "is_current_user": {
+            "title": "Is Current User",
+            "type": "boolean"
+          },
+          "joined_at": {
+            "format": "date-time",
+            "title": "Joined At",
+            "type": "string"
+          },
           "role": {
+            "enum": [
+              "OWNER",
+              "MEMBER"
+            ],
             "title": "Role",
             "type": "string"
           }
@@ -1652,7 +2156,9 @@
         "required": [
           "id",
           "display_name",
-          "role"
+          "role",
+          "joined_at",
+          "is_current_user"
         ],
         "title": "WorkspaceMemberResponse",
         "type": "object"
@@ -1667,6 +2173,17 @@
           "is_current": {
             "title": "Is Current",
             "type": "boolean"
+          },
+          "join_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Join Code"
           },
           "kind": {
             "enum": [
@@ -1694,7 +2211,8 @@
           "name",
           "kind",
           "role",
-          "is_current"
+          "is_current",
+          "join_code"
         ],
         "title": "WorkspaceResponse",
         "type": "object"
@@ -1790,6 +2308,107 @@
         ]
       }
     },
+    "/auth/avatar": {
+      "delete": {
+        "operationId": "delete_avatar_auth_avatar_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete Avatar",
+        "tags": [
+          "identity"
+        ]
+      },
+      "put": {
+        "operationId": "update_avatar_auth_avatar_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAvatarRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Avatar",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/auth/avatar/{avatar_id}": {
+      "get": {
+        "operationId": "get_avatar_auth_avatar__avatar_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "avatar_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Avatar Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Avatar",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/auth/login": {
       "post": {
         "operationId": "login_auth_login_post",
@@ -1867,6 +2486,128 @@
           }
         },
         "summary": "Me",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/auth/password": {
+      "put": {
+        "operationId": "update_password_auth_password_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Password",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/auth/profile": {
+      "patch": {
+        "operationId": "update_profile_auth_profile_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Profile",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "operationId": "register_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "账号已存在"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "尝试过多"
+          }
+        },
+        "summary": "Register",
         "tags": [
           "identity"
         ]
@@ -2141,6 +2882,59 @@
           }
         },
         "summary": "Chat With Draft",
+        "tags": [
+          "drafts"
+        ]
+      }
+    },
+    "/drafts/chat/stream": {
+      "post": {
+        "operationId": "stream_chat_with_draft_drafts_chat_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DraftChatStreamProgressEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DraftChatStreamResultEvent"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DraftChatStreamErrorEvent"
+                    }
+                  ],
+                  "title": "Response 200 Stream Chat With Draft Drafts Chat Stream Post"
+                }
+              },
+              "text/event-stream": {}
+            },
+            "description": "逐步返回安全工作过程，并以完整聊天响应结束。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream Chat With Draft",
         "tags": [
           "drafts"
         ]
@@ -2809,6 +3603,117 @@
         ]
       }
     },
+    "/workspace/join-requests": {
+      "get": {
+        "operationId": "list_join_requests_workspace_join_requests_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkspaceJoinRequestResponse"
+                  },
+                  "title": "Response List Join Requests Workspace Join Requests Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Join Requests",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspace/join-requests/{user_id}/approve": {
+      "post": {
+        "operationId": "approve_join_request_workspace_join_requests__user_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceMemberResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Join Request",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspace/join-requests/{user_id}/reject": {
+      "post": {
+        "operationId": "reject_join_request_workspace_join_requests__user_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceJoinRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Join Request",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
     "/workspace/members": {
       "get": {
         "operationId": "list_members_workspace_members_get",
@@ -2829,6 +3734,42 @@
           }
         },
         "summary": "List Members",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspace/members/{user_id}": {
+      "delete": {
+        "operationId": "remove_workspace_member_workspace_members__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Workspace Member",
         "tags": [
           "workspaces"
         ]
@@ -2898,6 +3839,47 @@
         ]
       }
     },
+    "/workspaces/join": {
+      "post": {
+        "operationId": "join_workspace_workspaces_join_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinWorkspaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinWorkspaceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Join Workspace",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
     "/workspaces/{workspace_id}/activate": {
       "post": {
         "operationId": "activate_workspace_workspaces__workspace_id__activate_post",
@@ -2936,6 +3918,59 @@
           }
         },
         "summary": "Activate Workspace",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/members": {
+      "post": {
+        "operationId": "invite_workspace_member_workspaces__workspace_id__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteWorkspaceMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceMemberResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Invite Workspace Member",
         "tags": [
           "workspaces"
         ]

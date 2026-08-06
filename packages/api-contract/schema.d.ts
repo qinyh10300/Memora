@@ -38,6 +38,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Avatar */
+        put: operations["update_avatar_auth_avatar_put"];
+        post?: never;
+        /** Delete Avatar */
+        delete: operations["delete_avatar_auth_avatar_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/avatar/{avatar_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Avatar */
+        get: operations["get_avatar_auth_avatar__avatar_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -83,6 +118,57 @@ export interface paths {
         get: operations["me_auth_me_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Password */
+        put: operations["update_password_auth_password_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Profile */
+        patch: operations["update_profile_auth_profile_patch"];
+        trace?: never;
+    };
+    "/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register */
+        post: operations["register_auth_register_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -153,6 +239,23 @@ export interface paths {
         put?: never;
         /** Chat With Draft */
         post: operations["chat_with_draft_drafts_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/drafts/chat/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stream Chat With Draft */
+        post: operations["stream_chat_with_draft_drafts_chat_stream_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -366,6 +469,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workspace/join-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Join Requests */
+        get: operations["list_join_requests_workspace_join_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspace/join-requests/{user_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Join Request */
+        post: operations["approve_join_request_workspace_join_requests__user_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspace/join-requests/{user_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Join Request */
+        post: operations["reject_join_request_workspace_join_requests__user_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspace/members": {
         parameters: {
             query?: never;
@@ -378,6 +532,23 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspace/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Workspace Member */
+        delete: operations["remove_workspace_member_workspace_members__user_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -401,6 +572,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workspaces/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join Workspace */
+        post: operations["join_workspace_workspaces_join_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspaces/{workspace_id}/activate": {
         parameters: {
             query?: never;
@@ -412,6 +600,23 @@ export interface paths {
         put?: never;
         /** Activate Workspace */
         post: operations["activate_workspace_workspaces__workspace_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invite Workspace Member */
+        post: operations["invite_workspace_member_workspaces__workspace_id__members_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -636,6 +841,12 @@ export interface components {
             conversation_id?: string | null;
             /** Supersedes Id */
             supersedes_id?: string | null;
+            /**
+             * Visibility
+             * @default PRIVATE
+             * @enum {string}
+             */
+            visibility: "PRIVATE" | "WORKSPACE";
         };
         /** CreateMemoryRevisionRequest */
         CreateMemoryRevisionRequest: {
@@ -654,6 +865,8 @@ export interface components {
         };
         /** CurrentUserResponse */
         CurrentUserResponse: {
+            /** Avatar Url */
+            avatar_url: string | null;
             /** Display Name */
             display_name: string;
             /** Email */
@@ -713,6 +926,7 @@ export interface components {
             saved_memory: components["schemas"]["MemoryResponse"] | null;
             /** Tool Events */
             tool_events: components["schemas"]["DraftToolEventResponse"][];
+            trace?: components["schemas"]["DraftTraceResponse"] | null;
             /** Web Citations */
             web_citations: components["schemas"]["WebCitationResponse"][];
             /**
@@ -720,6 +934,40 @@ export interface components {
              * @enum {string}
              */
             web_search_status: "NOT_USED" | "AVAILABLE" | "DISABLED" | "DEGRADED";
+        };
+        /** DraftChatStreamErrorEvent */
+        DraftChatStreamErrorEvent: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            trace: components["schemas"]["DraftTraceResponse"];
+            /**
+             * Type
+             * @default error
+             * @constant
+             */
+            type: "error";
+        };
+        /** DraftChatStreamProgressEvent */
+        DraftChatStreamProgressEvent: {
+            step: components["schemas"]["DraftTraceStepResponse"];
+            /**
+             * Type
+             * @default progress
+             * @constant
+             */
+            type: "progress";
+        };
+        /** DraftChatStreamResultEvent */
+        DraftChatStreamResultEvent: {
+            response: components["schemas"]["DraftChatResponse"];
+            /**
+             * Type
+             * @default result
+             * @constant
+             */
+            type: "result";
         };
         /** DraftChatTurn */
         DraftChatTurn: {
@@ -770,6 +1018,44 @@ export interface components {
              */
             status: "COMPLETED" | "REJECTED" | "FAILED";
         };
+        /** DraftTraceResponse */
+        DraftTraceResponse: {
+            /** Duration Ms */
+            duration_ms: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Model */
+            model: string | null;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Steps */
+            steps: components["schemas"]["DraftTraceStepResponse"][];
+        };
+        /** DraftTraceStepResponse */
+        DraftTraceStepResponse: {
+            /** Detail */
+            detail?: string | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Elapsed Ms */
+            elapsed_ms: number;
+            /** Id */
+            id: string;
+            /** Item Count */
+            item_count?: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "ANALYSIS" | "ATTACHMENT" | "RETRIEVAL" | "MODEL" | "TOOL" | "OUTPUT";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "RUNNING" | "COMPLETED" | "SKIPPED" | "DEGRADED" | "REJECTED" | "FAILED";
+            /** Title */
+            title: string;
+        };
         /** EvidenceAuthorResponse */
         EvidenceAuthorResponse: {
             /** Display Name */
@@ -815,6 +1101,26 @@ export interface components {
             status: "ok";
             /** Version */
             version: string;
+        };
+        /** InviteWorkspaceMemberRequest */
+        InviteWorkspaceMemberRequest: {
+            /** Email */
+            email: string;
+        };
+        /** JoinWorkspaceRequest */
+        JoinWorkspaceRequest: {
+            /** Code */
+            code: string;
+        };
+        /** JoinWorkspaceResponse */
+        JoinWorkspaceResponse: {
+            join_request?: components["schemas"]["WorkspaceJoinRequestResponse"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "PENDING" | "ACTIVE";
+            workspace?: components["schemas"]["WorkspaceResponse"] | null;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -874,6 +1180,8 @@ export interface components {
             timeline_entry_id: string;
             /** Timeline Visible */
             timeline_visible: boolean;
+            /** Title */
+            title: string | null;
             /**
              * Visibility
              * @enum {string}
@@ -912,6 +1220,18 @@ export interface components {
              * @enum {string}
              */
             model_status: "AVAILABLE" | "DISABLED" | "DEGRADED";
+        };
+        /** RegisterRequest */
+        RegisterRequest: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * Password
+             * Format: password
+             */
+            password: string;
         };
         /** ReportRequest */
         ReportRequest: {
@@ -1008,11 +1328,26 @@ export interface components {
             /** Created To */
             created_to?: string | null;
             /**
+             * Field
+             * @default ALL
+             * @enum {string}
+             */
+            field: "ALL" | "TITLE";
+            /**
              * Limit
              * @default 20
              */
             limit: number;
-            /** Q */
+            /**
+             * Mode
+             * @default HYBRID
+             * @enum {string}
+             */
+            mode: "HYBRID" | "KEYWORD";
+            /**
+             * Q
+             * @default
+             */
             q: string;
             /** Visibility */
             visibility?: ("PRIVATE" | "WORKSPACE") | null;
@@ -1037,12 +1372,42 @@ export interface components {
             /** Score */
             score: number;
         };
+        /** UpdateAvatarRequest */
+        UpdateAvatarRequest: {
+            /** Data */
+            data: string;
+            /**
+             * Media Type
+             * @enum {string}
+             */
+            media_type: "image/png" | "image/jpeg" | "image/webp";
+            /** Name */
+            name: string;
+        };
         /** UpdateConversationRequest */
         UpdateConversationRequest: {
             /** Archived */
             archived?: boolean | null;
             /** Title */
             title?: string | null;
+        };
+        /** UpdatePasswordRequest */
+        UpdatePasswordRequest: {
+            /**
+             * Current Password
+             * Format: password
+             */
+            current_password: string;
+            /**
+             * New Password
+             * Format: password
+             */
+            new_password: string;
+        };
+        /** UpdateProfileRequest */
+        UpdateProfileRequest: {
+            /** Display Name */
+            display_name: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -1064,14 +1429,53 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** WorkspaceJoinRequestResponse */
+        WorkspaceJoinRequestResponse: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /** Reviewed At */
+            reviewed_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "PENDING" | "APPROVED" | "REJECTED";
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /** Workspace Name */
+            workspace_name: string;
+        };
         /** WorkspaceMemberResponse */
         WorkspaceMemberResponse: {
             /** Display Name */
             display_name: string;
             /** Id */
             id: string;
-            /** Role */
-            role: string;
+            /** Is Current User */
+            is_current_user: boolean;
+            /**
+             * Joined At
+             * Format: date-time
+             */
+            joined_at: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "OWNER" | "MEMBER";
         };
         /** WorkspaceResponse */
         WorkspaceResponse: {
@@ -1082,6 +1486,8 @@ export interface components {
             id: string;
             /** Is Current */
             is_current: boolean;
+            /** Join Code */
+            join_code: string | null;
             /**
              * Kind
              * @enum {string}
@@ -1143,6 +1549,90 @@ export interface operations {
             header?: never;
             path: {
                 asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_avatar_auth_avatar_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAvatarRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentUserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_avatar_auth_avatar_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentUserResponse"];
+                };
+            };
+        };
+    };
+    get_avatar_auth_avatar__avatar_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                avatar_id: string;
             };
             cookie?: never;
         };
@@ -1250,6 +1740,117 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CurrentUserResponse"];
                 };
+            };
+        };
+    };
+    update_password_auth_password_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_profile_auth_profile_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentUserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_auth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentUserResponse"];
+                };
+            };
+            /** @description 账号已存在 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description 尝试过多 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -1437,6 +2038,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DraftChatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_chat_with_draft_drafts_chat_stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftChatRequest"];
+            };
+        };
+        responses: {
+            /** @description 逐步返回安全工作过程，并以完整聊天响应结束。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftChatStreamProgressEvent"] | components["schemas"]["DraftChatStreamResultEvent"] | components["schemas"]["DraftChatStreamErrorEvent"];
+                    "text/event-stream": unknown;
                 };
             };
             /** @description Validation Error */
@@ -1905,6 +2540,88 @@ export interface operations {
             };
         };
     };
+    list_join_requests_workspace_join_requests_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceJoinRequestResponse"][];
+                };
+            };
+        };
+    };
+    approve_join_request_workspace_join_requests__user_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceMemberResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_join_request_workspace_join_requests__user_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceJoinRequestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_members_workspace_members_get: {
         parameters: {
             query?: never;
@@ -1921,6 +2638,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceMemberResponse"][];
+                };
+            };
+        };
+    };
+    remove_workspace_member_workspace_members__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1978,6 +2724,39 @@ export interface operations {
             };
         };
     };
+    join_workspace_workspaces_join_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinWorkspaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinWorkspaceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     activate_workspace_workspaces__workspace_id__activate_post: {
         parameters: {
             query?: never;
@@ -1996,6 +2775,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invite_workspace_member_workspaces__workspace_id__members_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteWorkspaceMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceMemberResponse"];
                 };
             };
             /** @description Validation Error */

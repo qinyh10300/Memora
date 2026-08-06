@@ -7,7 +7,7 @@ from memora.identity.models import User, UserSession
 from memora.jobs.models import Job
 from memora.memories.models import Memory
 from memora.retrieval.models import MemoryEmbedding
-from memora.workspaces.models import Workspace, WorkspaceMembership
+from memora.workspaces.models import Workspace, WorkspaceJoinRequest, WorkspaceMembership
 
 MODEL_TYPES = (
     AuditEvent,
@@ -21,6 +21,7 @@ MODEL_TYPES = (
     Memory,
     MemoryEmbedding,
     Workspace,
+    WorkspaceJoinRequest,
     WorkspaceMembership,
 )
 

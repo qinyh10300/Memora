@@ -136,6 +136,96 @@ def test_share_and_unshare_apply_cross_user_permission_matrix(
     assert actions.count("MEMORY_UNSHARED") == 1
 
 
+def test_team_visibility_is_explicit_and_isolated_between_workspaces(
+    memory_client: TestClient,
+) -> None:
+    alex = _login(memory_client, "alex@memora.local", "memora-local-alex")
+    blair = _login(memory_client, "blair@memora.local", "memora-local-blair")
+    casey = _login(memory_client, "casey@memora.local", "memora-local-casey")
+
+    created_team = memory_client.post(
+        "/workspaces",
+        headers=alex,
+        json={"name": "Shared Memory Lab"},
+    )
+    assert created_team.status_code == 201
+    team = created_team.json()
+    assert (
+        memory_client.post(
+            f"/workspaces/{team['id']}/members",
+            headers=alex,
+            json={"email": "blair@memora.local"},
+        ).status_code
+        == 201
+    )
+    assert memory_client.post(f"/workspaces/{team['id']}/activate", headers=alex).status_code == 200
+    assert (
+        memory_client.post(f"/workspaces/{team['id']}/activate", headers=blair).status_code == 200
+    )
+
+    private = memory_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "团队中的私人准备笔记", "visibility": "PRIVATE"},
+    )
+    shared = memory_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "团队共享的研究结论", "visibility": "WORKSPACE"},
+    )
+    assert private.status_code == 201
+    assert private.json()["visibility"] == "PRIVATE"
+    assert shared.status_code == 201
+    assert shared.json()["visibility"] == "WORKSPACE"
+    assert shared.json()["shared_at"] is not None
+
+    blair_memories = memory_client.get("/memories", headers=blair).json()
+    assert [memory["id"] for memory in blair_memories] == [shared.json()["id"]]
+    assert blair_memories[0]["author"]["display_name"] == "Alex"
+    assert blair_memories[0]["is_owner"] is False
+    assert memory_client.get(f"/memories/{private.json()['id']}", headers=blair).status_code == 404
+    assert memory_client.get(f"/memories/{shared.json()['id']}", headers=casey).status_code == 404
+    assert memory_client.get("/memories", headers=casey).json() == []
+
+    updated = memory_client.post(
+        f"/memories/{shared.json()['id']}/revisions",
+        headers=alex,
+        json={"body": "团队共享的研究结论（已更新）", "mode": "UPDATE_CURRENT"},
+    )
+    assert updated.status_code == 201
+    assert updated.json()["visibility"] == "WORKSPACE"
+    assert (
+        memory_client.get(f"/memories/{updated.json()['id']}", headers=blair).json()["body"]
+        == "团队共享的研究结论（已更新）"
+    )
+
+    alex_workspaces = memory_client.get("/workspaces", headers=alex).json()
+    personal = next(workspace for workspace in alex_workspaces if workspace["kind"] == "PERSONAL")
+    assert (
+        memory_client.post(f"/workspaces/{personal['id']}/activate", headers=alex).status_code
+        == 200
+    )
+    rejected = memory_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "不应在个人空间公开", "visibility": "WORKSPACE"},
+    )
+    assert rejected.status_code == 422
+    personal_private = memory_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "个人空间私有记录"},
+    )
+    assert personal_private.status_code == 201
+    assert (
+        memory_client.post(
+            f"/memories/{personal_private.json()['id']}/share",
+            headers=alex,
+        ).status_code
+        == 422
+    )
+
+
 def test_supplement_is_append_only_and_delete_clears_body(
     memory_client: TestClient,
 ) -> None:

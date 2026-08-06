@@ -200,6 +200,21 @@ class WebGroundedDraftChatModel:
         )
 
 
+class ToolCapableWebGroundedDraftChatModel(WebGroundedDraftChatModel):
+    def __init__(self) -> None:
+        super().__init__()
+        self.tool_rounds = 0
+
+    def complete_with_tools(
+        self,
+        messages: list[ChatMessage],
+        tools: list[ChatToolDefinition],
+        execute_tool: ChatToolExecutor,
+    ) -> ChatResult:
+        self.tool_rounds += 1
+        raise AssertionError("explicit web requests should not add a tool-planning round")
+
+
 class SaveMemoryToolDraftModel:
     model_id = "tool-chat-model"
 
@@ -267,6 +282,17 @@ def _blank_pdf_base64() -> str:
     output = BytesIO()
     writer.write(output)
     return base64.b64encode(output.getvalue()).decode()
+
+
+def _sse_payloads(body: str) -> list[dict[str, object]]:
+    payloads: list[dict[str, object]] = []
+    for block in body.split("\n\n"):
+        data_lines = [
+            line.removeprefix("data: ") for line in block.splitlines() if line.startswith("data: ")
+        ]
+        if data_lines:
+            payloads.append(cast(dict[str, object], json.loads("\n".join(data_lines))))
+    return payloads
 
 
 def test_refine_draft_updates_markdown_without_creating_memory_and_records_usage(
@@ -803,6 +829,69 @@ def test_draft_chat_auto_searches_only_for_explicit_web_intent_and_can_be_disabl
     assert search.calls[0][1] == "low"
 
 
+def test_tool_capable_model_uses_one_web_call_and_no_extra_planning_round_for_explicit_search(
+    tool_draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = _login(tool_draft_client)
+    search = CaptureWebSearch()
+    model = ToolCapableWebGroundedDraftChatModel()
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+    monkeypatch.setattr("memora.api.drafts.build_web_search", lambda _settings, **_kwargs: search)
+
+    answer = tool_draft_client.post(
+        "/drafts/chat",
+        headers=headers,
+        json={
+            "markdown": "# 已有草稿",
+            "messages": [
+                {
+                    "role": "USER",
+                    "content": "帮我联网搜索有前景的 AI to C 产品。",
+                }
+            ],
+        },
+    )
+
+    assert answer.status_code == 200
+    answer_body = answer.json()
+    assert answer_body["assistant_message"].startswith("官方报告显示产品在 2026 年更新")
+    assert answer_body["markdown"] == "# 已有草稿"
+    assert answer_body["draft_changed"] is False
+    assert answer_body["web_search_status"] == "AVAILABLE"
+    assert len(answer_body["web_citations"]) == 2
+    assert answer_body["tool_events"] == [
+        {
+            "name": "web_search",
+            "status": "COMPLETED",
+            "message": "已联网找到 2 个候选来源。",
+        }
+    ]
+    assert model.messages == []
+    assert model.tool_rounds == 0
+    assert len(search.calls) == 1
+
+    update = tool_draft_client.post(
+        "/drafts/chat",
+        headers=headers,
+        json={
+            "markdown": "# 已有草稿",
+            "messages": [
+                {
+                    "role": "USER",
+                    "content": "联网搜索最新进展并加入右侧。",
+                }
+            ],
+        },
+    )
+
+    assert update.status_code == 200
+    assert update.json()["draft_changed"] is True
+    assert model.messages
+    assert model.tool_rounds == 0
+    assert len(search.calls) == 2
+
+
 def test_draft_chat_web_search_failure_preserves_markdown_and_skips_generation(
     draft_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -923,6 +1012,78 @@ def test_draft_chat_save_memory_tool_is_rejected_without_explicit_save_request(
     engine = cast(FastAPI, tool_draft_client.app).state.engine
     with Session(engine) as database:
         assert database.scalars(select(Memory)).all() == []
+
+
+def test_draft_chat_stream_emits_safe_progress_and_final_trace(
+    draft_client: TestClient,
+) -> None:
+    headers = _login(draft_client)
+    private_marker = "PRIVATE_MARKER_92d6"
+
+    response = draft_client.post(
+        "/drafts/chat/stream",
+        headers=headers,
+        json={
+            "markdown": "# 当前草稿",
+            "web_search": "DISABLED",
+            "messages": [{"role": "USER", "content": f"整理这段内容：{private_marker}"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    payloads = _sse_payloads(response.text)
+    assert payloads[-1]["type"] == "result"
+    assert any(payload["type"] == "progress" for payload in payloads)
+
+    result = cast(dict[str, object], payloads[-1]["response"])
+    trace = cast(dict[str, object], result["trace"])
+    steps = cast(list[dict[str, object]], trace["steps"])
+    assert trace["input_tokens"] == 0
+    assert trace["output_tokens"] == 0
+    assert any(step["id"] == "analysis" and step["status"] == "COMPLETED" for step in steps)
+    assert any(step["id"] == "model" and step["status"] == "SKIPPED" for step in steps)
+    assert any(step["id"] == "output" and step["status"] == "COMPLETED" for step in steps)
+    assert private_marker not in json.dumps(trace, ensure_ascii=False)
+
+
+def test_draft_chat_stream_reports_real_save_tool_execution(
+    tool_draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = _login(tool_draft_client)
+    model = SaveMemoryToolDraftModel(body="# 流式保存\n\n用户明确要求保存。")
+    monkeypatch.setattr(
+        "memora.api.drafts.build_chat_model",
+        lambda _settings, **_kwargs: model,
+    )
+
+    response = tool_draft_client.post(
+        "/drafts/chat/stream",
+        headers=headers,
+        json={
+            "markdown": "# 流式保存\n\n用户明确要求保存。",
+            "messages": [{"role": "USER", "content": "帮我保存这条记忆。"}],
+        },
+    )
+
+    payloads = _sse_payloads(response.text)
+    progress_steps = [
+        cast(dict[str, object], payload["step"])
+        for payload in payloads
+        if payload["type"] == "progress"
+    ]
+    save_steps = [step for step in progress_steps if step["id"] == "tool-save-memory-1"]
+    assert [step["status"] for step in save_steps] == ["RUNNING", "COMPLETED"]
+
+    result = cast(dict[str, object], payloads[-1]["response"])
+    saved_memory = cast(dict[str, object], result["saved_memory"])
+    trace = cast(dict[str, object], result["trace"])
+    assert saved_memory["visibility"] == "PRIVATE"
+    assert trace["model"] == model.model_id
+    assert trace["input_tokens"] == 120
+    assert trace["output_tokens"] == 40
+    assert "用户明确要求保存" not in json.dumps(trace, ensure_ascii=False)
 
 
 def test_refine_draft_has_safe_disabled_and_degraded_fallbacks(

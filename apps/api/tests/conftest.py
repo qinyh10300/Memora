@@ -12,6 +12,7 @@ def isolate_external_ai_configuration(monkeypatch: MonkeyPatch) -> Iterator[None
     for name in (
         "AI_CHAT_API_KEY",
         "AI_CHAT_MODEL",
+        "AI_MODEL_REGISTRY_JSON",
         "AI_EMBEDDING_API_KEY",
         "AI_EMBEDDING_MODEL",
     ):

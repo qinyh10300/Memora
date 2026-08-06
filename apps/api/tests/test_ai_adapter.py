@@ -344,3 +344,16 @@ def test_web_search_factory_can_be_disabled_without_disabling_chat() -> None:
 
     assert build_chat_model(settings) is not None
     assert build_web_search(settings) is None
+
+
+def test_web_search_factory_prefers_dedicated_search_model() -> None:
+    settings = Settings(
+        ai_chat_api_key=SecretStr("test-key"),
+        ai_chat_model="deep-chat-model",
+        ai_web_search_model="fast-search-model",
+    )
+
+    search = build_web_search(settings, model="selected-chat-model")
+
+    assert search is not None
+    assert search.model_id == "fast-search-model"

@@ -77,6 +77,92 @@ def test_keyword_search_never_crosses_private_or_deleted_boundary(
     )
 
 
+def test_memory_library_keyword_title_date_and_member_filters(
+    retrieval_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alex = _login(retrieval_client, "alex@memora.local", "memora-local-alex")
+    private = retrieval_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "# Project Aurora\n\n海龟定价需要一轮访谈。"},
+    )
+    shared = retrieval_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "# 海龟访谈记录\n\nProject Aurora 的共享结论。", "visibility": "WORKSPACE"},
+    )
+    assert private.status_code == 201
+    assert private.json()["title"] == "Project Aurora"
+    assert shared.status_code == 201
+
+    def fail_if_embedding_is_built(_settings: Settings) -> None:
+        raise AssertionError("keyword-only search must not build an embedding model")
+
+    monkeypatch.setattr("memora.api.search.build_embedding_model", fail_if_embedding_is_built)
+
+    title_search = retrieval_client.post(
+        "/search",
+        headers=alex,
+        json={"q": "Aurora", "mode": "KEYWORD", "field": "TITLE", "limit": 200},
+    )
+    assert title_search.status_code == 200
+    assert [item["memory"]["id"] for item in title_search.json()["results"]] == [
+        private.json()["id"]
+    ]
+    assert title_search.json()["semantic_status"] == "DISABLED"
+
+    body_search = retrieval_client.post(
+        "/search",
+        headers=alex,
+        json={"q": "共享结论", "mode": "KEYWORD", "field": "ALL"},
+    )
+    assert [item["memory"]["id"] for item in body_search.json()["results"]] == [shared.json()["id"]]
+
+    date_only = retrieval_client.post(
+        "/search",
+        headers=alex,
+        json={
+            "mode": "KEYWORD",
+            "created_from": "2000-01-01T00:00:00Z",
+            "created_to": "2100-01-01T00:00:00Z",
+            "limit": 200,
+        },
+    )
+    assert date_only.status_code == 200
+    assert {item["memory"]["id"] for item in date_only.json()["results"]} >= {
+        private.json()["id"],
+        shared.json()["id"],
+    }
+    assert all(item["match_reasons"] == [] for item in date_only.json()["results"])
+
+    blair = _login(retrieval_client, "blair@memora.local", "memora-local-blair")
+    member_search = retrieval_client.post(
+        "/search",
+        headers=blair,
+        json={
+            "q": "Project Aurora",
+            "mode": "KEYWORD",
+            "author_id": private.json()["author"]["id"],
+            "limit": 200,
+        },
+    )
+    assert member_search.status_code == 200
+    assert [item["memory"]["id"] for item in member_search.json()["results"]] == [
+        shared.json()["id"]
+    ]
+
+
+def test_memory_library_requires_a_query_or_filter(retrieval_client: TestClient) -> None:
+    alex = _login(retrieval_client, "alex@memora.local", "memora-local-alex")
+    response = retrieval_client.post(
+        "/search",
+        headers=alex,
+        json={"q": "  ", "mode": "KEYWORD"},
+    )
+    assert response.status_code == 422
+
+
 def test_authorized_candidate_sql_contains_hard_workspace_and_visibility_filters() -> None:
     principal = Principal(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),

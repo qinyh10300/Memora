@@ -9,7 +9,12 @@
 		reverse_proxy api:8000
 	}
 
+	handle /_next/static/* {
+		reverse_proxy web:3000
+	}
+
 	handle {
+		header >Cache-Control "no-store, max-age=0, must-revalidate"
 		reverse_proxy web:3000
 	}
 

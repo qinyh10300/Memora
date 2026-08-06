@@ -21,6 +21,7 @@ class MemoryAuthorResponse(BaseModel):
 
 class MemoryResponse(BaseModel):
     id: UUID
+    title: str | None
     body: str
     visibility: MemoryVisibility
     author: MemoryAuthorResponse
@@ -59,6 +60,7 @@ def memory_response_for(
     )
     return MemoryResponse(
         id=memory.id,
+        title=memory.title,
         body=memory.body,
         visibility=visibility,
         author=MemoryAuthorResponse(id=author.id, display_name=author.display_name),

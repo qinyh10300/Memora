@@ -1,8 +1,8 @@
 # Memora Initial Architecture
 
-Status: Accepted baseline with personal Markdown surface
+Status: Accepted baseline with personal and team Markdown workspaces
 
-Last updated: 2026-07-26
+Last updated: 2026-08-06
 
 ## Architecture goal
 
@@ -30,12 +30,22 @@ flowchart LR
 
 部署单位包括 `web`、`api`、`worker`、`postgres` 和反向代理。API 与 worker 来自同一后端代码库，因此仍属于模块化单体，不是微服务体系。
 
-## Current personal Markdown surface
+## Current Markdown workspace surface
 
-当前 Web 将已存在的团队、多空间、conversation 和报告能力隐藏，先验证个人 Markdown 记忆闭环。后端能力和历史数据不删除。
+当前 Web 提供个人与团队空间、选择性共享和 Markdown 记忆闭环。多 conversation 和报告界面
+继续隐藏，但后端能力和历史数据不删除。
 
-- 登录后，Web 通过受保护的 workspace 接口找到并激活当前用户的 `PERSONAL` 空间；所有业务接口仍从服务端 session 解析活动空间。
-- 一级导航只有“记录想法”和“记忆库”。
+- 注册或新登录后，Web 优先进入用户的 `PERSONAL` 空间；已有 session 启动时恢复数据库会话
+  中最近活动的空间。所有业务接口仍从服务端 session 解析活动空间。
+- 侧栏列出当前用户具有 membership 的空间，并通过受保护的激活接口切换。桌面侧栏可收起
+  为品牌窄栏，移动端保持完整抽屉；未保存草稿会阻止切换。
+- `TEAM` workspace 使用唯一可空的 12 位 `join_code`。`POST /workspaces/join` 在限流和
+  代码校验后写入独立的 pending 申请，不创建 membership，也不激活团队；代码只在请求正文
+  传输。
+- `POST /workspaces/{workspace_id}/members` 只允许团队 `OWNER` 按规范化邮箱添加现有活跃
+  用户。成员目录响应不包含邮箱，只返回昵称、角色、加入时间和当前用户标记。
+- 当前团队 `OWNER` 可以列出、批准或拒绝 `workspace_join_requests`，批准与 membership 写入
+  同事务完成。所有者移除普通成员时，先把其相关 session 切回个人 workspace。
 - `POST /drafts/refine` 接收当前 Markdown 和用户指令，只返回修改后的草稿。它不创建 memory，也不把草稿正文写入审计日志。
 - `POST /assets` 保存当前用户在当前 workspace 上传的 PNG、JPEG、WEBP 或 PDF 受保护
   资产。图片资产返回 `/api/assets/{id}/content` Markdown URL；读取 URL 必须重新验证
@@ -47,8 +57,14 @@ flowchart LR
   返回受预算约束的摘要和 URL 来源，最终 Chat 阶段统一决定回答或更新 Markdown；
   API 只返回搜索候选白名单中被模型实际使用的 HTTP(S) 引用。
 - 模型未配置时，空草稿确定性地保留用户原文；非空草稿保持不变。供应商失败时也不覆盖当前内容。
-- `POST /memories` 仍是唯一的新记忆保存动作；当前 Web 只创建 `PRIVATE` 记录。
-- 记忆库调用现有授权列表，并额外指定当前作者和私有范围。
+- `POST /memories` 仍是唯一的新记忆保存动作，缺省 `PRIVATE`。只有活动空间为 `TEAM` 且
+  用户显式选择时才接受 `WORKSPACE`；个人空间在服务端拒绝共享可见性。
+- 记忆库调用统一授权列表：成员可见本人在当前空间的记录，以及同一团队内所有作者的
+  `WORKSPACE` 记录。前端显示作者与可见性，但不承担授权职责。
+- memory 的 `title` 是从正文首个非空 Markdown 行派生的 nullable 检索投影。记忆库通过
+  `POST /search` 组合纯关键词、标题、时间和作者条件，所有条件都位于授权候选查询之后。
+- Chat 模型菜单从供应商无关注册表读取 GPT、Claude 和 Gemini 配置，选中的 registry ID
+  解析为 provider model 后仍通过同一 `ChatModelPort` 调用。
 
 ### Immutable revisions
 
@@ -65,7 +81,8 @@ flowchart LR
 
 ## Conversation-first Web orchestration
 
-以下是此前已交付的 conversation-first 交互架构。当前个人 Markdown MVP 暂时隐藏该界面，但保留相关服务端接口和权限语义。
+以下是此前已交付的 conversation-first 交互架构。当前 Markdown workspace MVP 暂时隐藏该
+界面，但保留相关服务端接口和权限语义。
 
 该版 Web 对用户只呈现一个 Chatbot 对话面。它在客户端维护短生命周期的交互状态，将“待保存内容 → 可见范围确认 → 创建/共享”、授权问答、显式时间报告，以及上一条记录的分享、取消共享、补充和删除编排到现有 OpenAPI 接口。
 
@@ -93,7 +110,8 @@ v0.2 在同一模块化单体内增加工作区切换、持久化 conversation �
 
 - `workspaces.kind` 区分 `PERSONAL` 与 `TEAM`，但两者复用相同的 memory、检索和引用授权流水线。
 - 每个 seed 用户通过幂等 seed 获得一个确定的个人空间，且只有该用户拥有 membership。
-- 用户创建团队空间时成为 `OWNER`；邀请、移除成员和所有权转移不属于 v0.2。
+- 用户创建团队空间时成为 `OWNER`；所有者可直接添加现有账号，其他用户凭团队号创建待审
+  申请，批准后成为 `MEMBER`。所有者可移除普通成员；所有权转移和团队号轮换仍不属于当前范围。
 - 个人空间和团队空间之间默认不复制、不聚合 memory。
 
 ### Persistent conversations
@@ -111,6 +129,8 @@ v0.2 在同一模块化单体内增加工作区切换、持久化 conversation �
 - “我的记忆”增加服务端作者过滤，只返回当前用户记录。
 - “团队共享”增加服务端 `WORKSPACE` 过滤，只返回当前空间内当前用户有权访问的共享记录。
 - 原文抽屉每次通过 memory 详情接口加载；前端隐藏不是权限边界。
+- 当前 Markdown 工作台复用 `POST /search` 提供纯关键词、标题和时间筛选；团队空间可加
+  `author_id`。该参数不是授权声明，服务端仍先过滤 private memory。
 
 ## Technology baseline
 
@@ -147,19 +167,20 @@ apps/api/
 
 ## Core data model
 
-| Entity | Purpose | Important fields |
-|---|---|---|
-| `users` | 测试账号和身份 | id, email, password_hash, display_name, status |
-| `workspaces` | 个人或团队隔离边界 | id, name, kind |
-| `workspace_memberships` | 用户与工作区关系 | workspace_id, user_id, role |
-| `memories` | 不可原地改写的想法与修订 | id, author_id, workspace_id, body, visibility, supersedes_id, timeline_entry_id, timeline_visible, revision_kind, created_at |
-| `memory_embeddings` | 可重建的检索投影 | memory_id, model, dimensions, embedding, status |
-| `conversations` | 用户私有 Chatbot 会话及默认范围 | id, user_id, workspace_id, title, scope, updated_at, archived_at |
-| `messages` | 问题、回答、capture 关联和生成元数据 | conversation_id, role, content, memory_id, model, usage |
-| `message_citations` | 回答到原记录的可审计引用 | message_id, memory_id, excerpt |
-| `assets` | 受保护 Markdown 图片和当前轮附件 | id, workspace_id, owner_id, kind, content_type, size_bytes, sha256, content, deleted_at |
-| `jobs` | embedding 等异步任务 | type, payload_ref, status, attempts, next_run_at |
-| `audit_events` | 权限事件及不含正文的 AI 用量元数据 | actor_id, action, resource_id, model, input_tokens, output_tokens, created_at |
+| Entity                  | Purpose                              | Important fields                                                                                                             |
+| ----------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `users`                 | 测试账号和身份                       | id, email, password_hash, display_name, avatar_asset_id, status                                                              |
+| `workspaces`            | 个人或团队隔离边界                   | id, name, kind, join_code                                                                                                    |
+| `workspace_memberships` | 用户与工作区关系                     | workspace_id, user_id, role, created_at                                                                                      |
+| `workspace_join_requests` | 不构成权限的团队加入申请           | workspace_id, user_id, status, requested_at, reviewed_at, reviewed_by_user_id                                               |
+| `memories`              | 不可原地改写的想法与修订             | id, author_id, workspace_id, title, body, visibility, supersedes_id, timeline_entry_id, timeline_visible, revision_kind, created_at |
+| `memory_embeddings`     | 可重建的检索投影                     | memory_id, model, dimensions, embedding, status                                                                              |
+| `conversations`         | 用户私有 Chatbot 会话及默认范围      | id, user_id, workspace_id, title, scope, updated_at, archived_at                                                             |
+| `messages`              | 问题、回答、capture 关联和生成元数据 | conversation_id, role, content, memory_id, model, usage                                                                      |
+| `message_citations`     | 回答到原记录的可审计引用             | message_id, memory_id, excerpt                                                                                               |
+| `assets`                | 受保护 Markdown 图片和当前轮附件     | id, workspace_id, owner_id, kind, content_type, size_bytes, sha256, content, deleted_at                                      |
+| `jobs`                  | embedding 等异步任务                 | type, payload_ref, status, attempts, next_run_at                                                                             |
+| `audit_events`          | 权限事件及不含正文的 AI 用量元数据   | actor_id, action, resource_id, model, input_tokens, output_tokens, created_at                                                |
 
 `memories.visibility` v0.1 只有 `PRIVATE` 和 `WORKSPACE`。未来如果引入群组或点对点分享，必须通过新的 ADR 扩展，不能复用含义模糊的布尔字段。
 
@@ -208,7 +229,10 @@ embedding 模型切换会改变向量空间。`memory_embeddings` 必须记录�
 
 M4 的投影列使用 pgvector 可变维度 `vector`，查询必须同时硬过滤模型和维度。四人测试阶段采用精确余弦距离扫描；在真实模型、维度和数据量确定前不创建可能不匹配的近似索引。后续只有在观测到查询性能问题时，才针对确定的模型/维度用表达式或分区索引优化。pgvector 的 [SQLAlchemy 集成](https://github.com/pgvector/pgvector-python#sqlalchemy) 和 [可变维度向量说明](https://github.com/pgvector/pgvector#can-i-store-vectors-with-different-dimensions-in-the-same-column) 是该实现约束的上游依据。
 
-搜索请求使用 `POST /search` 和 JSON body，避免用户的私有搜索词进入反向代理与应用的 URL 访问日志。搜索响应明确标记语义能力为 `AVAILABLE`、`DISABLED` 或 `DEGRADED`；禁用或供应商失败时保留授权关键词结果。
+搜索请求使用 `POST /search` 和 JSON body，避免用户的私有搜索词进入反向代理与应用的 URL
+访问日志。请求可显式选择 `KEYWORD` 或 `HYBRID`，并以 `ALL` 或 `TITLE` 限定文本范围；纯
+关键词和筛选请求不构造 embedding adapter。搜索响应明确标记语义能力为 `AVAILABLE`、
+`DISABLED` 或 `DEGRADED`；禁用或供应商失败时保留授权关键词结果。
 
 ## AI provider boundary
 
@@ -273,10 +297,19 @@ v0.1 报告不长期保存，也不导出文件，只写入不含正文的 `REPO
 
 ## Authentication and authorization
 
-- v0.1 由 seed 命令创建四个账号和一个工作区，不开放注册。
+- 匿名用户可通过 `POST /auth/register` 使用邮箱和密码注册。注册事务原子创建用户、
+  `PERSONAL` 空间、OWNER 成员关系和会话；失败时整体回滚。
+- 注册邮箱规范化后全局唯一，密码为 10–128 个字符并使用现有 Argon2 哈希。重复邮箱
+  返回冲突，不创建第二个用户或孤立空间。
+- seed 命令创建的四个账号和测试工作区继续用于开发验收；公开注册用户不会自动加入
+  测试团队。
 - 密码必须使用成熟的慢哈希算法保存，不能明文或可逆加密。
+- 用户可在已认证会话中修改昵称、受保护头像和密码。头像复用 `assets` 二进制存储，
+  `users.avatar_asset_id` 只允许指向当前用户上传的有效图片；读取头像仍需有效 session。
+- 修改密码必须重新验证当前密码、重新生成 Argon2 哈希并撤销该用户除当前 session 外的
+  其他活动 session。审计只记录动作和用户 ID，不记录密码、哈希或头像正文。
 - 浏览器使用 Secure、HttpOnly、SameSite Cookie 会话；公网环境强制 HTTPS。
-- 登录、AI 调用和敏感接口设置基础速率限制。
+- 注册、登录、AI 调用和敏感接口设置基础速率限制。
 - 作者才可以分享或删除自己的记录。
 - 用户只能查询自己的私有记录和工作区共享记录。
 - 所有权限规则必须有正向和反向集成测试，尤其验证用户 B 无法通过 ID、搜索、Chatbot、引用 URL 或报告看到用户 A 的私有记录。
@@ -315,7 +348,8 @@ v0.1 报告不长期保存，也不导出文件，只写入不含正文的 `REPO
 - PostgreSQL 集成测试覆盖跨用户、跨工作区和删除后的检索隔离。
 - AI adapter 使用契约测试和录制的脱敏响应，少量受控测试调用真实中转服务。
 - 检索评测集从产品简报中的五类问题演化，记录 expected memory IDs 而不只比较自然语言。
-- 浏览器验收覆盖登录、个人空间激活、草稿修改、明确保存、两种修订行为和时间线。
+- 浏览器验收覆盖登录、session 空间恢复、团队创建/加入、成员邀请、草稿显式可见性、跨用户隔离、
+  两种修订行为和时间线。
 - CI 必须能在没有真实生产 API Key 时运行；外部 AI 测试单独标记。
 
 ## Deferred decisions
