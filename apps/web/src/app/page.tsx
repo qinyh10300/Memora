@@ -9,6 +9,7 @@ import {
   Camera,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Copy,
   Eye,
@@ -153,6 +154,14 @@ const AUTO_WEB_SEARCH_MARKERS = [
 const SPLIT_GUTTER_PX = 8;
 const SPLIT_KEY_STEP = 4;
 const SPLIT_KEY_LARGE_STEP = 10;
+const SPLIT_COLLAPSE_RESISTANCE_PX = 56;
+const SPLIT_REOPEN_DRAG_PX = 44;
+const SIDEBAR_DEFAULT_WIDTH = 216;
+const SIDEBAR_COLLAPSED_WIDTH = 68;
+const SIDEBAR_MIN_EXPANDED_WIDTH = 184;
+const SIDEBAR_MAX_WIDTH = 320;
+const SIDEBAR_COLLAPSE_TRIGGER_PX = 136;
+const SIDEBAR_KEY_STEP = 16;
 const COMPOSER_DEFAULT_HEIGHT = 184;
 const COMPOSER_MIN_HEIGHT = 156;
 const COMPOSER_MAX_HEIGHT = 360;
@@ -196,7 +205,9 @@ function readStoredNumber(key: string) {
     return null;
   }
   try {
-    const value = Number(window.localStorage.getItem(key));
+    const stored = window.localStorage.getItem(key);
+    if (stored === null || stored.trim() === "") return null;
+    const value = Number(stored);
     return Number.isFinite(value) ? value : null;
   } catch {
     return null;
@@ -2204,6 +2215,124 @@ function Sidebar({
   );
 }
 
+function SidebarResizeHandle({
+  width,
+  collapsed,
+  onResize,
+  onCommit,
+  onToggle,
+  onReset,
+  onDraggingChange,
+}: {
+  width: number;
+  collapsed: boolean;
+  onResize: (width: number, collapsed: boolean) => void;
+  onCommit: (width: number, collapsed: boolean) => void;
+  onToggle: () => void;
+  onReset: () => void;
+  onDraggingChange: (dragging: boolean) => void;
+}) {
+  const suppressClickRef = useRef(false);
+
+  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const shell = event.currentTarget.parentElement;
+    if (!shell) return;
+    const shellRect = shell.getBoundingClientRect();
+    const shellStyle = window.getComputedStyle(shell);
+    const contentLeft = shellRect.left + (Number.parseFloat(shellStyle.paddingLeft) || 0);
+    const pointerStartX = event.clientX;
+    let nextWidth = width;
+    let nextCollapsed = collapsed;
+    let moved = false;
+
+    onDraggingChange(true);
+    document.body.classList.add("is-resizing-panels");
+
+    const resize = (moveEvent: globalThis.PointerEvent) => {
+      moveEvent.preventDefault();
+      if (Math.abs(moveEvent.clientX - pointerStartX) > 3) moved = true;
+      const rawWidth = moveEvent.clientX - contentLeft;
+      if (rawWidth <= SIDEBAR_COLLAPSE_TRIGGER_PX) {
+        nextWidth = SIDEBAR_COLLAPSED_WIDTH;
+        nextCollapsed = true;
+      } else {
+        nextWidth = clampNumber(rawWidth, SIDEBAR_MIN_EXPANDED_WIDTH, SIDEBAR_MAX_WIDTH);
+        nextCollapsed = false;
+      }
+      onResize(nextWidth, nextCollapsed);
+    };
+
+    const stopResize = () => {
+      suppressClickRef.current = moved;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+      onCommit(nextWidth, nextCollapsed);
+      onDraggingChange(false);
+      document.body.classList.remove("is-resizing-panels");
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+    };
+
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
+  }
+
+  function resizeWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      if (collapsed || width - SIDEBAR_KEY_STEP < SIDEBAR_MIN_EXPANDED_WIDTH) {
+        onCommit(SIDEBAR_COLLAPSED_WIDTH, true);
+      } else {
+        onCommit(width - SIDEBAR_KEY_STEP, false);
+      }
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      if (collapsed) onToggle();
+      else onCommit(Math.min(SIDEBAR_MAX_WIDTH, width + SIDEBAR_KEY_STEP), false);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      onCommit(SIDEBAR_COLLAPSED_WIDTH, true);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      onCommit(SIDEBAR_MAX_WIDTH, false);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      onToggle();
+    }
+  }
+
+  return (
+    <div
+      className={`sidebar-resize-handle ${collapsed ? "is-collapsed" : ""}`}
+      role="separator"
+      aria-label="调整导航宽度"
+      aria-orientation="vertical"
+      aria-valuemin={SIDEBAR_COLLAPSED_WIDTH}
+      aria-valuemax={SIDEBAR_MAX_WIDTH}
+      aria-valuenow={Math.round(width)}
+      aria-valuetext={collapsed ? "导航已收起" : `导航宽度 ${Math.round(width)} 像素`}
+      tabIndex={0}
+      title={collapsed ? "拖动或点击恢复导航" : "拖动调整导航宽度，拖到左侧收起"}
+      onPointerDown={startResize}
+      onClick={() => {
+        if (!suppressClickRef.current && collapsed) onToggle();
+      }}
+      onDoubleClick={onReset}
+      onKeyDown={resizeWithKeyboard}
+    >
+      <span aria-hidden="true">
+        {collapsed ? <PanelLeftOpen size={13} strokeWidth={2} /> : null}
+      </span>
+    </div>
+  );
+}
+
 function AccountSettingsDialog({
   user,
   onClose,
@@ -2676,10 +2805,14 @@ function ResizableSplit({
   const containerRef = useRef<HTMLDivElement>(null);
   const [leftPercent, setLeftPercent] = useState(defaultLeftPercent);
   const leftPercentRef = useRef(leftPercent);
+  const lastVisiblePercentRef = useRef(defaultLeftPercent);
+  const suppressClickRef = useRef(false);
   const [dragging, setDragging] = useState(false);
 
-  const clampSplitPercent = useCallback(
+  const normalizeSplitPercent = useCallback(
     (value: number) => {
+      if (value <= 0) return 0;
+      if (value >= 100) return 100;
       const width =
         containerRef.current?.getBoundingClientRect().width ??
         minLeftPx + minRightPx + SPLIT_GUTTER_PX;
@@ -2691,19 +2824,20 @@ function ResizableSplit({
 
   const setAndPersistSplit = useCallback(
     (value: number) => {
-      const nextValue = clampSplitPercent(value);
+      const nextValue = normalizeSplitPercent(value);
       leftPercentRef.current = nextValue;
+      if (nextValue > 0 && nextValue < 100) lastVisiblePercentRef.current = nextValue;
       setLeftPercent(nextValue);
       if (storageKey) storeNumber(storageKey, Number(nextValue.toFixed(2)));
     },
-    [clampSplitPercent, storageKey],
+    [normalizeSplitPercent, storageKey],
   );
 
   useEffect(() => {
     if (!storageKey) return undefined;
     const timer = window.setTimeout(() => {
       const stored = readStoredNumber(storageKey);
-      if (stored !== null && stored > 0 && stored < 100) setAndPersistSplit(stored);
+      if (stored !== null && stored >= 0 && stored <= 100) setAndPersistSplit(stored);
     }, 0);
     return () => window.clearTimeout(timer);
   }, [setAndPersistSplit, storageKey]);
@@ -2719,15 +2853,35 @@ function ResizableSplit({
     if (!container) return leftPercent;
     const rect = container.getBoundingClientRect();
     const width = rect.width || minLeftPx + minRightPx + SPLIT_GUTTER_PX;
-    const raw = ((clientX - rect.left) / width) * 100;
     const { min, max } = splitBounds(width, minLeftPx, minRightPx);
-    return clampNumber(raw, min, max);
+    const rawPx = clampNumber(clientX - rect.left, 0, width - SPLIT_GUTTER_PX);
+    const rawPercent = (rawPx / width) * 100;
+    const current = leftPercentRef.current;
+
+    if (current <= 0) {
+      return rawPx <= SPLIT_REOPEN_DRAG_PX ? 0 : min;
+    }
+    if (current >= 100) {
+      return rawPx >= width - SPLIT_GUTTER_PX - SPLIT_REOPEN_DRAG_PX ? 100 : max;
+    }
+
+    const leftCollapseAt = Math.max(24, minLeftPx - SPLIT_COLLAPSE_RESISTANCE_PX);
+    const rightCollapseAt = width - minRightPx - SPLIT_GUTTER_PX + SPLIT_COLLAPSE_RESISTANCE_PX;
+    if (rawPx <= leftCollapseAt) return 0;
+    if (rawPx >= rightCollapseAt) return 100;
+    return clampNumber(rawPercent, min, max);
+  }
+
+  function restoreSplit(useDefault = false) {
+    setAndPersistSplit(useDefault ? defaultLeftPercent : lastVisiblePercentRef.current);
   }
 
   function startResize(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
+    const pointerStartX = event.clientX;
+    let moved = false;
     setDragging(true);
     document.body.classList.add("is-resizing-panels");
     const initialPercent = percentFromClientX(event.clientX);
@@ -2736,11 +2890,16 @@ function ResizableSplit({
 
     const resize = (moveEvent: globalThis.PointerEvent) => {
       moveEvent.preventDefault();
+      if (Math.abs(moveEvent.clientX - pointerStartX) > 3) moved = true;
       const nextPercent = percentFromClientX(moveEvent.clientX);
       leftPercentRef.current = nextPercent;
       setLeftPercent(nextPercent);
     };
     const stopResize = () => {
+      suppressClickRef.current = moved;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
       setAndPersistSplit(leftPercentRef.current);
       setDragging(false);
       document.body.classList.remove("is-resizing-panels");
@@ -2758,19 +2917,27 @@ function ResizableSplit({
     const step = event.shiftKey ? SPLIT_KEY_LARGE_STEP : SPLIT_KEY_STEP;
     if (event.key === "ArrowLeft") {
       event.preventDefault();
-      setAndPersistSplit(leftPercentRef.current - step);
+      if (leftPercentRef.current >= 100) restoreSplit();
+      else setAndPersistSplit(leftPercentRef.current - step);
     } else if (event.key === "ArrowRight") {
       event.preventDefault();
-      setAndPersistSplit(leftPercentRef.current + step);
-    } else if (event.key === "Home" || event.key === "End") {
+      if (leftPercentRef.current <= 0) restoreSplit();
+      else setAndPersistSplit(leftPercentRef.current + step);
+    } else if (event.key === "Home") {
       event.preventDefault();
-      const width =
-        containerRef.current?.getBoundingClientRect().width ??
-        minLeftPx + minRightPx + SPLIT_GUTTER_PX;
-      const { min, max } = splitBounds(width, minLeftPx, minRightPx);
-      setAndPersistSplit(event.key === "Home" ? min : max);
+      setAndPersistSplit(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setAndPersistSplit(100);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (leftPercentRef.current <= 0 || leftPercentRef.current >= 100) restoreSplit();
+      else setAndPersistSplit(0);
     }
   }
+
+  const leftCollapsed = leftPercent <= 0;
+  const rightCollapsed = leftPercent >= 100;
 
   const splitStyle = {
     "--split-left": `${leftPercent.toFixed(2)}%`,
@@ -2782,7 +2949,7 @@ function ResizableSplit({
   return (
     <div
       ref={containerRef}
-      className={`${className} resizable-split ${dragging ? "is-dragging" : ""}`}
+      className={`${className} resizable-split ${dragging ? "is-dragging" : ""} ${leftCollapsed ? "is-left-collapsed" : ""} ${rightCollapsed ? "is-right-collapsed" : ""}`}
       style={splitStyle}
     >
       {left}
@@ -2794,13 +2961,34 @@ function ResizableSplit({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(leftPercent)}
+        aria-valuetext={
+          leftCollapsed
+            ? "左侧已隐藏"
+            : rightCollapsed
+              ? "右侧已隐藏"
+              : `左侧占 ${Math.round(leftPercent)}%`
+        }
         tabIndex={0}
-        title="拖动调整宽度，双击恢复默认"
+        title={
+          leftCollapsed || rightCollapsed
+            ? "点击或按 Enter 恢复面板"
+            : "拖动调整宽度，拖到边缘隐藏，双击恢复默认"
+        }
         onPointerDown={startResize}
-        onDoubleClick={() => setAndPersistSplit(defaultLeftPercent)}
+        onClick={() => {
+          if (suppressClickRef.current) return;
+          if (leftCollapsed || rightCollapsed) restoreSplit();
+        }}
+        onDoubleClick={() => restoreSplit(true)}
         onKeyDown={resizeWithKeyboard}
       >
-        <span />
+        <span className="split-handle-indicator" aria-hidden="true">
+          {leftCollapsed ? (
+            <ChevronRight size={13} strokeWidth={2} />
+          ) : rightCollapsed ? (
+            <ChevronLeft size={13} strokeWidth={2} />
+          ) : null}
+        </span>
       </div>
       {right}
     </div>
@@ -4209,6 +4397,9 @@ export default function HomePage() {
   const [viewMotion, setViewMotion] = useState<"forward" | "back">("forward");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
+  const lastExpandedSidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
@@ -4263,6 +4454,35 @@ export default function HomePage() {
   }, []);
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const applySidebarLayout = useCallback((width: number, collapsed: boolean, persist = false) => {
+    const nextWidth = collapsed
+      ? SIDEBAR_COLLAPSED_WIDTH
+      : clampNumber(width, SIDEBAR_MIN_EXPANDED_WIDTH, SIDEBAR_MAX_WIDTH);
+    if (!collapsed) lastExpandedSidebarWidthRef.current = nextWidth;
+    setSidebarWidth(nextWidth);
+    setSidebarCollapsed(collapsed);
+    if (persist) {
+      storeNumber("memora.sidebar.width", nextWidth);
+      storeBoolean("memora.sidebar.collapsed", collapsed);
+    }
+  }, []);
+
+  function collapseSidebar() {
+    applySidebarLayout(SIDEBAR_COLLAPSED_WIDTH, true, true);
+  }
+
+  function expandSidebar() {
+    applySidebarLayout(lastExpandedSidebarWidthRef.current, false, true);
+  }
+
+  function toggleSidebar() {
+    if (sidebarCollapsed) expandSidebar();
+    else collapseSidebar();
+  }
+
+  function resetSidebarWidth() {
+    applySidebarLayout(SIDEBAR_DEFAULT_WIDTH, false, true);
+  }
 
   function navigateTo(nextView: AppView) {
     if (nextView !== view) {
@@ -4296,10 +4516,11 @@ export default function HomePage() {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       const stored = readStoredBoolean("memora.sidebar.collapsed");
-      if (stored !== null) setSidebarCollapsed(stored);
+      const storedWidth = readStoredNumber("memora.sidebar.width");
+      applySidebarLayout(storedWidth ?? SIDEBAR_DEFAULT_WIDTH, stored === true, false);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, []);
+  }, [applySidebarLayout]);
 
   const loadMemories = useCallback(async (userId: string, workspaceKind: Workspace["kind"]) => {
     setLoadingMemories(true);
@@ -4988,7 +5209,10 @@ export default function HomePage() {
   const mobileTitle = view === "CAPTURE" ? "记录想法" : view === "LIBRARY" ? "记忆库" : "团队";
 
   return (
-    <main className={`app-shell ${sidebarCollapsed ? "is-sidebar-collapsed" : ""}`}>
+    <main
+      className={`app-shell ${sidebarCollapsed ? "is-sidebar-collapsed" : ""} ${sidebarResizing ? "is-sidebar-resizing" : ""}`}
+      style={{ "--sidebar-current-width": `${sidebarWidth}px` } as CSSProperties}
+    >
       <Sidebar
         user={user}
         workspaces={workspaces}
@@ -5001,19 +5225,22 @@ export default function HomePage() {
         onWorkspaceSelect={(workspace) => void switchWorkspace(workspace)}
         onTeamAccess={openTeamAccess}
         onClose={() => setSidebarOpen(false)}
-        onCollapse={() => {
-          setSidebarCollapsed(true);
-          storeBoolean("memora.sidebar.collapsed", true);
-        }}
-        onExpand={() => {
-          setSidebarCollapsed(false);
-          storeBoolean("memora.sidebar.collapsed", false);
-        }}
+        onCollapse={collapseSidebar}
+        onExpand={expandSidebar}
         onOpenSettings={() => {
           setSidebarOpen(false);
           openSettings();
         }}
         onLogout={() => void logout()}
+      />
+      <SidebarResizeHandle
+        width={sidebarWidth}
+        collapsed={sidebarCollapsed}
+        onResize={(width, collapsed) => applySidebarLayout(width, collapsed)}
+        onCommit={(width, collapsed) => applySidebarLayout(width, collapsed, true)}
+        onToggle={toggleSidebar}
+        onReset={resetSidebarWidth}
+        onDraggingChange={setSidebarResizing}
       />
       <section className="app-main">
         <header className="mobile-header">

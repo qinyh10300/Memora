@@ -756,6 +756,47 @@ describe("Memora personal Markdown MVP", () => {
     expect(navigation).not.toHaveClass("is-collapsed");
   });
 
+  it("桌面侧边栏可以拖动吸附收起并记住恢复宽度", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+    const navigation = await screen.findByLabelText("Memora 导航");
+    const separator = screen.getByRole("separator", { name: "调整导航宽度" });
+    const shell = separator.parentElement as HTMLElement;
+    vi.spyOn(shell, "getBoundingClientRect").mockReturnValue({
+      bottom: 720,
+      height: 720,
+      left: 0,
+      right: 1200,
+      top: 0,
+      width: 1200,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    fireEvent.pointerDown(separator, { button: 0, clientX: 216, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 110, pointerId: 1 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+
+    expect(navigation).toHaveClass("is-collapsed");
+    expect(separator).toHaveAttribute("aria-valuenow", "68");
+    expect(window.localStorage.getItem("memora.sidebar.collapsed")).toBe("true");
+
+    fireEvent.pointerDown(separator, { button: 0, clientX: 68, pointerId: 2 });
+    fireEvent.pointerMove(window, { clientX: 248, pointerId: 2 });
+    fireEvent.pointerUp(window, { pointerId: 2 });
+
+    expect(navigation).not.toHaveClass("is-collapsed");
+    expect(separator).toHaveAttribute("aria-valuenow", "248");
+    expect(window.localStorage.getItem("memora.sidebar.width")).toBe("248");
+
+    fireEvent.keyDown(separator, { key: "Home" });
+    expect(navigation).toHaveClass("is-collapsed");
+    fireEvent.keyDown(separator, { key: "Enter" });
+    expect(navigation).not.toHaveClass("is-collapsed");
+  });
+
   it("模型菜单可以在 GPT、Claude 和 Gemini 之间切换", async () => {
     mockAuthenticatedSession([]);
     const models: DraftModel[] = [
@@ -832,6 +873,31 @@ describe("Memora personal Markdown MVP", () => {
     fireEvent.doubleClick(separator);
     expect(split.style.getPropertyValue("--split-left")).toBe("54.00%");
     expect(separator).toHaveAttribute("aria-valuenow", "54");
+
+    fireEvent.pointerDown(separator, { button: 0, clientX: 540, pointerId: 2 });
+    fireEvent.pointerMove(window, { clientX: 250, pointerId: 2 });
+    fireEvent.pointerUp(window, { pointerId: 2 });
+    expect(split).toHaveClass("is-left-collapsed");
+    expect(separator).toHaveAttribute("aria-valuenow", "0");
+    expect(window.localStorage.getItem("memora.split.capture")).toBe("0");
+
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    fireEvent.click(separator);
+    expect(split).not.toHaveClass("is-left-collapsed");
+    expect(split.style.getPropertyValue("--split-left")).toBe("54.00%");
+
+    fireEvent.pointerDown(separator, { button: 0, clientX: 540, pointerId: 3 });
+    fireEvent.pointerMove(window, { clientX: 840, pointerId: 3 });
+    fireEvent.pointerUp(window, { pointerId: 3 });
+    expect(split).toHaveClass("is-right-collapsed");
+    expect(separator).toHaveAttribute("aria-valuenow", "100");
+
+    fireEvent.keyDown(separator, { key: "Enter" });
+    expect(split).not.toHaveClass("is-right-collapsed");
+    fireEvent.keyDown(separator, { key: "Home" });
+    expect(split).toHaveClass("is-left-collapsed");
+    fireEvent.keyDown(separator, { key: "ArrowRight" });
+    expect(split).not.toHaveClass("is-left-collapsed");
 
     await openLibraryView();
     expect(await screen.findByRole("separator", { name: "调整记忆列表和详情宽度" })).toBeVisible();
