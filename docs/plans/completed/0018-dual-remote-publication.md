@@ -1,6 +1,6 @@
 # Dual-remote publication
 
-Status: in-progress
+Status: completed
 Owner: Codex
 Last updated: 2026-08-07
 
@@ -33,7 +33,7 @@ Last updated: 2026-08-07
 - [x] M1 — diff、测试和敏感信息检查完成。
 - [x] M2 — 实现与测试提交完成。
 - [x] M3 — 产品、架构和计划记录提交完成。
-- [ ] M4 — 两个远端推送成功并核对哈希。
+- [x] M4 — 两个远端推送成功并核对哈希。
 
 ## Publication commits
 
@@ -55,7 +55,9 @@ Last updated: 2026-08-07
 - 2026-08-07: 拉取两个远端并确认本地、`origin/main`、`future/main` 基线一致，无领先或落后提交。
 - 2026-08-07: `git diff --check`、凭据特征扫描和 GitNexus 变更检测通过；GitNexus 对实现提交评估为 medium、无 HIGH/CRITICAL 风险，剩余文档变更为 low。
 - 2026-08-07: 创建实现提交 `7079387` 和文档提交 `45ac8b9`，逐笔复核提交文件范围。
+- 2026-08-07: 创建发布记录提交 `29e3249`；普通 fast-forward push 到 `origin/main` 和 `future/main` 均成功。
+- 2026-08-07: 使用 `git ls-remote` 确认两个远端均指向 `29e3249be855380a1aa4aaad8da41c759b76e7b1`，随后归档本记录。
 
 ## Completion summary
 
-待推送完成后填写最终提交和远端哈希。
+实现、测试、产品文档和执行记录已拆分为可独立审查的提交，并通过普通 fast-forward push 同步到两个 GitHub 远端。发布过程中没有强制推送、历史改写、密钥提交或未解决的远端分叉。归档提交将继续以 fast-forward 方式同步到两个远端，使最终仓库同时包含本发布审计记录。
