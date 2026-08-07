@@ -158,6 +158,8 @@ apps/api/
     ├── retrieval/      # 权限过滤、关键词/向量召回、排序
     ├── conversations/  # 对话上下文和问题范围
     ├── reports/        # 个人/同事/团队报告编排
+    ├── documents/      # PDF 解析、OCR、页级分块、引用与异步任务
+    ├── agent/          # 公开计划、工具注册、执行状态与事件
     ├── ai/             # ChatModelPort、EmbeddingModelPort 与 adapters
     ├── api/drafts.py   # 无持久化的 Markdown 草稿修改编排
     ├── jobs/           # transactional outbox、重试和状态
@@ -179,7 +181,13 @@ apps/api/
 | `conversations`         | 用户私有 Chatbot 会话及默认范围      | id, user_id, workspace_id, title, scope, updated_at, archived_at                                                             |
 | `messages`              | 问题、回答、capture 关联和生成元数据 | conversation_id, role, content, memory_id, model, usage                                                                      |
 | `message_citations`     | 回答到原记录的可审计引用             | message_id, memory_id, excerpt                                                                                               |
-| `assets`                | 受保护 Markdown 图片和当前轮附件     | id, workspace_id, owner_id, kind, content_type, size_bytes, sha256, content, deleted_at                                      |
+| `assets`                | 受保护 Markdown 图片和文档来源       | id, workspace_id, owner_id, kind, content_type, size_bytes, sha256, content, deleted_at                                      |
+| `document_parse_jobs`   | PDF 解析、OCR、取消和重试状态         | asset_id, workspace_id, owner_id, status, attempts, page_count, processed_pages, error_code                                  |
+| `document_pages`        | 授权资产的页级抽取结果                | asset_id, page_number, extraction_method, text, quality_score                                                               |
+| `document_chunks`       | 可独立重建向量的页级检索投影          | asset_id, page_number, heading, text, char_start, char_end, embedding_status, embedding                                      |
+| `memory_document_citations` | 记忆到文档页的可审计引用快照      | memory_id, asset_id, chunk_id, page_number, heading, excerpt, ordinal                                                       |
+| `agent_executions`      | 可取消和恢复的公开 Agent 执行         | id, workspace_id, actor_id, status, model_id, saved_memory_id, next_event_sequence, error_code, created_at, started_at, completed_at |
+| `agent_events`          | 有序且不含隐藏推理的执行事件          | execution_id, sequence, step_id, kind, status, execution_status, title, detail, elapsed_ms, duration_ms, item_count, created_at |
 | `jobs`                  | embedding 等异步任务                 | type, payload_ref, status, attempts, next_run_at                                                                             |
 | `audit_events`          | 权限事件及不含正文的 AI 用量元数据   | actor_id, action, resource_id, model, input_tokens, output_tokens, created_at                                                |
 
@@ -255,9 +263,16 @@ adapter 将其转换为 Chat Completions 的 `image_url` data URL。服务端在
 支持截图文字识别。图片原始文件若由用户上传，会作为受保护 asset 存入 PostgreSQL；
 OCR 中间结果不落库，供应商失败时保留当前 Markdown。
 
-PDF 附件也先进入受保护 asset。草稿 Chatbot 只读取服务端从 PDF 中抽取并按页数与字符数
-截断的文本；抽取失败时把附件状态传给模型，不把 PDF 原文写入日志、审计、memory 正文
-或检索投影。
+PDF 附件也先进入受保护 asset，并在同一事务中创建 `document_parse_jobs`。Worker 在文件大小、
+页数、总字符、单页 OCR 超时、总执行时间、并发和重试上限内完成文本抽取；低文本质量页面
+才调用本地 Tesseract OCR。页文本按页码、标题和章节边界生成 `document_chunks`，chunk
+embedding 独立失败或重试，不阻塞资产与文本结果可用。
+
+草稿 Chatbot 只能检索服务端在当前 `Principal`、workspace、owner、visibility 和删除状态下
+授权的已完成 chunk。模型只可从服务端提供的 chunk ID 中声明实际使用来源；服务端再次校验
+后返回页码引用。用户确认保存时只提交 chunk ID，`memory_document_citations` 保存受控页码与
+摘录快照。删除资产会清除正文、页、chunk、向量和引用；取消团队共享后，非作者不能继续
+读取引用资产。日志、审计与公开 Agent 事件不得记录 PDF 原文。
 
 联网搜索 adapter 使用 OpenAI-compatible Responses API 的原生 `web_search` 工具，
 而不是让应用任意抓取 URL。搜索与最终 Markdown 生成分为两次调用：搜索端口只获得

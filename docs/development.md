@@ -159,10 +159,10 @@ Web 通过同源 `/api` 和由 OpenAPI 生成的类型化客户端调用后端�
 先创建本地配置：
 
 ```bash
-cp .env.example .env
+make setup
 ```
 
-然后只在被 Git 忽略的 `.env` 中填写：
+该命令会创建或修复权限为 `0600`、且被 Git 忽略的 `.env`。然后只在该文件中填写：
 
 ```dotenv
 AI_CHAT_API_KEY=你的云雾专用低额度Key

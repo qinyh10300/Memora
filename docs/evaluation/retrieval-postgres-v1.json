@@ -1,0 +1,283 @@
+{
+  "dataset_version": "retrieval-v1",
+  "algorithm": "postgres-full-text-trigram-rrf-v1",
+  "metrics": {
+    "case_count": 14,
+    "evidence_case_count": 9,
+    "no_evidence_case_count": 5,
+    "recall_at_k": 1.0,
+    "mrr": 1.0,
+    "ndcg_at_k": 1.0,
+    "citation_precision": 1.0,
+    "no_evidence_accuracy": 1.0,
+    "unauthorized_candidate_count": 0
+  },
+  "gates": {
+    "passed": true,
+    "failures": []
+  },
+  "cases": [
+    {
+      "id": "private-owner-exact",
+      "description": "作者可以通过正文关键词召回自己的私有记忆",
+      "retrieved_memory_ids": [
+        "30000000-0000-0000-0000-000000000001"
+      ],
+      "expected_memory_ids": [
+        "30000000-0000-0000-0000-000000000001"
+      ],
+      "forbidden_memory_ids": [],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": null,
+        "unauthorized_candidate_count": 0
+      }
+    },
+    {
+      "id": "team-shared-exact",
+      "description": "团队成员可以召回其他作者的共享记忆但不能读取私有记忆",
+      "retrieved_memory_ids": [
+        "30000000-0000-0000-0000-000000000002"
+      ],
+      "expected_memory_ids": [
+        "30000000-0000-0000-0000-000000000002"
+      ],
+      "forbidden_memory_ids": [
+        "30000000-0000-0000-0000-000000000001"
+      ],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": null,
+        "unauthorized_candidate_count": 0
+      }
+    },
+    {
+      "id": "title-only",
+      "description": "标题检索只搜索标题投影",
+      "retrieved_memory_ids": [
+        "30000000-0000-0000-0000-000000000001"
+      ],
+      "expected_memory_ids": [
+        "30000000-0000-0000-0000-000000000001"
+      ],
+      "forbidden_memory_ids": [],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": null,
+        "unauthorized_candidate_count": 0
+      }
+    },
+    {
+      "id": "other-user-private",
+      "description": "其他作者的私有记忆不能成为候选",
+      "retrieved_memory_ids": [],
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "30000000-0000-0000-0000-000000000004"
+      ],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 0.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": true,
+        "unauthorized_candidate_count": 0
+      }
+    },
+    {
+      "id": "cross-workspace",
+      "description": "其他 workspace 的共享记忆不能成为候选",
+      "retrieved_memory_ids": [],
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "30000000-0000-0000-0000-000000000005"
+      ],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 0.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": true,
+        "unauthorized_candidate_count": 0
+      }
+    },
+    {
+      "id": "deleted-memory",
+      "description": "已删除记忆不能成为候选",
+      "retrieved_memory_ids": [],
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "30000000-0000-0000-0000-000000000006"
+      ],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 0.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": true,
+        "unauthorized_candidate_count": 0
+      }
+    },
+    {
+      "id": "superseded-revision",
+      "description": "非活动修订不能成为检索候选",
+      "retrieved_memory_ids": [],
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [
+        "30000000-0000-0000-0000-000000000007"
+      ],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 0.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": true,
+        "unauthorized_candidate_count": 0
+      }
+    },
+    {
+      "id": "date-filter",
+      "description": "时间过滤只返回指定区间内的相关记忆",
+      "retrieved_memory_ids": [
+        "30000000-0000-0000-0000-000000000009"
+      ],
+      "expected_memory_ids": [
+        "30000000-0000-0000-0000-000000000009"
+      ],
+      "forbidden_memory_ids": [
+        "30000000-0000-0000-0000-000000000008"
+      ],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": null,
+        "unauthorized_candidate_count": 0
+      }
+    },
+    {
+      "id": "author-filter",
+      "description": "成员筛选只返回指定作者的共享内容",
+      "retrieved_memory_ids": [
+        "30000000-0000-0000-0000-000000000003"
+      ],
+      "expected_memory_ids": [
+        "30000000-0000-0000-0000-000000000003"
+      ],
+      "forbidden_memory_ids": [],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": null,
+        "unauthorized_candidate_count": 0
+      }
+    },
+    {
+      "id": "chinese-synonym",
+      "description": "社会与社交的近义表达应该指向同一主题",
+      "retrieved_memory_ids": [
+        "30000000-0000-0000-0000-000000000010"
+      ],
+      "expected_memory_ids": [
+        "30000000-0000-0000-0000-000000000010"
+      ],
+      "forbidden_memory_ids": [],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": null,
+        "unauthorized_candidate_count": 0
+      }
+    },
+    {
+      "id": "latin-typo",
+      "description": "轻微英文拼写错误仍应召回 Aurora 主题",
+      "retrieved_memory_ids": [
+        "30000000-0000-0000-0000-000000000002",
+        "30000000-0000-0000-0000-000000000001"
+      ],
+      "expected_memory_ids": [
+        "30000000-0000-0000-0000-000000000002",
+        "30000000-0000-0000-0000-000000000001"
+      ],
+      "forbidden_memory_ids": [],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": null,
+        "unauthorized_candidate_count": 0
+      }
+    },
+    {
+      "id": "no-evidence",
+      "description": "完全无关的问题应该明确没有证据",
+      "retrieved_memory_ids": [],
+      "expected_memory_ids": [],
+      "forbidden_memory_ids": [],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 0.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": true,
+        "unauthorized_candidate_count": 0
+      }
+    },
+    {
+      "id": "filter-only-private",
+      "description": "无关键词时可以只按 PRIVATE 可见性筛选且仍遵守作者边界",
+      "retrieved_memory_ids": [
+        "30000000-0000-0000-0000-000000000001"
+      ],
+      "expected_memory_ids": [
+        "30000000-0000-0000-0000-000000000001"
+      ],
+      "forbidden_memory_ids": [
+        "30000000-0000-0000-0000-000000000004"
+      ],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": null,
+        "unauthorized_candidate_count": 0
+      }
+    },
+    {
+      "id": "shared-title",
+      "description": "共享标题检索返回团队作者信息对应的记忆",
+      "retrieved_memory_ids": [
+        "30000000-0000-0000-0000-000000000003"
+      ],
+      "expected_memory_ids": [
+        "30000000-0000-0000-0000-000000000003"
+      ],
+      "forbidden_memory_ids": [],
+      "metrics": {
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "ndcg_at_k": 1.0,
+        "citation_precision": 1.0,
+        "no_evidence_correct": null,
+        "unauthorized_candidate_count": 0
+      }
+    }
+  ]
+}
