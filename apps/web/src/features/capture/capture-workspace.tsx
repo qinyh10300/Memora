@@ -1,0 +1,870 @@
+"use client";
+
+import { LockKeyhole, RefreshCw, Square, Upload, Users } from "lucide-react";
+import Image from "next/image";
+import type {
+  ChangeEvent,
+  ClipboardEvent,
+  CSSProperties,
+  DragEvent,
+  FormEvent,
+  KeyboardEvent,
+} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import type {
+  DraftDocumentAttachment,
+  DraftDocumentCitation,
+  DraftImageAttachment,
+  DraftImageInput,
+  DraftMessage,
+  DraftModel,
+  DraftTrace,
+  MemoryVisibility,
+  WebSearchMode,
+  Workspace,
+} from "@/features/shared/contracts";
+import {
+  AttachmentIcon,
+  CloseIcon,
+  GlobeIcon,
+  LibraryIcon,
+  Logo,
+  SendIcon,
+  SparkleIcon,
+} from "@/features/shared/icons";
+import {
+  formatDateTime,
+  readStoredNumber,
+  sourceHostname,
+  storeNumber,
+} from "@/features/shared/utils";
+import {
+  clampComposerHeight,
+  COMPOSER_DEFAULT_HEIGHT,
+  ComposerResizeHandle,
+  ResizableSplit,
+} from "@/features/workbench/layout";
+
+import { ActivityTrace } from "./activity-trace";
+import type { CaptureAgentPhase } from "./agent-state";
+import {
+  ACCEPTED_ASSET_TYPES,
+  ACCEPTED_DRAFT_IMAGE_TYPES,
+  appendMarkdownImage,
+  cancelDocumentParse,
+  getDocumentStatus,
+  IMAGE_ONLY_INSTRUCTION,
+  MAX_DRAFT_DOCUMENTS,
+  MAX_DRAFT_IMAGE_BYTES,
+  MAX_DRAFT_IMAGE_TOTAL_BYTES,
+  MAX_DRAFT_IMAGES,
+  MAX_DRAFT_PDF_BYTES,
+  readDocumentAttachment,
+  readImageAttachment,
+  retryDocumentParse,
+} from "./attachments";
+import { MarkdownWorkspace, PreviewToggle } from "./markdown-workspace";
+import { modelSupports, selectedDraftModelLabel } from "./trace";
+
+export function CaptureWorkspace({
+  workspace,
+  draft,
+  messages,
+  refining,
+  activity,
+  saving,
+  savedBody,
+  saveVisibility,
+  savedVisibility,
+  modelOptions,
+  selectedModelId,
+  agentPhase,
+  canRetry,
+  documentCitations,
+  onDraftChange,
+  onRefine,
+  onSave,
+  onSaveVisibilityChange,
+  onReset,
+  onModelChange,
+  onOpenCitation,
+  onCancel,
+  onRetry,
+}: {
+  workspace: Workspace;
+  draft: string;
+  messages: DraftMessage[];
+  refining: boolean;
+  activity: DraftTrace | null;
+  saving: boolean;
+  savedBody: string | null;
+  saveVisibility: MemoryVisibility;
+  savedVisibility: MemoryVisibility | null;
+  modelOptions: DraftModel[];
+  selectedModelId: string | null;
+  agentPhase: CaptureAgentPhase;
+  canRetry: boolean;
+  documentCitations: DraftDocumentCitation[];
+  onDraftChange: (value: string) => void;
+  onRefine: (
+    instruction: string,
+    images: DraftImageAttachment[],
+    documents: DraftDocumentAttachment[],
+    webSearch: WebSearchMode,
+    modelId: string | null,
+  ) => Promise<void>;
+  onSave: () => Promise<void>;
+  onSaveVisibilityChange: (visibility: MemoryVisibility) => void;
+  onReset: () => void;
+  onModelChange: (modelId: string | null) => void;
+  onOpenCitation: (memoryId: string) => Promise<void>;
+  onCancel: () => Promise<void>;
+  onRetry: () => Promise<void>;
+}) {
+  const [instruction, setInstruction] = useState("");
+  const [attachments, setAttachments] = useState<DraftImageAttachment[]>([]);
+  const [documents, setDocuments] = useState<DraftDocumentAttachment[]>([]);
+  const [uploadingDocuments, setUploadingDocuments] = useState(0);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [webSearchMode, setWebSearchMode] = useState<WebSearchMode>("AUTO");
+  const [composerHeight, setComposerHeight] = useState(COMPOSER_DEFAULT_HEIGHT);
+  const [draggingFiles, setDraggingFiles] = useState(false);
+  const [draftPreviewVisible, setDraftPreviewVisible] = useState(true);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const messageEndRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const dragDepthRef = useRef(0);
+  const normalizedDraft = draft.trim();
+  const isSaved = Boolean(
+    normalizedDraft && normalizedDraft === savedBody && saveVisibility === savedVisibility,
+  );
+  const selectedModel = modelOptions.find((model) => model.id === selectedModelId);
+  const selectedModelLabel = selectedDraftModelLabel(modelOptions, selectedModelId);
+  const canUseImages = modelSupports(selectedModel, "vision");
+  const canUseWeb = modelSupports(selectedModel, "web_search");
+  const documentProcessing = documents.some((document) =>
+    ["QUEUED", "PARSING", "OCR", "CANCEL_REQUESTED"].includes(document.document.status),
+  );
+
+  useEffect(() => {
+    const pending = documents.filter((document) =>
+      ["QUEUED", "PARSING", "OCR", "CANCEL_REQUESTED"].includes(document.document.status),
+    );
+    if (!pending.length) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void Promise.all(
+        pending.map(async (document) => ({
+          assetId: document.assetId,
+          status: await getDocumentStatus(document.assetId),
+        })),
+      )
+        .then((updates) => {
+          if (!active) return;
+          const byAsset = new Map(updates.map((update) => [update.assetId, update.status]));
+          setDocuments((current) =>
+            current.map((document) => ({
+              ...document,
+              document: byAsset.get(document.assetId) ?? document.document,
+            })),
+          );
+        })
+        .catch(() => {
+          if (active) setAttachmentError("暂时无法读取 PDF 解析进度，稍后会继续尝试。");
+        });
+    }, 800);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [documents]);
+
+  const changeComposerHeight = useCallback((height: number) => {
+    const nextHeight = clampComposerHeight(height);
+    setComposerHeight(nextHeight);
+    storeNumber("memora.composer.height", nextHeight);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const storedHeight = readStoredNumber("memora.composer.height");
+      if (storedHeight !== null && storedHeight > 0) changeComposerHeight(storedHeight);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [changeComposerHeight]);
+
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
+  }, [messages, refining]);
+
+  useEffect(() => {
+    if (!refining) composerRef.current?.focus?.();
+  }, [refining]);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = instruction.trim();
+    if ((!value && attachments.length === 0 && documents.length === 0) || refining) return;
+    if (documentProcessing || uploadingDocuments > 0) {
+      setAttachmentError("PDF 仍在解析，请等待完成后再发送。");
+      return;
+    }
+    const message =
+      value ||
+      (documents.length && !attachments.length
+        ? "请阅读这些 PDF，把与当前想法相关的内容整理到右侧 Markdown。"
+        : IMAGE_ONLY_INSTRUCTION);
+    const selectedAttachments = attachments;
+    const selectedDocuments = documents;
+    setInstruction("");
+    setAttachments([]);
+    setDocuments([]);
+    setAttachmentError("");
+    if (imageInputRef.current) imageInputRef.current.value = "";
+    const selectedWebSearchMode = webSearchMode;
+    if (selectedWebSearchMode === "REQUIRED") setWebSearchMode("AUTO");
+    await onRefine(
+      message,
+      selectedAttachments,
+      selectedDocuments,
+      selectedWebSearchMode,
+      selectedModelId,
+    );
+  }
+
+  function composerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
+  }
+
+  function changeModel(modelId: string | null) {
+    const nextModel = modelOptions.find((model) => model.id === modelId);
+    if (attachments.length && !modelSupports(nextModel, "vision")) {
+      setAttachments([]);
+      setAttachmentError("已切换到不支持图片的模型，待发送图片已移除。");
+    } else {
+      setAttachmentError("");
+    }
+    if (!modelSupports(nextModel, "web_search")) {
+      setWebSearchMode("DISABLED");
+    }
+    onModelChange(modelId);
+  }
+
+  function validateFiles(files: File[]) {
+    const imageFiles = files.filter((file) =>
+      ACCEPTED_DRAFT_IMAGE_TYPES.has(file.type as DraftImageInput["media_type"]),
+    );
+    const pdfFiles = files.filter((file) => file.type === "application/pdf");
+    if (imageFiles.length && !canUseImages) {
+      return "当前模型不支持图片，请先切换支持图片的模型。";
+    }
+    if (imageFiles.length + pdfFiles.length !== files.length) {
+      return "只支持 PNG、JPEG、WEBP 图片和 PDF。";
+    }
+    const availableImageSlots = MAX_DRAFT_IMAGES - attachments.length;
+    if (availableImageSlots < imageFiles.length) {
+      return `每条消息最多上传 ${MAX_DRAFT_IMAGES} 张图片。`;
+    }
+    const availableDocumentSlots = MAX_DRAFT_DOCUMENTS - documents.length;
+    if (availableDocumentSlots < pdfFiles.length) {
+      return `每条消息最多上传 ${MAX_DRAFT_DOCUMENTS} 个 PDF。`;
+    }
+    if (imageFiles.some((file) => file.size > MAX_DRAFT_IMAGE_BYTES)) {
+      return "单张图片不能超过 8 MiB。";
+    }
+    if (pdfFiles.some((file) => file.size > MAX_DRAFT_PDF_BYTES)) {
+      return "单个 PDF 不能超过 20 MiB。";
+    }
+    const currentBytes = attachments.reduce(
+      (total, attachment) => total + Math.ceil((attachment.data.length * 3) / 4),
+      0,
+    );
+    const incomingBytes = imageFiles.reduce((total, file) => total + file.size, 0);
+    if (currentBytes + incomingBytes > MAX_DRAFT_IMAGE_TOTAL_BYTES) {
+      return "每条消息的图片总大小不能超过 16 MiB。";
+    }
+    return "";
+  }
+
+  async function attachFiles(files: File[]) {
+    setAttachmentError("");
+    const validationError = validateFiles(files);
+    if (validationError) {
+      setAttachmentError(validationError);
+      return;
+    }
+    try {
+      const imageFiles = files.filter((file) =>
+        ACCEPTED_DRAFT_IMAGE_TYPES.has(file.type as DraftImageInput["media_type"]),
+      );
+      const pdfFiles = files.filter((file) => file.type === "application/pdf");
+      setUploadingDocuments(pdfFiles.length);
+      const nextAttachments = await Promise.all(imageFiles.map(readImageAttachment));
+      const nextDocuments = await Promise.all(pdfFiles.map(readDocumentAttachment));
+      if (nextAttachments.length) {
+        const nextDraft = nextAttachments.reduce(appendMarkdownImage, draft);
+        onDraftChange(nextDraft);
+      }
+      if (nextAttachments.length || nextDocuments.length) {
+        setComposerHeight((current) => Math.max(current, 248));
+      }
+      setAttachments((current) => [...current, ...nextAttachments]);
+      setDocuments((current) => [...current, ...nextDocuments]);
+    } catch {
+      setAttachmentError("附件上传失败，请重新选择。");
+    } finally {
+      setUploadingDocuments(0);
+    }
+  }
+
+  async function cancelDocument(document: DraftDocumentAttachment) {
+    try {
+      const status = await cancelDocumentParse(document.assetId);
+      setDocuments((current) =>
+        current.map((item) =>
+          item.assetId === document.assetId ? { ...item, document: status } : item,
+        ),
+      );
+    } catch {
+      setAttachmentError("没有成功取消 PDF 解析，请稍后重试。");
+    }
+  }
+
+  async function retryDocument(document: DraftDocumentAttachment) {
+    try {
+      const status = await retryDocumentParse(document.assetId);
+      setAttachmentError("");
+      setDocuments((current) =>
+        current.map((item) =>
+          item.assetId === document.assetId ? { ...item, document: status } : item,
+        ),
+      );
+    } catch {
+      setAttachmentError("没有成功重新开始 PDF 解析，请稍后重试。");
+    }
+  }
+
+  async function selectImages(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+    await attachFiles(files);
+    event.target.value = "";
+  }
+
+  async function pasteIntoComposer(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(event.clipboardData?.files ?? []);
+    if (!files.length || refining) return;
+    event.preventDefault();
+    await attachFiles(files);
+  }
+
+  function dragFilesOver(event: DragEvent<HTMLElement>) {
+    if (!event.dataTransfer.types.includes("Files") || refining) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  function dragFilesEnter(event: DragEvent<HTMLElement>) {
+    if (!event.dataTransfer.types.includes("Files") || refining) return;
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setDraggingFiles(true);
+  }
+
+  function dragFilesLeave(event: DragEvent<HTMLElement>) {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDraggingFiles(false);
+  }
+
+  async function dropFiles(event: DragEvent<HTMLElement>) {
+    if (!event.dataTransfer.types.includes("Files") || refining) return;
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setDraggingFiles(false);
+    const files = Array.from(event.dataTransfer.files);
+    if (files.length) await attachFiles(files);
+  }
+
+  return (
+    <ResizableSplit
+      className="capture-workspace"
+      label="调整记录和草稿宽度"
+      storageKey="memora.split.capture"
+      defaultLeftPercent={54}
+      minLeftPx={360}
+      minRightPx={340}
+      left={
+        <section
+          className={`conversation-panel ${draggingFiles ? "is-file-dragging" : ""}`}
+          aria-label="草稿对话"
+          style={{ "--composer-height": `${composerHeight}px` } as CSSProperties}
+          onDragEnter={dragFilesEnter}
+          onDragLeave={dragFilesLeave}
+          onDragOver={dragFilesOver}
+          onDrop={(event) => void dropFiles(event)}
+        >
+          {draggingFiles ? (
+            <div className="file-drop-overlay" aria-hidden="true">
+              <Upload size={22} strokeWidth={1.7} />
+              <span>放下以加入当前消息</span>
+            </div>
+          ) : null}
+          <header className="panel-header">
+            <div className="chat-model-title">
+              <span>
+                <SparkleIcon />
+              </span>
+              <div>
+                <h1>{selectedModelLabel}</h1>
+                <small>Memora Markdown Agent</small>
+              </div>
+            </div>
+            <span className="private-status">
+              <span className="privacy-dot" />
+              {workspace.kind === "TEAM" ? "团队空间 · 默认私有" : "默认私有"}
+            </span>
+          </header>
+
+          <div className="conversation-scroll">
+            <div className="conversation-intro">
+              <span className="intro-mark">
+                <Logo />
+              </span>
+              <h2>今天在想什么？</h2>
+            </div>
+            <div className="message-list" aria-live="polite">
+              {messages.map((message) => (
+                <article
+                  className={`chat-message is-${message.role.toLowerCase()}`}
+                  key={message.id}
+                >
+                  {message.role === "ASSISTANT" ? <Logo /> : null}
+                  <div>
+                    {message.activity ? (
+                      <ActivityTrace
+                        trace={message.activity}
+                        citations={message.citations}
+                        webCitations={message.webCitations}
+                        onOpenCitation={onOpenCitation}
+                      />
+                    ) : null}
+                    <p>{message.content}</p>
+                    {message.images?.length ? (
+                      <div className="message-images" aria-label="消息图片">
+                        {message.images.map((image) => (
+                          <Image
+                            alt={image.name}
+                            height={120}
+                            key={image.id}
+                            src={image.previewUrl}
+                            unoptimized
+                            width={180}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                    {message.attachments?.length ? (
+                      <div className="message-attachments" aria-label="消息附件">
+                        {message.attachments.map((attachment) => (
+                          <span key={attachment.id}>
+                            <LibraryIcon />
+                            {attachment.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {message.documentCitations?.length ? (
+                      <div className="document-citations" aria-label="文档来源">
+                        {message.documentCitations.map((citation, index) => (
+                          <a
+                            href={citation.content_url}
+                            key={citation.chunk_id}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <span>
+                              文档 {index + 1} · 第 {citation.page_number} 页
+                            </span>
+                            <strong>{citation.asset_name}</strong>
+                            <small>{citation.heading || citation.excerpt}</small>
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                    {message.meta ? <small>{message.meta}</small> : null}
+                    {!message.activity && message.citations?.length ? (
+                      <div className="chat-citations" aria-label="回答来源">
+                        {message.citations.map((citation, index) => (
+                          <button
+                            type="button"
+                            key={citation.memory_id}
+                            onClick={() => void onOpenCitation(citation.memory_id)}
+                          >
+                            <span>来源 {index + 1}</span>
+                            <strong>{citation.author.display_name}</strong>
+                            <time dateTime={citation.created_at}>
+                              {formatDateTime(citation.created_at)}
+                            </time>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {!message.activity && message.webCitations?.length ? (
+                      <div className="web-citations" aria-label="网页来源">
+                        {message.webCitations.map((citation, index) => (
+                          <a
+                            href={citation.url}
+                            key={citation.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <span>网页 {index + 1}</span>
+                            <strong>{citation.title}</strong>
+                            <small>{sourceHostname(citation.url)}</small>
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+              {refining ? (
+                <article className="chat-message is-assistant">
+                  <Logo />
+                  <div className="thinking-indicator" role="status" aria-live="polite">
+                    {activity ? <ActivityTrace trace={activity} active /> : null}
+                    <button
+                      className="agent-cancel-button"
+                      type="button"
+                      disabled={agentPhase === "CANCELLING"}
+                      onClick={() => void onCancel()}
+                    >
+                      {agentPhase === "CANCELLING"
+                        ? "正在取消…"
+                        : agentPhase === "RECOVERING"
+                          ? "停止恢复"
+                          : "停止"}
+                    </button>
+                  </div>
+                </article>
+              ) : null}
+              <div ref={messageEndRef} />
+            </div>
+          </div>
+
+          {canRetry ? (
+            <div className="agent-retry-bar" role="status">
+              <span>{agentPhase === "CANCELLED" ? "这轮已取消" : "这轮没有完成"}</span>
+              <button type="button" onClick={() => void onRetry()}>
+                重试
+              </button>
+            </div>
+          ) : null}
+
+          <ComposerResizeHandle height={composerHeight} onHeightChange={changeComposerHeight} />
+          <div className="composer-wrap">
+            <form className="composer" onSubmit={submit}>
+              {attachments.length || documents.length || uploadingDocuments ? (
+                <div className="pending-images" aria-label="待发送附件">
+                  {attachments.map((image) => (
+                    <div key={image.id}>
+                      <Image
+                        alt={image.name}
+                        height={72}
+                        src={image.previewUrl}
+                        unoptimized
+                        width={96}
+                      />
+                      <button
+                        type="button"
+                        aria-label={`移除图片 ${image.name}`}
+                        onClick={() =>
+                          setAttachments((current) =>
+                            current.filter((attachment) => attachment.id !== image.id),
+                          )
+                        }
+                      >
+                        <CloseIcon />
+                      </button>
+                      <span>{image.name}</span>
+                    </div>
+                  ))}
+                  {documents.map((document) => (
+                    <div
+                      className={`pending-document is-${document.document.status.toLowerCase()}`}
+                      key={document.id}
+                    >
+                      <LibraryIcon />
+                      <button
+                        type="button"
+                        aria-label={`移除附件 ${document.name}`}
+                        onClick={() =>
+                          setDocuments((current) =>
+                            current.filter((attachment) => attachment.id !== document.id),
+                          )
+                        }
+                      >
+                        <CloseIcon />
+                      </button>
+                      <span>
+                        <strong>{document.name}</strong>
+                        <small>{document.document.message}</small>
+                        {document.document.page_count ? (
+                          <small>
+                            {Math.min(
+                              document.document.processed_pages,
+                              document.document.page_count,
+                            )}
+                            /{document.document.page_count} 页
+                          </small>
+                        ) : null}
+                      </span>
+                      {document.document.can_cancel ? (
+                        <button
+                          className="document-status-action"
+                          type="button"
+                          title="停止解析"
+                          aria-label={`停止解析 ${document.name}`}
+                          onClick={() => void cancelDocument(document)}
+                        >
+                          <Square aria-hidden="true" size={12} />
+                        </button>
+                      ) : null}
+                      {document.document.can_retry ? (
+                        <button
+                          className="document-status-action"
+                          type="button"
+                          title="重新解析"
+                          aria-label={`重新解析 ${document.name}`}
+                          onClick={() => void retryDocument(document)}
+                        >
+                          <RefreshCw aria-hidden="true" size={13} />
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                  {uploadingDocuments ? (
+                    <div className="pending-document is-uploading" role="status">
+                      <Upload aria-hidden="true" size={16} />
+                      <span>
+                        <strong>正在上传 {uploadingDocuments} 个 PDF</strong>
+                        <small>上传完成后会自动进入解析队列</small>
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="composer-tools">
+                {modelOptions.length ? (
+                  <label className="model-control">
+                    <SparkleIcon />
+                    <select
+                      aria-label="模型"
+                      value={selectedModelId ?? ""}
+                      onChange={(event) => changeModel(event.target.value || null)}
+                      disabled={refining}
+                    >
+                      {modelOptions.map((model) => (
+                        <option value={model.id} key={model.id}>
+                          {model.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <span className="model-unavailable">AI 未配置</span>
+                )}
+                <label className={`search-mode-control is-${webSearchMode.toLowerCase()}`}>
+                  <GlobeIcon />
+                  <select
+                    aria-label="联网模式"
+                    value={webSearchMode}
+                    onChange={(event) => {
+                      const nextMode = event.target.value as WebSearchMode;
+                      if (nextMode !== "DISABLED" && !canUseWeb) {
+                        setAttachmentError("当前模型不支持联网，请切换模型或关闭联网。");
+                        setWebSearchMode("DISABLED");
+                        return;
+                      }
+                      setAttachmentError("");
+                      setWebSearchMode(nextMode);
+                    }}
+                    disabled={refining || !canUseWeb}
+                  >
+                    <option value="AUTO">自动联网</option>
+                    <option value="REQUIRED">本轮联网</option>
+                    <option value="DISABLED">关闭联网</option>
+                  </select>
+                </label>
+                <span>
+                  {!canUseWeb
+                    ? "当前模型不支持联网"
+                    : webSearchMode === "AUTO"
+                      ? "需要最新信息时自动搜索"
+                      : webSearchMode === "REQUIRED"
+                        ? "发送后恢复自动"
+                        : "只使用对话与个人记忆"}
+                </span>
+              </div>
+              <div className="composer-row">
+                <input
+                  ref={imageInputRef}
+                  className="image-input"
+                  type="file"
+                  accept={Array.from(ACCEPTED_ASSET_TYPES).join(",")}
+                  multiple
+                  aria-label="选择图片或 PDF"
+                  onChange={(event) => void selectImages(event)}
+                  disabled={
+                    refining ||
+                    uploadingDocuments > 0 ||
+                    (attachments.length >= MAX_DRAFT_IMAGES &&
+                      documents.length >= MAX_DRAFT_DOCUMENTS)
+                  }
+                />
+                <button
+                  className="attach-button"
+                  type="button"
+                  aria-label="上传图片或 PDF"
+                  title="上传图片或 PDF"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={
+                    refining ||
+                    uploadingDocuments > 0 ||
+                    (attachments.length >= MAX_DRAFT_IMAGES &&
+                      documents.length >= MAX_DRAFT_DOCUMENTS)
+                  }
+                >
+                  <AttachmentIcon />
+                </button>
+                <textarea
+                  ref={composerRef}
+                  aria-label="告诉 Memora 你的想法"
+                  placeholder={draft ? "继续说，或告诉我怎样修改草稿…" : "输入想法或上传图片…"}
+                  rows={1}
+                  value={instruction}
+                  onChange={(event) => setInstruction(event.target.value)}
+                  onKeyDown={composerKeyDown}
+                  onPaste={(event) => void pasteIntoComposer(event)}
+                  disabled={refining}
+                />
+                <button
+                  className="send-button"
+                  type="submit"
+                  aria-label="发送"
+                  disabled={
+                    (!instruction.trim() && attachments.length === 0 && documents.length === 0) ||
+                    refining ||
+                    documentProcessing ||
+                    uploadingDocuments > 0
+                  }
+                >
+                  <SendIcon />
+                </button>
+              </div>
+            </form>
+            {attachmentError ? (
+              <p className="attachment-error" role="alert">
+                {attachmentError}
+              </p>
+            ) : null}
+          </div>
+        </section>
+      }
+      right={
+        <section className="markdown-panel" aria-label="Markdown 草稿编辑器">
+          <header className="markdown-header">
+            <div>
+              <p className="eyebrow">草稿</p>
+              <h2>草稿</h2>
+            </div>
+            <div className="draft-header-actions">
+              <PreviewToggle
+                visible={draftPreviewVisible}
+                onToggle={() => setDraftPreviewVisible((visible) => !visible)}
+              />
+              {draft ? (
+                <button className="text-button" type="button" onClick={onReset}>
+                  新想法
+                </button>
+              ) : null}
+              <span className={isSaved ? "save-state is-saved" : "save-state"}>
+                {isSaved ? "已保存" : "未保存"}
+              </span>
+            </div>
+          </header>
+          {documentCitations.length ? (
+            <div className="draft-document-sources" aria-label="草稿文档来源">
+              <span>文档来源</span>
+              {documentCitations.map((citation) => (
+                <a
+                  href={citation.content_url}
+                  key={citation.chunk_id}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {citation.asset_name} · 第 {citation.page_number} 页
+                </a>
+              ))}
+            </div>
+          ) : null}
+          <MarkdownWorkspace
+            value={draft}
+            onChange={onDraftChange}
+            ariaLabel="Markdown 草稿"
+            placeholder={"# 想法标题\n\n你的 Markdown 草稿会出现在这里。"}
+            previewVisible={draftPreviewVisible}
+          />
+          <footer className="draft-footer">
+            <div>
+              <span>{draft.length.toLocaleString("zh-CN")} 字符</span>
+              <small>{draftPreviewVisible ? "Markdown · 实时预览" : "Markdown · 专注编辑"}</small>
+            </div>
+            {workspace.kind === "TEAM" ? (
+              <div className="memory-visibility-control" role="group" aria-label="保存可见范围">
+                <button
+                  type="button"
+                  className={saveVisibility === "PRIVATE" ? "is-active" : ""}
+                  aria-pressed={saveVisibility === "PRIVATE"}
+                  onClick={() => onSaveVisibilityChange("PRIVATE")}
+                >
+                  <LockKeyhole aria-hidden="true" size={14} strokeWidth={1.8} />
+                  仅自己
+                </button>
+                <button
+                  type="button"
+                  className={saveVisibility === "WORKSPACE" ? "is-active" : ""}
+                  aria-pressed={saveVisibility === "WORKSPACE"}
+                  onClick={() => onSaveVisibilityChange("WORKSPACE")}
+                >
+                  <Users aria-hidden="true" size={14} strokeWidth={1.8} />
+                  团队共享
+                </button>
+              </div>
+            ) : null}
+            <button
+              className="primary-action"
+              type="button"
+              disabled={!normalizedDraft || saving || isSaved}
+              onClick={() => void onSave()}
+            >
+              {saving
+                ? "正在保存…"
+                : isSaved
+                  ? "已保存"
+                  : saveVisibility === "WORKSPACE"
+                    ? "保存为团队记忆"
+                    : "保存为我的记忆"}
+            </button>
+          </footer>
+        </section>
+      }
+    />
+  );
+}

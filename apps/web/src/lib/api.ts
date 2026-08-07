@@ -8,6 +8,7 @@ export const api = createClient<paths>({
 
 type DraftChatRequest = components["schemas"]["DraftChatRequest"];
 type DraftChatResponse = components["schemas"]["DraftChatResponse"];
+export type AgentExecution = components["schemas"]["AgentExecutionResponse"];
 export type DraftChatStreamEvent =
   | components["schemas"]["DraftChatStreamProgressEvent"]
   | components["schemas"]["DraftChatStreamResultEvent"]
@@ -17,6 +18,8 @@ export class DraftChatStreamError extends Error {
   constructor(
     message: string,
     readonly trace?: components["schemas"]["DraftTraceResponse"],
+    readonly code?: string,
+    readonly executionId?: string,
   ) {
     super(message);
     this.name = "DraftChatStreamError";
@@ -26,6 +29,10 @@ export class DraftChatStreamError extends Error {
 export async function streamDraftChat(
   payload: DraftChatRequest,
   onEvent: (event: DraftChatStreamEvent) => void,
+  options: {
+    signal?: AbortSignal;
+    onExecutionId?: (executionId: string) => void;
+  } = {},
 ): Promise<DraftChatResponse> {
   const response = await fetch("/api/drafts/chat/stream", {
     method: "POST",
@@ -35,9 +42,17 @@ export async function streamDraftChat(
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
+    signal: options.signal,
   });
+  const executionId = response.headers.get("x-agent-execution-id") ?? undefined;
+  if (executionId) options.onExecutionId?.(executionId);
   if (!response.ok || !response.body) {
-    throw new DraftChatStreamError("聊天请求没有成功建立。请稍后再试。");
+    throw new DraftChatStreamError(
+      "聊天请求没有成功建立。请稍后再试。",
+      undefined,
+      `http_${response.status}`,
+      executionId,
+    );
   }
 
   const contentType = response.headers.get("content-type") ?? "";
@@ -60,7 +75,14 @@ export async function streamDraftChat(
     const event = JSON.parse(data) as DraftChatStreamEvent;
     onEvent(event);
     if (event.type === "result") result = event.response;
-    if (event.type === "error") throw new DraftChatStreamError(event.message, event.trace);
+    if (event.type === "error") {
+      throw new DraftChatStreamError(
+        event.message,
+        event.trace,
+        event.code,
+        event.execution_id ?? executionId,
+      );
+    }
   }
 
   while (true) {
@@ -77,4 +99,25 @@ export async function streamDraftChat(
   if (buffer.trim()) consumeBlock(buffer);
   if (!result) throw new DraftChatStreamError("工作过程流在返回结果前结束了。");
   return result;
+}
+
+export async function getAgentExecution(
+  executionId: string,
+  afterSequence = 0,
+): Promise<AgentExecution> {
+  const query = new URLSearchParams({ after_sequence: String(afterSequence) });
+  const response = await fetch(`/api/agent/executions/${executionId}?${query}`, {
+    credentials: "include",
+  });
+  if (!response.ok) throw new Error("执行记录暂时无法读取。");
+  return (await response.json()) as AgentExecution;
+}
+
+export async function cancelAgentExecution(executionId: string): Promise<AgentExecution> {
+  const response = await fetch(`/api/agent/executions/${executionId}/cancel`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!response.ok) throw new Error("这轮执行暂时无法取消。");
+  return (await response.json()) as AgentExecution;
 }

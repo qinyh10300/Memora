@@ -1,0 +1,241 @@
+@property --split-left {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 50%;
+}
+
+@property --sidebar-current-width {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 216px;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg: #06070c;
+  --bg-deep: #010207;
+  --sidebar: #0b0c10;
+  --surface: #101116;
+  --surface-raised: #15171d;
+  --surface-hover: #1b2028;
+  --surface-active: #222937;
+  --editor: #080a0f;
+
+  /* Text */
+  --text: #f4f8ff;
+  --text-soft: #dbe7f7;
+  --muted: #9aa9bd;
+  --faint: #728095;
+  --faintest: #566174;
+
+  /* Hairlines */
+  --line: rgba(219, 231, 255, 0.075);
+  --line-strong: rgba(219, 231, 255, 0.135);
+  --line-hover: rgba(219, 231, 255, 0.22);
+
+  /* Accent */
+  --accent: #4f8cff;
+  --accent-light: #a8d8ff;
+  --accent-strong: #2563ff;
+  --accent-soft: rgba(79, 140, 255, 0.08);
+  --accent-line: rgba(141, 199, 255, 0.34);
+  --accent-glow: rgba(79, 140, 255, 0.12);
+  --preview-accent: #b7e4ff;
+  --preview-soft: rgba(111, 190, 255, 0.075);
+  --preview-line: rgba(148, 212, 255, 0.2);
+  --danger: #ff8585;
+  --danger-soft: rgba(255, 133, 133, 0.11);
+  --danger-line: rgba(255, 133, 133, 0.28);
+
+  /* Type scale */
+  --fs-3xs: 0.58rem;
+  --fs-2xs: 0.62rem;
+  --fs-xs: 0.66rem;
+  --fs-sm: 0.71rem;
+  --fs-md: 0.77rem;
+  --fs-base: 0.82rem;
+  --fs-lg: 0.94rem;
+  --fs-xl: 1.05rem;
+
+  /* Weight scale */
+  --fw-normal: 450;
+  --fw-medium: 520;
+  --fw-semi: 620;
+  --fw-bold: 680;
+  --fw-heavy: 730;
+
+  /* Radius scale */
+  --r-xs: 7px;
+  --r-sm: 8px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 12px;
+  --r-2xl: 16px;
+  --r-pill: 999px;
+  --panel-radius: 12px;
+
+  /* Motion — one easing family, three speeds */
+  --ease: cubic-bezier(0.32, 0.72, 0.24, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.46, 0.64, 1);
+  --t-fast: 120ms;
+  --t-base: 200ms;
+  --t-slow: 320ms;
+
+  /* Elevation */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.16);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 18px 55px rgba(0, 0, 0, 0.22);
+  --shadow-xl: 0 28px 90px rgba(0, 0, 0, 0.4);
+  --inset-hi: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+
+  /* Layout */
+  --sidebar-width: 216px;
+  --gap: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: var(--bg-deep);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "PingFang SC",
+    "Microsoft YaHei",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+button,
+input,
+textarea,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent-light);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+/* Every button gets a press response unless it opts out. */
+button:active:not(:disabled) {
+  transition-duration: 60ms;
+  transform: scale(0.975);
+}
+
+.sidebar-scrim:active,
+.markdown-editor:active {
+  transform: none;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -180% 0;
+  }
+  to {
+    background-position: 180% 0;
+  }
+}
+
+.logo-mark {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: var(--r-md);
+  background: #fbfcf7;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.72) inset,
+    0 7px 18px rgba(0, 0, 0, 0.24);
+}
+
+.logo-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.32);
+}
+
+/* Chinese labels: tighter tracking than the wide all-caps latin treatment,
+   and a slightly larger size since CJK glyphs need more room to stay legible. */
+.eyebrow,
+.overline {
+  margin: 0 0 7px;
+  color: var(--faint);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semi);
+  letter-spacing: 0;
+}
+
+.privacy-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: var(--r-pill);
+  background: var(--accent-light);
+  box-shadow: 0 0 0 4px rgba(79, 140, 255, 0.12);
+}

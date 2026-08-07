@@ -2,6 +2,14 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import "./globals.css";
+import "../styles/tokens.css";
+import "../styles/public.css";
+import "../styles/workbench.css";
+import "../styles/settings.css";
+import "../styles/team.css";
+import "../styles/capture.css";
+import "../styles/library.css";
+import "../styles/responsive.css";
 
 export const metadata: Metadata = {
   title: "Memora",

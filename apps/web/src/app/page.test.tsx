@@ -17,9 +17,27 @@ const apiMocks = vi.hoisted(() => ({
   PUT: vi.fn(),
   DELETE: vi.fn(),
   STREAM: vi.fn(),
+  GET_EXECUTION: vi.fn(),
+  CANCEL_EXECUTION: vi.fn(),
 }));
 
-vi.mock("@/lib/api", () => ({ api: apiMocks, streamDraftChat: apiMocks.STREAM }));
+vi.mock("@/lib/api", () => ({
+  api: apiMocks,
+  streamDraftChat: apiMocks.STREAM,
+  getAgentExecution: apiMocks.GET_EXECUTION,
+  cancelAgentExecution: apiMocks.CANCEL_EXECUTION,
+  DraftChatStreamError: class DraftChatStreamError extends Error {
+    constructor(
+      message: string,
+      readonly trace?: unknown,
+      readonly code?: string,
+      readonly executionId?: string,
+    ) {
+      super(message);
+      this.name = "DraftChatStreamError";
+    }
+  },
+}));
 
 const teamUser = {
   id: "user-alex",
@@ -86,6 +104,7 @@ const memory: Memory = {
   timeline_visible: true,
   revision_kind: "ROOT",
   processing_status: "PENDING",
+  document_citations: [],
 };
 
 const teammateMemory: Memory = {
@@ -105,6 +124,32 @@ const draftModel: DraftModel = {
   label: "Balanced",
   capabilities: ["chat", "vision", "web_search", "tools"],
   is_default: true,
+};
+
+const completedDocumentStatus = {
+  asset_id: "asset-pdf",
+  status: "COMPLETED" as const,
+  message: "PDF 已解析，可用于当前对话。",
+  page_count: 3,
+  processed_pages: 3,
+  text_page_count: 3,
+  ocr_page_count: 0,
+  chunk_count: 4,
+  error_code: null,
+  can_retry: false,
+  can_cancel: false,
+  created_at: "2026-07-30T08:00:00Z",
+  updated_at: "2026-07-30T08:00:02Z",
+};
+
+const draftDocumentCitation = {
+  asset_id: "asset-pdf",
+  asset_name: "方案.pdf",
+  chunk_id: "chunk-pdf-page-2",
+  page_number: 2,
+  heading: "产品方案",
+  excerpt: "先验证异步文档解析与页码引用。",
+  content_url: "/api/assets/asset-pdf/content#page=2",
 };
 
 function ok<T>(data: T, status = 200) {
@@ -259,6 +304,7 @@ function mockAuthenticatedSession(
             size_bytes: body.data.length,
             markdown_url:
               body.media_type === "application/pdf" ? null : `/api/assets/${id}/content`,
+            document: body.media_type === "application/pdf" ? completedDocumentStatus : null,
             created_at: "2026-07-30T08:00:00Z",
           },
           201,
@@ -276,7 +322,7 @@ function mockAuthenticatedSession(
               role: "USER" | "ASSISTANT";
               content: string;
               images?: unknown[];
-              attachments?: unknown[];
+              attachments?: { asset_id: string }[];
             }[];
           };
         }
@@ -350,6 +396,25 @@ function mockAuthenticatedSession(
           }),
         );
       }
+      if (
+        body.messages.at(-1)?.attachments?.some((attachment) => attachment.asset_id === "asset-pdf")
+      ) {
+        return Promise.resolve(
+          ok({
+            markdown: "# 方案摘要\n\n先验证异步文档解析与页码引用。",
+            assistant_message: "已读取 PDF，并把相关内容整理到右侧草稿。",
+            draft_changed: true,
+            model_status: "AVAILABLE",
+            model_id: body.model_id ?? null,
+            citations: [],
+            web_search_status: "NOT_USED",
+            web_citations: [],
+            document_citations: [draftDocumentCitation],
+            tool_events: [],
+            saved_memory: null,
+          }),
+        );
+      }
       return Promise.resolve(
         ok({
           markdown: "# 产品方向\n\n先验证个人记录和回顾。",
@@ -375,13 +440,23 @@ function mockAuthenticatedSession(
       );
     }
     if (path === "/memories") {
-      const body = (options as { body: { body: string; visibility: "PRIVATE" | "WORKSPACE" } })
-        .body;
+      const body = (
+        options as {
+          body: {
+            body: string;
+            visibility: "PRIVATE" | "WORKSPACE";
+            document_citations?: { chunk_id: string }[];
+          };
+        }
+      ).body;
       const created: Memory = {
         ...memory,
         body: body.body,
         visibility: body.visibility,
         shared_at: body.visibility === "WORKSPACE" ? "2026-08-06T10:00:00Z" : null,
+        document_citations: body.document_citations?.length
+          ? [{ ...draftDocumentCitation, id: "memory-document-citation-1" }]
+          : [],
       };
       currentMemories = [created, ...currentMemories.filter((item) => item.id !== created.id)];
       return Promise.resolve(ok(created, 201));
@@ -466,6 +541,8 @@ describe("Memora personal Markdown MVP", () => {
     apiMocks.PUT.mockReset();
     apiMocks.DELETE.mockReset();
     apiMocks.STREAM.mockReset();
+    apiMocks.GET_EXECUTION.mockReset();
+    apiMocks.CANCEL_EXECUTION.mockReset();
     const storedValues = new Map<string, string>();
     Object.defineProperty(window, "localStorage", {
       configurable: true,
@@ -539,6 +616,25 @@ describe("Memora personal Markdown MVP", () => {
     });
     expect(await screen.findByLabelText("Memora 导航")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "今天在想什么？" })).toBeInTheDocument();
+  });
+
+  it("注册弹窗不会在用户开始填写后抢回输入焦点", async () => {
+    apiMocks.GET.mockResolvedValue(missing(401));
+
+    render(<HomePage />);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "快速开始" }))[0]);
+    const displayName = screen.getByLabelText("昵称");
+    const email = screen.getByLabelText("邮箱账号");
+    fireEvent.change(displayName, { target: { value: "Browser Owner" } });
+    email.focus();
+    fireEvent.change(email, { target: { value: "browser-owner@memora.local" } });
+
+    await act(() => new Promise((resolve) => window.setTimeout(resolve, 60)));
+
+    expect(document.activeElement).toBe(email);
+    expect(displayName).toHaveValue("Browser Owner");
+    expect(email).toHaveValue("browser-owner@memora.local");
   });
 
   it("公开首页可以使用邮箱账号和密码登录", async () => {
@@ -835,8 +931,89 @@ describe("Memora personal Markdown MVP", () => {
       expect(apiMocks.STREAM).toHaveBeenCalledWith(
         expect.objectContaining({ model_id: "claude" }),
         expect.any(Function),
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+          onExecutionId: expect.any(Function),
+        }),
       );
     });
+  });
+
+  it("可以取消正在运行的 Agent，并从持久化执行记录确认取消", async () => {
+    mockAuthenticatedSession([]);
+    const executionId = "00000000-0000-4000-8000-000000000121";
+    const cancelledExecution = {
+      id: executionId,
+      status: "CANCELLED",
+      model_id: "balanced",
+      saved_memory_id: null,
+      error_code: "cancelled",
+      created_at: "2026-08-07T00:00:00Z",
+      started_at: "2026-08-07T00:00:01Z",
+      completed_at: "2026-08-07T00:00:02Z",
+      next_event_sequence: 2,
+      events: [
+        {
+          sequence: 1,
+          step_id: "output",
+          kind: "OUTPUT",
+          status: "CANCELLED",
+          execution_status: "CANCELLED",
+          title: "已取消",
+          detail: "用户取消了这轮执行。",
+          elapsed_ms: 20,
+          duration_ms: 2,
+          item_count: null,
+          created_at: "2026-08-07T00:00:02Z",
+        },
+      ],
+    };
+    apiMocks.GET_EXECUTION.mockResolvedValue(cancelledExecution);
+    apiMocks.CANCEL_EXECUTION.mockResolvedValue(cancelledExecution);
+    apiMocks.STREAM.mockImplementation(
+      (
+        _payload: unknown,
+        _onEvent: unknown,
+        options: { signal: AbortSignal; onExecutionId: (id: string) => void },
+      ) => {
+        options.onExecutionId(executionId);
+        return new Promise((_resolve, reject) => {
+          options.signal.addEventListener("abort", () => reject(new DOMException("aborted")));
+        });
+      },
+    );
+
+    render(<HomePage />);
+    fireEvent.change(await screen.findByLabelText("告诉 Memora 你的想法"), {
+      target: { value: "整理后再保存" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    fireEvent.click(await screen.findByRole("button", { name: "停止" }));
+
+    await waitFor(() => expect(apiMocks.CANCEL_EXECUTION).toHaveBeenCalledWith(executionId));
+    expect(await screen.findByText("这轮工作已取消，右侧草稿保持不变。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+  });
+
+  it("失败后可以用原始请求重试且不会重复追加用户消息", async () => {
+    mockAuthenticatedSession([]);
+    const successfulStream = apiMocks.STREAM.getMockImplementation();
+    apiMocks.STREAM.mockImplementationOnce(async () => {
+      throw new Error("temporary_failure");
+    }).mockImplementationOnce(successfulStream!);
+
+    render(<HomePage />);
+    fireEvent.change(await screen.findByLabelText("告诉 Memora 你的想法"), {
+      target: { value: "整理这条可重试的想法" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    fireEvent.click(await screen.findByRole("button", { name: "重试" }));
+
+    await waitFor(() => expect(apiMocks.STREAM).toHaveBeenCalledTimes(2));
+    expect(screen.getAllByText("整理这条可重试的想法")).toHaveLength(1);
+    expect(
+      await screen.findByText("已按你的要求更新右侧草稿。保存前你还可以继续修改。"),
+    ).toBeInTheDocument();
   });
 
   it("桌面分栏可以用拖动和键盘调整宽度", async () => {
@@ -1005,7 +1182,11 @@ describe("Memora personal Markdown MVP", () => {
 
     await waitFor(() => {
       expect(apiMocks.POST).toHaveBeenCalledWith("/memories", {
-        body: { body: "# 产品方向\n\n先验证个人记录和回顾。", visibility: "PRIVATE" },
+        body: {
+          body: "# 产品方向\n\n先验证个人记录和回顾。",
+          visibility: "PRIVATE",
+          document_citations: [],
+        },
       });
     });
     expect(await screen.findByText("已保存为仅自己可见的记忆。")).toBeInTheDocument();
@@ -1026,6 +1207,7 @@ describe("Memora personal Markdown MVP", () => {
         body: {
           body: "# 团队判断\n\n记录共同的产品结论。",
           visibility: "WORKSPACE",
+          document_citations: [],
         },
       });
     });
@@ -1277,6 +1459,19 @@ describe("Memora personal Markdown MVP", () => {
     expect(screen.getByText("附件已准备")).toBeInTheDocument();
     expect(screen.getByText("1 个 PDF：方案.pdf")).toBeInTheDocument();
     expect(screen.getByText("使用模型：Balanced")).toBeInTheDocument();
+    expect(screen.getByText("文档 1 · 第 2 页")).toBeInTheDocument();
+    expect(screen.getByText("方案.pdf · 第 2 页")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "保存为我的记忆" }));
+    await waitFor(() => {
+      expect(apiMocks.POST).toHaveBeenCalledWith("/memories", {
+        body: {
+          body: "# 方案摘要\n\n先验证异步文档解析与页码引用。",
+          visibility: "PRIVATE",
+          document_citations: [{ chunk_id: draftDocumentCitation.chunk_id }],
+        },
+      });
+    });
   });
 
   it("Chatbot 回答个人记忆问题时显示可打开的来源", async () => {
