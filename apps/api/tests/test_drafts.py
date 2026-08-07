@@ -33,6 +33,7 @@ from memora.identity.models import User
 from memora.identity.seed import seed_database
 from memora.main import create_app
 from memora.memories.models import Memory
+from memora.observability import current_trace_headers
 from memora.retrieval.service import RetrievedMemory
 from memora.settings import Settings
 
@@ -98,6 +99,31 @@ class FailingDraftModel:
 
     def complete(self, messages: list[ChatMessage]) -> ChatResult:
         raise AIProviderError("provider_timeout", retryable=True)
+
+
+class TraceHeadersDraftModel:
+    model_id = "trace-model"
+
+    def __init__(self) -> None:
+        self.trace_headers: dict[str, str] = {}
+
+    def complete(self, messages: list[ChatMessage]) -> ChatResult:
+        assert messages
+        self.trace_headers = current_trace_headers()
+        return ChatResult(
+            content=json.dumps(
+                {
+                    "assistant_message": "已完成整理。",
+                    "markdown": "# 可追踪草稿",
+                    "draft_changed": True,
+                    "used_memory_ids": [],
+                    "used_web_source_urls": [],
+                },
+                ensure_ascii=False,
+            ),
+            model=self.model_id,
+            usage=ModelUsage(input_tokens=8, output_tokens=4),
+        )
 
 
 class CaptureDraftChatModel:
@@ -519,7 +545,8 @@ def test_draft_chat_resolves_pdf_attachment_context_from_protected_asset(
     prompt = model.messages[-1].content
     assert "ATTACHMENT_CONTEXT_JSON" in prompt
     assert "proposal.pdf" in prompt
-    assert "NO_TEXT" in prompt
+    assert "QUEUED" in prompt
+    assert "正在排队解析" in prompt
     assert upload.json()["id"] in prompt
     assert _blank_pdf_base64() not in prompt
 
@@ -650,6 +677,7 @@ def test_draft_chat_restores_first_user_message_without_model_rewrite(
         "web_citations": [],
         "tool_events": [],
         "saved_memory": None,
+        "document_citations": [],
     }
 
     engine = cast(FastAPI, draft_client.app).state.engine
@@ -685,6 +713,7 @@ def test_draft_chat_keeps_working_copy_when_model_is_disabled_or_fails(
         "web_citations": [],
         "tool_events": [],
         "saved_memory": None,
+        "document_citations": [],
     }
 
     monkeypatch.setattr(
@@ -710,6 +739,7 @@ def test_draft_chat_keeps_working_copy_when_model_is_disabled_or_fails(
         "web_citations": [],
         "tool_events": [],
         "saved_memory": None,
+        "document_citations": [],
     }
 
     first_turn_failure = draft_client.post(
@@ -928,6 +958,7 @@ def test_draft_chat_web_search_failure_preserves_markdown_and_skips_generation(
         "web_citations": [],
         "tool_events": [],
         "saved_memory": None,
+        "document_citations": [],
     }
     assert model.messages == []
 
@@ -1047,6 +1078,35 @@ def test_draft_chat_stream_emits_safe_progress_and_final_trace(
     assert private_marker not in json.dumps(trace, ensure_ascii=False)
 
 
+def test_draft_chat_stream_propagates_request_and_execution_ids_into_worker_thread(
+    draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = _login(draft_client)
+    headers["X-Request-ID"] = "browser-agent-request"
+    model = TraceHeadersDraftModel()
+    monkeypatch.setattr(
+        "memora.api.drafts.build_chat_model",
+        lambda _settings, **_kwargs: model,
+    )
+
+    response = draft_client.post(
+        "/drafts/chat/stream",
+        headers=headers,
+        json={
+            "markdown": "",
+            "web_search": "DISABLED",
+            "messages": [{"role": "USER", "content": "整理为标题。"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert model.trace_headers == {
+        "X-Request-ID": "browser-agent-request",
+        "X-Agent-Execution-ID": response.headers["X-Agent-Execution-ID"],
+    }
+
+
 def test_draft_chat_stream_reports_real_save_tool_execution(
     tool_draft_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -1084,6 +1144,516 @@ def test_draft_chat_stream_reports_real_save_tool_execution(
     assert trace["input_tokens"] == 120
     assert trace["output_tokens"] == 40
     assert "用户明确要求保存" not in json.dumps(trace, ensure_ascii=False)
+
+
+def test_draft_chat_stream_persists_recoverable_authorized_execution(
+    draft_client: TestClient,
+) -> None:
+    headers = _login(draft_client)
+    private_marker = "PRIVATE_EVENT_MARKER_03d1"
+
+    response = draft_client.post(
+        "/drafts/chat/stream",
+        headers=headers,
+        json={
+            "markdown": "# 当前草稿",
+            "web_search": "DISABLED",
+            "messages": [{"role": "USER", "content": f"整理这段内容：{private_marker}"}],
+        },
+    )
+
+    assert response.status_code == 200
+    execution_id = response.headers["x-agent-execution-id"]
+    payloads = _sse_payloads(response.text)
+    progress = [payload for payload in payloads if payload["type"] == "progress"]
+    assert [payload["sequence"] for payload in progress] == list(range(1, len(progress) + 1))
+    assert {payload["execution_id"] for payload in payloads} == {execution_id}
+    result_payload = cast(dict[str, object], payloads[-1]["response"])
+    assert result_payload["execution_id"] == execution_id
+
+    recovered = draft_client.get(f"/agent/executions/{execution_id}", headers=headers)
+    assert recovered.status_code == 200
+    body = recovered.json()
+    assert body["id"] == execution_id
+    assert body["status"] == "COMPLETED"
+    assert [event["sequence"] for event in body["events"]] == list(
+        range(1, len(body["events"]) + 1)
+    )
+    assert len(body["events"]) == len(progress)
+    assert {event["execution_status"] for event in body["events"]} == {"PLANNING"}
+    assert private_marker not in recovered.text
+
+    after_first = draft_client.get(
+        f"/agent/executions/{execution_id}",
+        params={"after_sequence": 1},
+        headers=headers,
+    )
+    assert after_first.status_code == 200
+    assert all(event["sequence"] > 1 for event in after_first.json()["events"])
+
+    blair_login = draft_client.post(
+        "/auth/login",
+        json={"email": "blair@memora.local", "password": "memora-local-blair"},
+    )
+    blair_token = blair_login.cookies.get(SESSION_COOKIE_NAME)
+    assert blair_token
+    assert (
+        draft_client.get(
+            f"/agent/executions/{execution_id}",
+            headers={"Cookie": f"{SESSION_COOKIE_NAME}={blair_token}"},
+        ).status_code
+        == 404
+    )
+
+
+def test_agent_execution_cancellation_is_owned_terminal_and_redacts_web_query(
+    draft_client: TestClient,
+) -> None:
+    from uuid import uuid4
+
+    from memora.agent.service import (
+        AgentCancelled,
+        AgentExecutionRecorder,
+        create_agent_execution,
+    )
+    from memora.api.drafts import DraftTraceStepResponse
+
+    login = draft_client.post(
+        "/auth/login",
+        json={"email": "alex@memora.local", "password": "memora-local-alex"},
+    )
+    token = login.cookies.get(SESSION_COOKIE_NAME)
+    assert token
+    headers = {"Cookie": f"{SESSION_COOKIE_NAME}={token}"}
+    execution_id = uuid4()
+    session_factory = cast(FastAPI, draft_client.app).state.session_factory
+    create_agent_execution(
+        session_factory,
+        execution_id=execution_id,
+        workspace_id=UUID(login.json()["workspace_id"]),
+        actor_id=UUID(login.json()["id"]),
+        model_id="test-model",
+    )
+    recorder = AgentExecutionRecorder(session_factory, execution_id)
+    assert (
+        recorder.append_step(
+            DraftTraceStepResponse(
+                id="tool-web-search-1",
+                kind="TOOL",
+                status="RUNNING",
+                title="正在联网检索",
+                detail="查询：PRIVATE_WEB_QUERY_8c9a",
+                elapsed_ms=2,
+            )
+        )
+        == 1
+    )
+
+    cancel = draft_client.post(f"/agent/executions/{execution_id}/cancel", headers=headers)
+    assert cancel.status_code == 200
+    assert cancel.json()["status"] == "CANCEL_REQUESTED"
+    assert cancel.json()["events"][0]["detail"] == ("已提交受控联网查询；查询文本不写入执行日志。")
+    assert cancel.json()["events"][0]["execution_status"] == "TOOL_RUNNING"
+    assert "PRIVATE_WEB_QUERY_8c9a" not in cancel.text
+
+    with pytest.raises(AgentCancelled):
+        recorder.append_step(
+            DraftTraceStepResponse(
+                id="output",
+                kind="OUTPUT",
+                status="COMPLETED",
+                title="已完成",
+                detail=None,
+                elapsed_ms=3,
+            )
+        )
+    recorder.finish("COMPLETED")
+
+    terminal = draft_client.get(f"/agent/executions/{execution_id}", headers=headers)
+    assert terminal.status_code == 200
+    assert terminal.json()["status"] == "CANCELLED"
+    assert (
+        draft_client.post(f"/agent/executions/{execution_id}/cancel", headers=headers).json()[
+            "status"
+        ]
+        == "CANCELLED"
+    )
+
+
+def test_draft_tool_registry_retries_web_search_once_then_recovers(
+    tool_draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FlakyWebSearch(CaptureWebSearch):
+        def search(
+            self,
+            query: str,
+            *,
+            context_size: WebSearchContextSize,
+        ) -> WebSearchResult:
+            self.calls.append((query, context_size))
+            if len(self.calls) == 1:
+                raise AIProviderError("provider_timeout", retryable=True)
+            return WebSearchResult(
+                content="第二次搜索成功，找到了可验证信息。",
+                sources=(
+                    WebSource(
+                        url="https://official.example/recovered",
+                        title="恢复后的官方来源",
+                    ),
+                ),
+                model=self.model_id,
+                usage=ModelUsage(input_tokens=20, output_tokens=8),
+            )
+
+    headers = _login(tool_draft_client)
+    search = FlakyWebSearch()
+    monkeypatch.setattr(
+        "memora.api.drafts.build_web_search",
+        lambda _settings, **_kwargs: search,
+    )
+
+    response = tool_draft_client.post(
+        "/drafts/chat",
+        headers=headers,
+        json={
+            "markdown": "# 保持不变",
+            "web_search": "REQUIRED",
+            "messages": [{"role": "USER", "content": "联网搜索刚刚发布的官方信息。"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(search.calls) == 2
+    assert response.json()["web_search_status"] == "AVAILABLE"
+    assert response.json()["tool_events"] == [
+        {
+            "name": "web_search",
+            "status": "COMPLETED",
+            "message": "已联网找到 1 个候选来源。",
+        }
+    ]
+
+
+def test_draft_tool_registry_rejects_duplicate_save_without_duplicate_memory(
+    tool_draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class DuplicateSaveModel(SaveMemoryToolDraftModel):
+        def __init__(self) -> None:
+            super().__init__(body="# 幂等保存\n\n只应创建一条记忆。")
+            self.tool_results: list[str] = []
+
+        def complete_with_tools(
+            self,
+            messages: list[ChatMessage],
+            tools: list[ChatToolDefinition],
+            execute_tool: ChatToolExecutor,
+        ) -> ChatResult:
+            self.tool_names = [tool.name for tool in tools]
+            for call_id in ("save-first", "save-retry"):
+                result = execute_tool(
+                    ChatToolCall(
+                        id=call_id,
+                        name="save_memory",
+                        arguments={"body": self.body},
+                    )
+                )
+                self.tool_results.append(result.content)
+            return ChatResult(
+                content=json.dumps(
+                    {
+                        "assistant_message": "保存请求已处理。",
+                        "markdown": self.body,
+                        "draft_changed": False,
+                        "used_memory_ids": [],
+                        "used_web_source_urls": [],
+                    },
+                    ensure_ascii=False,
+                ),
+                model=self.model_id,
+                usage=ModelUsage(input_tokens=80, output_tokens=20),
+            )
+
+    headers = _login(tool_draft_client)
+    model = DuplicateSaveModel()
+    monkeypatch.setattr(
+        "memora.api.drafts.build_chat_model",
+        lambda _settings, **_kwargs: model,
+    )
+
+    response = tool_draft_client.post(
+        "/drafts/chat/stream",
+        headers=headers,
+        json={
+            "markdown": model.body,
+            "messages": [{"role": "USER", "content": "帮我保存这条记忆。"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert [json.loads(result)["status"] for result in model.tool_results] == [
+        "saved",
+        "rejected",
+    ]
+    payloads = _sse_payloads(response.text)
+    result = cast(dict[str, object], payloads[-1]["response"])
+    saved_memory = cast(dict[str, object], result["saved_memory"])
+    execution_id = response.headers["x-agent-execution-id"]
+    execution = tool_draft_client.get(
+        f"/agent/executions/{execution_id}",
+        headers=headers,
+    ).json()
+    assert execution["saved_memory_id"] == saved_memory["id"]
+
+    engine = cast(FastAPI, tool_draft_client.app).state.engine
+    with Session(engine) as database:
+        memories = database.scalars(select(Memory)).all()
+    assert len(memories) == 1
+    assert str(memories[0].id) == saved_memory["id"]
+
+
+def test_draft_model_router_uses_declared_capability_fallback_and_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = [
+        {
+            "id": "gpt",
+            "label": "GPT",
+            "provider_model": "gpt-provider",
+            "capabilities": ["chat"],
+            "default": True,
+            "fallback_ids": ["gemini"],
+        },
+        {
+            "id": "gemini",
+            "label": "Gemini",
+            "provider_model": "gemini-provider",
+            "capabilities": ["chat", "tools"],
+            "timeout_seconds": 25,
+        },
+    ]
+    settings = Settings(
+        app_env="test",
+        database_url="sqlite+pysqlite:///:memory:",
+        session_secret="model-route-integration-secret",
+        ai_chat_api_key=SecretStr("test-key"),
+        ai_model_registry_json=json.dumps(registry),
+    )
+    app = create_app(settings)
+    model = SaveMemoryToolDraftModel(body="# 路由保存\n\n由具备工具能力的模型处理。")
+    captured: dict[str, object] = {}
+
+    def build_routed_model(
+        _settings: Settings,
+        *,
+        model: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> SaveMemoryToolDraftModel:
+        captured.update(model=model, timeout_seconds=timeout_seconds)
+        return model_instance
+
+    model_instance = model
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", build_routed_model)
+    with TestClient(app) as client:
+        Base.metadata.create_all(app.state.engine)
+        seed_database(app.state.engine, settings)
+        headers = _login(client)
+        response = client.post(
+            "/drafts/chat",
+            headers=headers,
+            json={
+                "model_id": "gpt",
+                "markdown": model.body,
+                "messages": [{"role": "USER", "content": "帮我保存这条记忆。"}],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["model_id"] == "gemini"
+    assert response.json()["saved_memory"]["visibility"] == "PRIVATE"
+    assert captured == {"model": "gemini-provider", "timeout_seconds": 25.0}
+
+
+def test_running_draft_stream_honors_cancellation_and_emits_terminal_error(
+    tool_draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from threading import Event, Thread
+
+    from memora.agent.models import AgentExecution
+
+    class BlockingDraftModel:
+        model_id = "blocking-model"
+
+        def complete(self, messages: list[ChatMessage]) -> ChatResult:
+            del messages
+            started.set()
+            assert release.wait(timeout=5)
+            return ChatResult(
+                content=json.dumps(
+                    {
+                        "assistant_message": "这条结果应被取消丢弃。",
+                        "markdown": "# 不应返回",
+                        "draft_changed": True,
+                        "used_memory_ids": [],
+                        "used_web_source_urls": [],
+                    },
+                    ensure_ascii=False,
+                ),
+                model=self.model_id,
+                usage=ModelUsage(input_tokens=10, output_tokens=5),
+            )
+
+    headers = _login(tool_draft_client)
+    started = Event()
+    release = Event()
+    response_result: dict[str, object] = {}
+    monkeypatch.setattr(
+        "memora.api.drafts.build_chat_model",
+        lambda _settings, **_kwargs: BlockingDraftModel(),
+    )
+
+    def send_stream_request() -> None:
+        response = tool_draft_client.post(
+            "/drafts/chat/stream",
+            headers=headers,
+            json={
+                "markdown": "# 必须保留",
+                "web_search": "DISABLED",
+                "messages": [{"role": "USER", "content": "帮我整理，但先等一下。"}],
+            },
+        )
+        response_result["status"] = response.status_code
+        response_result["text"] = response.text
+
+    request_thread = Thread(target=send_stream_request, daemon=True)
+    request_thread.start()
+    assert started.wait(timeout=5)
+
+    engine = cast(FastAPI, tool_draft_client.app).state.engine
+    with Session(engine) as database:
+        execution = database.scalar(
+            select(AgentExecution).order_by(AgentExecution.created_at.desc()).limit(1)
+        )
+        assert execution is not None
+        execution_id = execution.id
+
+    cancel = tool_draft_client.post(
+        f"/agent/executions/{execution_id}/cancel",
+        headers=headers,
+    )
+    assert cancel.status_code == 200
+    assert cancel.json()["status"] == "CANCEL_REQUESTED"
+    release.set()
+    request_thread.join(timeout=5)
+    assert not request_thread.is_alive()
+    assert response_result["status"] == 200
+
+    payloads = _sse_payloads(cast(str, response_result["text"]))
+    assert payloads[-1]["type"] == "error"
+    assert payloads[-1]["code"] == "cancelled"
+    assert payloads[-1]["execution_id"] == str(execution_id)
+    assert all(payload["type"] != "result" for payload in payloads)
+    terminal = tool_draft_client.get(
+        f"/agent/executions/{execution_id}",
+        headers=headers,
+    )
+    assert terminal.status_code == 200
+    assert terminal.json()["status"] == "CANCELLED"
+
+
+def test_draft_chat_reauthorizes_evidence_after_model_and_rejects_revoked_memory(
+    draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import UTC, datetime
+
+    from memora.retrieval.models import MemoryEmbedding
+
+    headers = _login(draft_client)
+    created = draft_client.post(
+        "/memories",
+        headers=headers,
+        json={"body": "这条记忆会在模型返回前被撤回。"},
+    )
+    assert created.status_code == 201
+    memory_id = UUID(created.json()["id"])
+    engine = cast(FastAPI, draft_client.app).state.engine
+
+    class RevokingEvidenceModel:
+        model_id = "revoking-evidence-model"
+
+        def complete(self, messages: list[ChatMessage]) -> ChatResult:
+            del messages
+            with Session(engine) as database:
+                memory = database.get(Memory, memory_id)
+                assert memory is not None
+                memory.body = None
+                memory.title = None
+                memory.visibility = "PRIVATE"
+                memory.shared_at = None
+                memory.timeline_visible = False
+                memory.deleted_at = datetime.now(UTC)
+                projection = database.get(MemoryEmbedding, memory_id)
+                if projection is not None:
+                    database.delete(projection)
+                database.commit()
+            return ChatResult(
+                content=json.dumps(
+                    {
+                        "assistant_message": "这里不应采用已撤回的记忆。",
+                        "markdown": "# 不应覆盖",
+                        "draft_changed": True,
+                        "used_memory_ids": [str(memory_id)],
+                        "used_web_source_urls": [],
+                    },
+                    ensure_ascii=False,
+                ),
+                model=self.model_id,
+                usage=ModelUsage(input_tokens=20, output_tokens=10),
+            )
+
+    def selected_evidence(*args: object, **kwargs: object) -> list[RetrievedMemory]:
+        database = cast(Session, args[0])
+        memory = database.get(Memory, memory_id)
+        assert memory is not None
+        author = database.get(User, memory.author_id)
+        assert author is not None
+        return [
+            RetrievedMemory(
+                memory=memory,
+                author=author,
+                projection=None,
+                score=0.9,
+                reasons=("SEMANTIC",),
+            )
+        ]
+
+    monkeypatch.setattr(
+        "memora.api.drafts.build_chat_model",
+        lambda _settings, **_kwargs: RevokingEvidenceModel(),
+    )
+    monkeypatch.setattr(
+        "memora.api.drafts.build_embedding_model",
+        lambda _settings, **_kwargs: FakeDraftEmbeddingModel(),
+    )
+    monkeypatch.setattr("memora.api.drafts.semantic_search", selected_evidence)
+
+    response = draft_client.post(
+        "/drafts/chat",
+        headers=headers,
+        json={
+            "markdown": "# 必须保留",
+            "web_search": "DISABLED",
+            "messages": [{"role": "USER", "content": "结合以前的记录整理。"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["markdown"] == "# 必须保留"
+    assert response.json()["model_status"] == "DEGRADED"
+    assert response.json()["citations"] == []
 
 
 def test_refine_draft_has_safe_disabled_and_degraded_fallbacks(

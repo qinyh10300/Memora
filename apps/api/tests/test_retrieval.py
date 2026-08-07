@@ -1,17 +1,28 @@
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from typing import cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.dialects import postgresql
 
 from memora.database import Base
 from memora.identity.dependencies import SESSION_COOKIE_NAME, Principal
+from memora.identity.models import User
 from memora.identity.seed import seed_database
 from memora.main import create_app
 from memora.memories.models import Memory
 from memora.memories.service import authorized_memories_statement
+from memora.retrieval.reranking import RerankCandidate, RerankScore
+from memora.retrieval.service import (
+    MatchReason,
+    RetrievalMatch,
+    RetrievedMemory,
+    Retriever,
+    merge_hybrid_results,
+)
 from memora.settings import Settings
 
 
@@ -39,6 +50,7 @@ def _login(client: TestClient, email: str, password: str) -> dict[str, str]:
 
 def test_keyword_search_never_crosses_private_or_deleted_boundary(
     retrieval_client: TestClient,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     alex = _login(retrieval_client, "alex@memora.local", "memora-local-alex")
     blair = _login(retrieval_client, "blair@memora.local", "memora-local-blair")
@@ -53,10 +65,21 @@ def test_keyword_search_never_crosses_private_or_deleted_boundary(
 
     private_search = retrieval_client.post("/search", headers=blair, json={"q": "海豚定价"})
     assert private_search.status_code == 200
-    assert private_search.json() == {
-        "query": "海豚定价",
-        "semantic_status": "DISABLED",
-        "results": [],
+    assert private_search.json()["query"] == "海豚定价"
+    assert private_search.json()["semantic_status"] == "DISABLED"
+    assert private_search.json()["results"] == []
+    captured_logs = capsys.readouterr().out
+    assert "retrieval_completed" in captured_logs
+    assert "海豚定价" not in captured_logs
+    assert private_search.json()["diagnostics"] | {"elapsed_ms": 0.0} == {
+        "authorization_applied": True,
+        "active_filters": [],
+        "keyword_candidates": 0,
+        "semantic_candidates": 0,
+        "returned_candidates": 0,
+        "fusion": "RRF",
+        "reranker_status": "DISABLED",
+        "elapsed_ms": 0.0,
     }
 
     retrieval_client.post(f"/memories/{memory_id}/share", headers=alex)
@@ -64,6 +87,9 @@ def test_keyword_search_never_crosses_private_or_deleted_boundary(
     assert shared_search.status_code == 200
     assert [result["memory"]["id"] for result in shared_search.json()["results"]] == [memory_id]
     assert shared_search.json()["results"][0]["match_reasons"] == ["KEYWORD"]
+    assert shared_search.json()["results"][0]["matches"] == [
+        {"retriever": "EXACT", "rank": 1, "score": 1.0}
+    ]
 
     retrieval_client.post(f"/memories/{memory_id}/unshare", headers=alex)
     assert (
@@ -163,6 +189,57 @@ def test_memory_library_requires_a_query_or_filter(retrieval_client: TestClient)
     assert response.status_code == 422
 
 
+def test_search_can_apply_an_injected_authorized_reranker(
+    retrieval_client: TestClient,
+) -> None:
+    alex = _login(retrieval_client, "alex@memora.local", "memora-local-alex")
+    older = retrieval_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "# Older\n\n共同主题的第一条记录。"},
+    )
+    newer = retrieval_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "# Newer\n\n共同主题的第二条记录。"},
+    )
+    assert older.status_code == newer.status_code == 201
+
+    class PreferOlder:
+        model_id = "test-reranker"
+
+        def rerank(
+            self,
+            _query: str,
+            candidates: list[RerankCandidate],
+            *,
+            timeout_seconds: float,
+        ) -> list[RerankScore]:
+            assert timeout_seconds == 3
+            return [
+                RerankScore(
+                    memory_id=candidate.memory_id,
+                    score=1.0 if candidate.memory_id == UUID(older.json()["id"]) else 0.0,
+                )
+                for candidate in candidates
+            ]
+
+    cast(FastAPI, retrieval_client.app).state.retrieval_reranker = PreferOlder()
+    response = retrieval_client.post(
+        "/search",
+        headers=alex,
+        json={"q": "共同主题", "mode": "KEYWORD"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["diagnostics"]["reranker_status"] == "APPLIED"
+    assert [item["memory"]["id"] for item in response.json()["results"][:2]] == [
+        older.json()["id"],
+        newer.json()["id"],
+    ]
+    assert response.json()["results"][0]["matches"][-1]["retriever"] == "RERANKER"
+
+
 def test_authorized_candidate_sql_contains_hard_workspace_and_visibility_filters() -> None:
     principal = Principal(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
@@ -185,3 +262,88 @@ def test_authorized_candidate_sql_contains_hard_workspace_and_visibility_filters
     assert "memories.visibility" in compiled
     assert "memory_embeddings" in compiled
     assert Memory.__tablename__ == "memories"
+
+
+def test_rrf_prioritizes_evidence_supported_by_keyword_and_semantic_channels() -> None:
+    author = User(
+        id=uuid4(),
+        email="evaluation@example.test",
+        display_name="Evaluation",
+        password_hash="not-a-password",
+    )
+
+    def result(
+        *,
+        reason: MatchReason,
+        retriever: Retriever,
+        rank: int,
+        created_at: datetime,
+    ) -> RetrievedMemory:
+        memory = Memory(
+            id=uuid4(),
+            workspace_id=uuid4(),
+            author_id=author.id,
+            title="Synthetic",
+            body="Synthetic",
+            visibility="PRIVATE",
+            timeline_entry_id=uuid4(),
+            timeline_visible=True,
+            revision_kind="ROOT",
+            created_at=created_at,
+        )
+        return RetrievedMemory(
+            memory=memory,
+            author=author,
+            projection=None,
+            score=1.0,
+            reasons=(reason,),
+            matches=(
+                RetrievalMatch(
+                    retriever=retriever,
+                    rank=rank,
+                    score=1.0,
+                ),
+            ),
+        )
+
+    shared = result(
+        reason="KEYWORD",
+        retriever="FULL_TEXT",
+        rank=1,
+        created_at=datetime(2026, 1, 3, tzinfo=UTC),
+    )
+    keyword_only = result(
+        reason="KEYWORD",
+        retriever="TRIGRAM",
+        rank=2,
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    semantic_only = result(
+        reason="SEMANTIC",
+        retriever="SEMANTIC",
+        rank=1,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    shared_semantic = RetrievedMemory(
+        memory=shared.memory,
+        author=shared.author,
+        projection=None,
+        score=0.9,
+        reasons=("SEMANTIC",),
+        matches=(RetrievalMatch(retriever="SEMANTIC", rank=2, score=0.9),),
+    )
+
+    merged = merge_hybrid_results(
+        [shared, keyword_only],
+        [semantic_only, shared_semantic],
+        limit=3,
+    )
+
+    assert [item.memory.id for item in merged] == [
+        shared.memory.id,
+        semantic_only.memory.id,
+        keyword_only.memory.id,
+    ]
+    assert merged[0].reasons == ("KEYWORD", "SEMANTIC")
+    assert {match.retriever for match in merged[0].matches} == {"FULL_TEXT", "SEMANTIC"}
+    assert merged[0].score > merged[1].score > merged[2].score

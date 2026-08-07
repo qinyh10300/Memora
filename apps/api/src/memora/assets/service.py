@@ -11,6 +11,7 @@ from sqlalchemy import exists, select
 
 from memora.assets.models import Asset
 from memora.database import DatabaseSession
+from memora.documents.models import MemoryDocumentCitation
 from memora.identity.dependencies import Principal
 from memora.memories.models import Memory
 
@@ -114,7 +115,7 @@ def _has_authorized_memory_reference(
     asset_id: UUID,
 ) -> bool:
     marker = asset_markdown_url(asset_id)
-    statement = select(
+    markdown_statement = select(
         exists().where(
             Memory.workspace_id == principal.workspace_id,
             Memory.visibility == "WORKSPACE",
@@ -123,7 +124,21 @@ def _has_authorized_memory_reference(
             Memory.body.contains(marker),
         )
     )
-    return bool(database.scalar(statement))
+    if database.scalar(markdown_statement):
+        return True
+    citation_statement = select(
+        exists()
+        .where(
+            MemoryDocumentCitation.asset_id == asset_id,
+            MemoryDocumentCitation.memory_id == Memory.id,
+            Memory.workspace_id == principal.workspace_id,
+            Memory.visibility == "WORKSPACE",
+            Memory.timeline_visible.is_(True),
+            Memory.deleted_at.is_(None),
+        )
+        .correlate_except(MemoryDocumentCitation, Memory)
+    )
+    return bool(database.scalar(citation_statement))
 
 
 def get_authorized_asset(

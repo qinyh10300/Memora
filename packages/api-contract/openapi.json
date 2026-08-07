@@ -1,12 +1,235 @@
 {
   "components": {
     "schemas": {
+      "AgentEventResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "elapsed_ms": {
+            "minimum": 0.0,
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "execution_status": {
+            "enum": [
+              "RECEIVED",
+              "PLANNING",
+              "TOOL_PENDING",
+              "TOOL_RUNNING",
+              "MODEL_RUNNING",
+              "CANCEL_REQUESTED",
+              "CANCELLED",
+              "COMPLETED",
+              "DEGRADED",
+              "FAILED"
+            ],
+            "title": "Execution Status",
+            "type": "string"
+          },
+          "item_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Count"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "step_id",
+          "kind",
+          "status",
+          "execution_status",
+          "title",
+          "detail",
+          "elapsed_ms",
+          "created_at"
+        ],
+        "title": "AgentEventResponse",
+        "type": "object"
+      },
+      "AgentExecutionResponse": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/AgentEventResponse"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "next_event_sequence": {
+            "minimum": 1.0,
+            "title": "Next Event Sequence",
+            "type": "integer"
+          },
+          "saved_memory_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saved Memory Id"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "RECEIVED",
+              "PLANNING",
+              "TOOL_PENDING",
+              "TOOL_RUNNING",
+              "MODEL_RUNNING",
+              "CANCEL_REQUESTED",
+              "CANCELLED",
+              "COMPLETED",
+              "DEGRADED",
+              "FAILED"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "model_id",
+          "saved_memory_id",
+          "error_code",
+          "created_at",
+          "started_at",
+          "completed_at",
+          "next_event_sequence",
+          "events"
+        ],
+        "title": "AgentExecutionResponse",
+        "type": "object"
+      },
       "AssetResponse": {
         "properties": {
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentStatusResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "id": {
             "format": "uuid",
@@ -242,6 +465,59 @@
           "citations"
         ],
         "title": "ChatResponse",
+        "type": "object"
+      },
+      "ClientErrorReport": {
+        "properties": {
+          "digest": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest"
+          },
+          "error_type": {
+            "default": "Error",
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$",
+            "title": "Error Type",
+            "type": "string"
+          },
+          "recovery_action": {
+            "default": "none",
+            "enum": [
+              "retry",
+              "reload",
+              "navigate_home",
+              "none"
+            ],
+            "title": "Recovery Action",
+            "type": "string"
+          },
+          "surface": {
+            "default": "unknown",
+            "enum": [
+              "root",
+              "auth",
+              "workbench",
+              "capture",
+              "library",
+              "team",
+              "settings",
+              "unknown"
+            ],
+            "title": "Surface",
+            "type": "string"
+          }
+        },
+        "title": "ClientErrorReport",
         "type": "object"
       },
       "ContributorResponse": {
@@ -531,6 +807,14 @@
             ],
             "title": "Conversation Id"
           },
+          "document_citations": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentCitationInput"
+            },
+            "maxItems": 24,
+            "title": "Document Citations",
+            "type": "array"
+          },
           "supersedes_id": {
             "anyOf": [
               {
@@ -566,6 +850,14 @@
             "minLength": 1,
             "title": "Body",
             "type": "string"
+          },
+          "document_citations": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentCitationInput"
+            },
+            "maxItems": 24,
+            "title": "Document Citations",
+            "type": "array"
           },
           "mode": {
             "enum": [
@@ -648,6 +940,197 @@
         "title": "CurrentUserResponse",
         "type": "object"
       },
+      "DocumentCitationInput": {
+        "properties": {
+          "chunk_id": {
+            "format": "uuid",
+            "title": "Chunk Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chunk_id"
+        ],
+        "title": "DocumentCitationInput",
+        "type": "object"
+      },
+      "DocumentCitationResponse": {
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "asset_name": {
+            "title": "Asset Name",
+            "type": "string"
+          },
+          "chunk_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Id"
+          },
+          "content_url": {
+            "title": "Content Url",
+            "type": "string"
+          },
+          "excerpt": {
+            "maxLength": 600,
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heading"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "page_number": {
+            "title": "Page Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "asset_id",
+          "asset_name",
+          "chunk_id",
+          "page_number",
+          "heading",
+          "excerpt",
+          "content_url"
+        ],
+        "title": "DocumentCitationResponse",
+        "type": "object"
+      },
+      "DocumentStatusResponse": {
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "can_cancel": {
+            "title": "Can Cancel",
+            "type": "boolean"
+          },
+          "can_retry": {
+            "title": "Can Retry",
+            "type": "boolean"
+          },
+          "chunk_count": {
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "ocr_page_count": {
+            "title": "Ocr Page Count",
+            "type": "integer"
+          },
+          "page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count"
+          },
+          "processed_pages": {
+            "title": "Processed Pages",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "QUEUED",
+              "PARSING",
+              "OCR",
+              "COMPLETED",
+              "FAILED",
+              "CANCEL_REQUESTED",
+              "CANCELLED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "text_page_count": {
+            "title": "Text Page Count",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "warning_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning Code"
+          }
+        },
+        "required": [
+          "asset_id",
+          "status",
+          "page_count",
+          "processed_pages",
+          "text_page_count",
+          "ocr_page_count",
+          "chunk_count",
+          "error_code",
+          "warning_code",
+          "message",
+          "can_cancel",
+          "can_retry",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DocumentStatusResponse",
+        "type": "object"
+      },
       "DraftAttachmentInput": {
         "properties": {
           "asset_id": {
@@ -722,9 +1205,28 @@
             "title": "Citations",
             "type": "array"
           },
+          "document_citations": {
+            "items": {
+              "$ref": "#/components/schemas/DraftDocumentCitationResponse"
+            },
+            "title": "Document Citations",
+            "type": "array"
+          },
           "draft_changed": {
             "title": "Draft Changed",
             "type": "boolean"
+          },
+          "execution_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Id"
           },
           "markdown": {
             "title": "Markdown",
@@ -818,6 +1320,18 @@
             "title": "Code",
             "type": "string"
           },
+          "execution_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Id"
+          },
           "message": {
             "maxLength": 300,
             "minLength": 1,
@@ -844,6 +1358,30 @@
       },
       "DraftChatStreamProgressEvent": {
         "properties": {
+          "execution_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Id"
+          },
+          "sequence": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence"
+          },
           "step": {
             "$ref": "#/components/schemas/DraftTraceStepResponse"
           },
@@ -862,6 +1400,18 @@
       },
       "DraftChatStreamResultEvent": {
         "properties": {
+          "execution_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Id"
+          },
           "response": {
             "$ref": "#/components/schemas/DraftChatResponse"
           },
@@ -916,6 +1466,59 @@
           "content"
         ],
         "title": "DraftChatTurn",
+        "type": "object"
+      },
+      "DraftDocumentCitationResponse": {
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "asset_name": {
+            "title": "Asset Name",
+            "type": "string"
+          },
+          "chunk_id": {
+            "format": "uuid",
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "content_url": {
+            "title": "Content Url",
+            "type": "string"
+          },
+          "excerpt": {
+            "maxLength": 600,
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heading"
+          },
+          "page_number": {
+            "title": "Page Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset_id",
+          "asset_name",
+          "chunk_id",
+          "page_number",
+          "heading",
+          "excerpt",
+          "content_url"
+        ],
+        "title": "DraftDocumentCitationResponse",
         "type": "object"
       },
       "DraftImageInput": {
@@ -1116,6 +1719,7 @@
           },
           "kind": {
             "enum": [
+              "PLAN",
               "ANALYSIS",
               "ATTACHMENT",
               "RETRIEVAL",
@@ -1366,6 +1970,13 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "document_citations": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentCitationResponse"
+            },
+            "title": "Document Citations",
+            "type": "array"
           },
           "id": {
             "format": "uuid",
@@ -1754,6 +2365,94 @@
         "title": "ReportSectionResponse",
         "type": "object"
       },
+      "SearchDiagnostics": {
+        "properties": {
+          "active_filters": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Active Filters",
+            "type": "array"
+          },
+          "authorization_applied": {
+            "title": "Authorization Applied",
+            "type": "boolean"
+          },
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "number"
+          },
+          "fusion": {
+            "const": "RRF",
+            "title": "Fusion",
+            "type": "string"
+          },
+          "keyword_candidates": {
+            "title": "Keyword Candidates",
+            "type": "integer"
+          },
+          "reranker_status": {
+            "enum": [
+              "DISABLED",
+              "APPLIED",
+              "DEGRADED"
+            ],
+            "title": "Reranker Status",
+            "type": "string"
+          },
+          "returned_candidates": {
+            "title": "Returned Candidates",
+            "type": "integer"
+          },
+          "semantic_candidates": {
+            "title": "Semantic Candidates",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "authorization_applied",
+          "active_filters",
+          "keyword_candidates",
+          "semantic_candidates",
+          "returned_candidates",
+          "fusion",
+          "reranker_status",
+          "elapsed_ms"
+        ],
+        "title": "SearchDiagnostics",
+        "type": "object"
+      },
+      "SearchMatchDetail": {
+        "properties": {
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "retriever": {
+            "enum": [
+              "FILTER",
+              "EXACT",
+              "FULL_TEXT",
+              "TRIGRAM",
+              "SEMANTIC",
+              "RERANKER"
+            ],
+            "title": "Retriever",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "retriever",
+          "rank",
+          "score"
+        ],
+        "title": "SearchMatchDetail",
+        "type": "object"
+      },
       "SearchRequest": {
         "properties": {
           "author_id": {
@@ -1844,6 +2543,16 @@
       },
       "SearchResponse": {
         "properties": {
+          "diagnostics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchDiagnostics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "query": {
             "title": "Query",
             "type": "string"
@@ -1884,6 +2593,13 @@
               "type": "string"
             },
             "title": "Match Reasons",
+            "type": "array"
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/SearchMatchDetail"
+            },
+            "title": "Matches",
             "type": "array"
           },
           "memory": {
@@ -2226,6 +2942,103 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/agent/executions/{execution_id}": {
+      "get": {
+        "operationId": "get_agent_execution_agent_executions__execution_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Execution Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_sequence",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After Sequence",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentExecutionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Execution",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/agent/executions/{execution_id}/cancel": {
+      "post": {
+        "operationId": "cancel_agent_execution_agent_executions__execution_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Execution Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentExecutionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Agent Execution",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
     "/assets": {
       "post": {
         "operationId": "upload_asset_assets_post",
@@ -2267,6 +3080,42 @@
         ]
       }
     },
+    "/assets/{asset_id}": {
+      "delete": {
+        "operationId": "delete_document_asset_assets__asset_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Document Asset",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
     "/assets/{asset_id}/content": {
       "get": {
         "operationId": "get_asset_content_assets__asset_id__content_get",
@@ -2303,6 +3152,135 @@
           }
         },
         "summary": "Get Asset Content",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/assets/{asset_id}/document": {
+      "get": {
+        "operationId": "get_document_status_assets__asset_id__document_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Document Status",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/assets/{asset_id}/document/cancel": {
+      "post": {
+        "operationId": "cancel_document_parse_assets__asset_id__document_cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Document Parse",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/assets/{asset_id}/document/retry": {
+      "post": {
+        "operationId": "retry_document_parse_job_assets__asset_id__document_retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Document Parse Job",
         "tags": [
           "assets"
         ]
@@ -2651,6 +3629,45 @@
         "summary": "Ask Chatbot",
         "tags": [
           "chat"
+        ]
+      }
+    },
+    "/client-errors": {
+      "post": {
+        "operationId": "report_client_error_client_errors_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientErrorReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Client Error",
+        "tags": [
+          "observability"
         ]
       }
     },

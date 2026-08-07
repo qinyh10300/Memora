@@ -7,7 +7,14 @@ ENV PYTHONUNBUFFERED=1
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
-RUN pip install --no-cache-dir "uv==${UV_VERSION}" \
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes \
+        poppler-utils \
+        tesseract-ocr \
+        tesseract-ocr-chi-sim \
+        tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir "uv==${UV_VERSION}" \
     && groupadd --system --gid 1001 memora \
     && useradd --system --uid 1001 --gid memora --create-home memora
 

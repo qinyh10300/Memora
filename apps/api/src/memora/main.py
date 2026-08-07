@@ -3,12 +3,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from memora.api.agent import router as agent_router
 from memora.api.assets import router as assets_router
 from memora.api.auth import router as auth_router
 from memora.api.chat import router as chat_router
 from memora.api.conversations import router as conversations_router
 from memora.api.drafts import router as drafts_router
 from memora.api.memories import router as memories_router
+from memora.api.observability import router as observability_router
 from memora.api.reports import router as reports_router
 from memora.api.search import router as search_router
 from memora.api.system import router as system_router
@@ -17,6 +19,7 @@ from memora.database import build_engine, build_session_factory
 from memora.identity.rate_limit import LoginRateLimiter
 from memora.logging import configure_logging
 from memora.model_registry import load_all_models
+from memora.observability import RequestContextMiddleware, build_observability_event_sink
 from memora.settings import Settings, get_settings
 
 
@@ -37,6 +40,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             maximum_attempts=30,
             window_seconds=60,
         )
+        app.state.client_error_rate_limiter = LoginRateLimiter(
+            maximum_attempts=20,
+            window_seconds=60,
+        )
+        app.state.observability_event_sink = build_observability_event_sink(resolved_settings)
         yield
         app.state.engine.dispose()
 
@@ -48,8 +56,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.state.settings = resolved_settings
     application.dependency_overrides[get_settings] = lambda: resolved_settings
+    application.add_middleware(RequestContextMiddleware)
     application.include_router(system_router)
+    application.include_router(observability_router)
     application.include_router(auth_router)
+    application.include_router(agent_router)
     application.include_router(workspaces_router)
     application.include_router(conversations_router)
     application.include_router(assets_router)

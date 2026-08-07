@@ -1,0 +1,287 @@
+{
+  "version": "retrieval-v1",
+  "description": "Synthetic Chinese retrieval cases covering relevance, time filters, and authorization boundaries.",
+  "users": [
+    {
+      "id": "20000000-0000-0000-0000-000000000001",
+      "email": "alex@example.test",
+      "display_name": "Alex"
+    },
+    {
+      "id": "20000000-0000-0000-0000-000000000002",
+      "email": "blair@example.test",
+      "display_name": "Blair"
+    },
+    {
+      "id": "20000000-0000-0000-0000-000000000003",
+      "email": "casey@example.test",
+      "display_name": "Casey"
+    }
+  ],
+  "workspaces": [
+    {
+      "id": "10000000-0000-0000-0000-000000000001",
+      "slug": "evaluation-alpha",
+      "name": "Evaluation Alpha",
+      "kind": "TEAM"
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000002",
+      "slug": "evaluation-beta",
+      "name": "Evaluation Beta",
+      "kind": "TEAM"
+    }
+  ],
+  "memories": [
+    {
+      "id": "30000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "author_id": "20000000-0000-0000-0000-000000000001",
+      "title": "Project Aurora 私人路线图",
+      "body": "# Project Aurora 私人路线图\n\n海豚定价采用席位订阅。",
+      "visibility": "PRIVATE",
+      "created_at": "2026-01-10T08:00:00Z"
+    },
+    {
+      "id": "30000000-0000-0000-0000-000000000002",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "author_id": "20000000-0000-0000-0000-000000000001",
+      "title": "海龟访谈记录",
+      "body": "# 海龟访谈记录\n\nProject Aurora 的共享结论强调用户访谈。",
+      "visibility": "WORKSPACE",
+      "created_at": "2026-02-10T08:00:00Z"
+    },
+    {
+      "id": "30000000-0000-0000-0000-000000000003",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "author_id": "20000000-0000-0000-0000-000000000002",
+      "title": "团队观察",
+      "body": "# 团队观察\n\n企业客户要求审计日志与数据导出。",
+      "visibility": "WORKSPACE",
+      "created_at": "2026-03-10T08:00:00Z"
+    },
+    {
+      "id": "30000000-0000-0000-0000-000000000004",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "author_id": "20000000-0000-0000-0000-000000000002",
+      "title": "秘密定价",
+      "body": "# 秘密定价\n\n只有 Blair 可以读取的报价策略。",
+      "visibility": "PRIVATE",
+      "created_at": "2026-04-10T08:00:00Z"
+    },
+    {
+      "id": "30000000-0000-0000-0000-000000000005",
+      "workspace_id": "10000000-0000-0000-0000-000000000002",
+      "author_id": "20000000-0000-0000-0000-000000000003",
+      "title": "量子预算",
+      "body": "# 量子预算\n\nBeta 工作区的量子预算不可跨空间读取。",
+      "visibility": "WORKSPACE",
+      "created_at": "2026-05-10T08:00:00Z"
+    },
+    {
+      "id": "30000000-0000-0000-0000-000000000006",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "author_id": "20000000-0000-0000-0000-000000000001",
+      "title": null,
+      "body": null,
+      "visibility": "WORKSPACE",
+      "created_at": "2026-05-20T08:00:00Z",
+      "deleted_at": "2026-05-21T08:00:00Z"
+    },
+    {
+      "id": "30000000-0000-0000-0000-000000000007",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "author_id": "20000000-0000-0000-0000-000000000001",
+      "title": "旧版策略",
+      "body": "# 旧版策略\n\n旧版策略已经被新修订替代。",
+      "visibility": "WORKSPACE",
+      "created_at": "2026-05-25T08:00:00Z",
+      "timeline_visible": false
+    },
+    {
+      "id": "30000000-0000-0000-0000-000000000008",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "author_id": "20000000-0000-0000-0000-000000000001",
+      "title": "季度规划 2024",
+      "body": "# 季度规划 2024\n\n季度规划需要复盘旧渠道。",
+      "visibility": "WORKSPACE",
+      "created_at": "2024-06-01T08:00:00Z"
+    },
+    {
+      "id": "30000000-0000-0000-0000-000000000009",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "author_id": "20000000-0000-0000-0000-000000000001",
+      "title": "季度规划 2026",
+      "body": "# 季度规划 2026\n\n季度规划聚焦新用户激活。",
+      "visibility": "WORKSPACE",
+      "created_at": "2026-06-01T08:00:00Z"
+    },
+    {
+      "id": "30000000-0000-0000-0000-000000000010",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "author_id": "20000000-0000-0000-0000-000000000001",
+      "title": "社会世界模型",
+      "body": "# 社会世界模型\n\n社会世界模型用于模拟群体互动与规范演化。",
+      "visibility": "WORKSPACE",
+      "created_at": "2026-06-10T08:00:00Z"
+    }
+  ],
+  "cases": [
+    {
+      "id": "private-owner-exact",
+      "description": "作者可以通过正文关键词召回自己的私有记忆",
+      "principal_user_id": "20000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "role": "OWNER",
+      "query": "海豚定价",
+      "expected_sources": [
+        {"memory_id": "30000000-0000-0000-0000-000000000001", "relevance": 3}
+      ]
+    },
+    {
+      "id": "team-shared-exact",
+      "description": "团队成员可以召回其他作者的共享记忆但不能读取私有记忆",
+      "principal_user_id": "20000000-0000-0000-0000-000000000002",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "query": "共享结论",
+      "expected_sources": [
+        {"memory_id": "30000000-0000-0000-0000-000000000002", "relevance": 3}
+      ],
+      "forbidden_memory_ids": ["30000000-0000-0000-0000-000000000001"]
+    },
+    {
+      "id": "title-only",
+      "description": "标题检索只搜索标题投影",
+      "principal_user_id": "20000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "role": "OWNER",
+      "query": "Project Aurora 私人路线图",
+      "search_field": "TITLE",
+      "expected_sources": [
+        {"memory_id": "30000000-0000-0000-0000-000000000001", "relevance": 3}
+      ]
+    },
+    {
+      "id": "other-user-private",
+      "description": "其他作者的私有记忆不能成为候选",
+      "principal_user_id": "20000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "role": "OWNER",
+      "query": "秘密定价",
+      "forbidden_memory_ids": ["30000000-0000-0000-0000-000000000004"],
+      "expects_evidence": false
+    },
+    {
+      "id": "cross-workspace",
+      "description": "其他 workspace 的共享记忆不能成为候选",
+      "principal_user_id": "20000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "role": "OWNER",
+      "query": "量子预算",
+      "forbidden_memory_ids": ["30000000-0000-0000-0000-000000000005"],
+      "expects_evidence": false
+    },
+    {
+      "id": "deleted-memory",
+      "description": "已删除记忆不能成为候选",
+      "principal_user_id": "20000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "role": "OWNER",
+      "query": "废弃火星项目",
+      "forbidden_memory_ids": ["30000000-0000-0000-0000-000000000006"],
+      "expects_evidence": false
+    },
+    {
+      "id": "superseded-revision",
+      "description": "非活动修订不能成为检索候选",
+      "principal_user_id": "20000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "role": "OWNER",
+      "query": "旧版策略",
+      "forbidden_memory_ids": ["30000000-0000-0000-0000-000000000007"],
+      "expects_evidence": false
+    },
+    {
+      "id": "date-filter",
+      "description": "时间过滤只返回指定区间内的相关记忆",
+      "principal_user_id": "20000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "role": "OWNER",
+      "query": "季度规划",
+      "created_from": "2026-01-01T00:00:00Z",
+      "created_to": "2027-01-01T00:00:00Z",
+      "expected_sources": [
+        {"memory_id": "30000000-0000-0000-0000-000000000009", "relevance": 3}
+      ],
+      "forbidden_memory_ids": ["30000000-0000-0000-0000-000000000008"]
+    },
+    {
+      "id": "author-filter",
+      "description": "成员筛选只返回指定作者的共享内容",
+      "principal_user_id": "20000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "role": "OWNER",
+      "query": "审计日志",
+      "author_id": "20000000-0000-0000-0000-000000000002",
+      "expected_sources": [
+        {"memory_id": "30000000-0000-0000-0000-000000000003", "relevance": 3}
+      ]
+    },
+    {
+      "id": "chinese-synonym",
+      "description": "社会与社交的近义表达应该指向同一主题",
+      "principal_user_id": "20000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "role": "OWNER",
+      "query": "社交世界模型",
+      "expected_sources": [
+        {"memory_id": "30000000-0000-0000-0000-000000000010", "relevance": 3}
+      ]
+    },
+    {
+      "id": "latin-typo",
+      "description": "轻微英文拼写错误仍应召回 Aurora 主题",
+      "principal_user_id": "20000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "role": "OWNER",
+      "query": "Aurroa",
+      "expected_sources": [
+        {"memory_id": "30000000-0000-0000-0000-000000000002", "relevance": 3},
+        {"memory_id": "30000000-0000-0000-0000-000000000001", "relevance": 2}
+      ]
+    },
+    {
+      "id": "no-evidence",
+      "description": "完全无关的问题应该明确没有证据",
+      "principal_user_id": "20000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "role": "OWNER",
+      "query": "火星咖啡机",
+      "expects_evidence": false
+    },
+    {
+      "id": "filter-only-private",
+      "description": "无关键词时可以只按 PRIVATE 可见性筛选且仍遵守作者边界",
+      "principal_user_id": "20000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "role": "OWNER",
+      "visibility": "PRIVATE",
+      "expected_sources": [
+        {"memory_id": "30000000-0000-0000-0000-000000000001", "relevance": 3}
+      ],
+      "forbidden_memory_ids": ["30000000-0000-0000-0000-000000000004"]
+    },
+    {
+      "id": "shared-title",
+      "description": "共享标题检索返回团队作者信息对应的记忆",
+      "principal_user_id": "20000000-0000-0000-0000-000000000001",
+      "workspace_id": "10000000-0000-0000-0000-000000000001",
+      "role": "OWNER",
+      "query": "团队观察",
+      "search_field": "TITLE",
+      "expected_sources": [
+        {"memory_id": "30000000-0000-0000-0000-000000000003", "relevance": 3}
+      ]
+    }
+  ]
+}

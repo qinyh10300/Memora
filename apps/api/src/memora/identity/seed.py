@@ -141,6 +141,9 @@ def seed_database(engine: Engine, settings: Settings) -> tuple[int, int]:
 
 def main() -> int:
     settings = get_settings()
+    if not settings.seed_development_data_enabled:
+        print("Memora seed skipped: SEED_DEVELOPMENT_DATA_ENABLED is false")
+        return 0
     engine = build_engine(settings.database_url)
     try:
         created_users, created_memberships = seed_database(engine, settings)

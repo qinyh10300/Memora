@@ -1,8 +1,15 @@
 """集中导入 ORM 模型，保证 API、worker 与迁移拥有相同的 Metadata。"""
 
+from memora.agent.models import AgentEvent, AgentExecution
 from memora.assets.models import Asset
 from memora.audit.models import AuditEvent
 from memora.conversations.models import Conversation, Message, MessageCitation
+from memora.documents.models import (
+    DocumentChunk,
+    DocumentPage,
+    DocumentParseJob,
+    MemoryDocumentCitation,
+)
 from memora.identity.models import User, UserSession
 from memora.jobs.models import Job
 from memora.memories.models import Memory
@@ -10,11 +17,17 @@ from memora.retrieval.models import MemoryEmbedding
 from memora.workspaces.models import Workspace, WorkspaceJoinRequest, WorkspaceMembership
 
 MODEL_TYPES = (
+    AgentExecution,
+    AgentEvent,
     AuditEvent,
     Asset,
     Conversation,
     Message,
     MessageCitation,
+    DocumentParseJob,
+    DocumentPage,
+    DocumentChunk,
+    MemoryDocumentCitation,
     User,
     UserSession,
     Job,

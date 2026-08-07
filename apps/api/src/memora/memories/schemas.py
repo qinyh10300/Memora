@@ -2,8 +2,9 @@ from datetime import datetime
 from typing import Literal, cast
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from memora.documents.schemas import DocumentCitationResponse
 from memora.identity.dependencies import Principal
 from memora.identity.models import User
 from memora.memories.models import Memory
@@ -33,6 +34,7 @@ class MemoryResponse(BaseModel):
     timeline_visible: bool
     revision_kind: MemoryRevisionKind
     processing_status: MemoryProcessingStatus
+    document_citations: list[DocumentCitationResponse] = Field(default_factory=list)
 
 
 def memory_response_for(
@@ -40,6 +42,7 @@ def memory_response_for(
     author: User,
     projection: MemoryEmbedding | None,
     principal: Principal,
+    document_citations: list[DocumentCitationResponse] | None = None,
 ) -> MemoryResponse:
     if memory.body is None:
         raise RuntimeError("deleted memory cannot be serialized")
@@ -73,4 +76,5 @@ def memory_response_for(
         timeline_visible=memory.timeline_visible,
         revision_kind=revision_kind,
         processing_status=processing_status,
+        document_citations=document_citations or [],
     )

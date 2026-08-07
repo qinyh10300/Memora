@@ -1,6 +1,7 @@
 import argparse
 import time
 from collections.abc import Sequence
+from time import perf_counter
 
 import structlog
 from sqlalchemy import Engine
@@ -8,9 +9,14 @@ from sqlalchemy import Engine
 from memora.ai.openai_compatible import build_embedding_model
 from memora.ai.ports import EmbeddingModelPort
 from memora.database import build_engine
+from memora.documents.worker import (
+    process_next_document_embedding_batch,
+    process_next_document_job,
+)
 from memora.jobs.embedding import process_next_embedding_job
 from memora.logging import configure_logging
 from memora.model_registry import load_all_models
+from memora.observability import metrics, new_request_id, observability_context
 from memora.settings import Settings, get_settings
 
 
@@ -19,15 +25,44 @@ def run_once(
     engine: Engine,
     embedding_model: EmbeddingModelPort | None,
 ) -> bool:
-    processed = process_next_embedding_job(engine, settings, embedding_model)
-    structlog.get_logger("memora.worker").info(
-        "worker.iteration",
-        processed=processed,
-        embedding_configured=embedding_model is not None,
-        app_env=settings.app_env,
-        version=settings.app_version,
-    )
-    return processed
+    request_id = new_request_id(prefix="worker")
+    started_at = perf_counter()
+    job_kind = "document_parse"
+    outcome = "failed"
+    with observability_context(request_id=request_id):
+        try:
+            processed = process_next_document_job(engine, settings)
+            if not processed:
+                job_kind = "memory_embedding"
+                processed = process_next_embedding_job(engine, settings, embedding_model)
+            if not processed:
+                job_kind = "document_embedding"
+                processed = process_next_document_embedding_batch(engine, settings, embedding_model)
+            if not processed:
+                job_kind = "idle"
+            outcome = "processed" if processed else "idle"
+            return processed
+        finally:
+            duration_seconds = max(0.0, perf_counter() - started_at)
+            metrics.increment(
+                "memora_worker_iterations_total",
+                labels={"job_kind": job_kind, "outcome": outcome},
+            )
+            metrics.observe(
+                "memora_worker_iteration_duration_seconds",
+                labels={"job_kind": job_kind},
+                value=duration_seconds,
+            )
+            structlog.get_logger("memora.worker").info(
+                "worker.iteration",
+                processed=outcome == "processed",
+                outcome=outcome,
+                job_kind=job_kind,
+                duration_ms=round(duration_seconds * 1000, 2),
+                embedding_configured=embedding_model is not None,
+                app_env=settings.app_env,
+                version=settings.app_version,
+            )
 
 
 def build_parser() -> argparse.ArgumentParser:

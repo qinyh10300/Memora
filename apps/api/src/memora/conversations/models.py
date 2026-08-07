@@ -5,6 +5,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -28,6 +29,12 @@ class Conversation(Base):
             "(scope = 'COLLEAGUE' AND subject_author_id IS NOT NULL) OR "
             "(scope != 'COLLEAGUE' AND subject_author_id IS NULL)",
             name="ck_conversations_subject_scope",
+        ),
+        Index(
+            "ix_conversations_workspace_user_updated",
+            "workspace_id",
+            "user_id",
+            "updated_at",
         ),
     )
 

@@ -16,6 +16,17 @@ from memora.conversations.service import (
     persist_capture,
 )
 from memora.database import DatabaseSession
+from memora.documents.schemas import (
+    DocumentCitationInput,
+    DocumentCitationResponse,
+    document_citation_response_for,
+)
+from memora.documents.service import (
+    copy_memory_document_citations,
+    delete_memory_document_citations,
+    list_memory_document_citations,
+    persist_memory_document_citations,
+)
 from memora.identity.dependencies import CurrentPrincipal, Principal
 from memora.identity.models import User
 from memora.jobs.models import Job
@@ -41,6 +52,7 @@ class CreateMemoryRequest(BaseModel):
     visibility: MemoryVisibility = "PRIVATE"
     supersedes_id: UUID | None = None
     conversation_id: UUID | None = None
+    document_citations: list[DocumentCitationInput] = Field(default_factory=list, max_length=24)
 
     @field_validator("body")
     @classmethod
@@ -54,6 +66,7 @@ class CreateMemoryRequest(BaseModel):
 class CreateMemoryRevisionRequest(BaseModel):
     body: str = Field(min_length=1, max_length=10_000)
     mode: MemoryRevisionMode
+    document_citations: list[DocumentCitationInput] = Field(default_factory=list, max_length=24)
 
     @field_validator("body")
     @classmethod
@@ -105,6 +118,16 @@ def _require_team_workspace(database: DatabaseSession, principal: Principal) -> 
         )
 
 
+def _document_citation_responses(
+    database: DatabaseSession,
+    memory_id: UUID,
+) -> list[DocumentCitationResponse]:
+    return [
+        document_citation_response_for(citation, asset)
+        for citation, asset in list_memory_document_citations(database, memory_id)
+    ]
+
+
 @router.post("", response_model=MemoryResponse, status_code=status.HTTP_201_CREATED)
 def create_memory(
     payload: CreateMemoryRequest,
@@ -150,6 +173,19 @@ def create_memory(
     if payload.visibility == "WORKSPACE":
         memory.visibility = "WORKSPACE"
         memory.shared_at = datetime.now(UTC)
+    database.flush()
+    try:
+        persist_memory_document_citations(
+            database,
+            principal,
+            memory,
+            payload.document_citations,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="文档引用不存在或当前账号无权使用",
+        ) from error
     _audit(database, principal, "MEMORY_CREATED", memory.id)
     if payload.visibility == "WORKSPACE":
         _audit(database, principal, "MEMORY_SHARED", memory.id)
@@ -165,7 +201,13 @@ def create_memory(
     author = database.get(User, principal.user_id)
     if author is None:
         raise RuntimeError("authenticated user disappeared")
-    return memory_response_for(memory, author, projection, principal)
+    return memory_response_for(
+        memory,
+        author,
+        projection,
+        principal,
+        _document_citation_responses(database, memory.id),
+    )
 
 
 @router.post(
@@ -230,10 +272,32 @@ def create_memory_revision(
     if payload.mode == "UPDATE_CURRENT" and locked_source.visibility == "WORKSPACE":
         memory.visibility = "WORKSPACE"
         memory.shared_at = locked_source.shared_at or datetime.now(UTC)
+    database.flush()
+    try:
+        if payload.document_citations:
+            persist_memory_document_citations(
+                database,
+                principal,
+                memory,
+                payload.document_citations,
+            )
+        else:
+            copy_memory_document_citations(database, locked_source.id, memory)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="文档引用不存在或当前账号无权使用",
+        ) from error
     _audit(database, principal, audit_action, memory.id)
     database.commit()
     database.refresh(memory)
-    return memory_response_for(memory, author, projection, principal)
+    return memory_response_for(
+        memory,
+        author,
+        projection,
+        principal,
+        _document_citation_responses(database, memory.id),
+    )
 
 
 @router.get("/{memory_id}/revisions", response_model=list[MemoryResponse])
@@ -249,7 +313,13 @@ def list_memory_revisions(
         memory.timeline_entry_id,
     )
     return [
-        memory_response_for(revision, author, projection, principal)
+        memory_response_for(
+            revision,
+            author,
+            projection,
+            principal,
+            _document_citation_responses(database, revision.id),
+        )
         for revision, author, projection in rows
     ]
 
@@ -288,7 +358,14 @@ def get_memory(
     row = get_authorized_memory(database, principal, memory_id)
     if row is None:
         raise _not_found()
-    return memory_response_for(*row, principal)
+    memory, author, projection = row
+    return memory_response_for(
+        memory,
+        author,
+        projection,
+        principal,
+        _document_citation_responses(database, memory.id),
+    )
 
 
 @router.post("/{memory_id}/share", response_model=MemoryResponse)
@@ -305,7 +382,13 @@ def share_memory(
         _audit(database, principal, "MEMORY_SHARED", memory.id)
         database.commit()
         database.refresh(memory)
-    return memory_response_for(memory, author, projection, principal)
+    return memory_response_for(
+        memory,
+        author,
+        projection,
+        principal,
+        _document_citation_responses(database, memory.id),
+    )
 
 
 @router.post("/{memory_id}/unshare", response_model=MemoryResponse)
@@ -327,7 +410,13 @@ def unshare_memory(
         _audit(database, principal, "MEMORY_UNSHARED", memory.id)
         database.commit()
         database.refresh(memory)
-    return memory_response_for(memory, author, projection, principal)
+    return memory_response_for(
+        memory,
+        author,
+        projection,
+        principal,
+        _document_citation_responses(database, memory.id),
+    )
 
 
 @router.post("/{memory_id}/retry-processing", response_model=MemoryResponse)
@@ -363,7 +452,13 @@ def retry_memory_processing(
         _audit(database, principal, "MEMORY_PROCESSING_RETRIED", memory.id)
         database.commit()
         database.refresh(memory)
-    return memory_response_for(memory, author, projection, principal)
+    return memory_response_for(
+        memory,
+        author,
+        projection,
+        principal,
+        _document_citation_responses(database, memory.id),
+    )
 
 
 @router.delete("/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -418,6 +513,7 @@ def delete_memory(
         projection = database.get(MemoryEmbedding, revision.id)
         if projection is not None:
             database.delete(projection)
+        delete_memory_document_citations(database, revision.id)
         database.execute(
             update(Job)
             .where(

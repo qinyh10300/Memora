@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/agent/executions/{execution_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent Execution */
+        get: operations["get_agent_execution_agent_executions__execution_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent/executions/{execution_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Agent Execution */
+        post: operations["cancel_agent_execution_agent_executions__execution_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/assets": {
         parameters: {
             query?: never;
@@ -21,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Document Asset */
+        delete: operations["delete_document_asset_assets__asset_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/assets/{asset_id}/content": {
         parameters: {
             query?: never;
@@ -32,6 +83,57 @@ export interface paths {
         get: operations["get_asset_content_assets__asset_id__content_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{asset_id}/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document Status */
+        get: operations["get_document_status_assets__asset_id__document_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{asset_id}/document/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Document Parse */
+        post: operations["cancel_document_parse_assets__asset_id__document_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{asset_id}/document/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Document Parse Job */
+        post: operations["retry_document_parse_job_assets__asset_id__document_retry_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -186,6 +288,23 @@ export interface paths {
         put?: never;
         /** Ask Chatbot */
         post: operations["ask_chatbot_chat_questions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client-errors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report Client Error */
+        post: operations["report_client_error_client_errors_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -627,6 +746,69 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AgentEventResponse */
+        AgentEventResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Detail */
+            detail: string | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Elapsed Ms */
+            elapsed_ms: number;
+            /**
+             * Execution Status
+             * @enum {string}
+             */
+            execution_status: "RECEIVED" | "PLANNING" | "TOOL_PENDING" | "TOOL_RUNNING" | "MODEL_RUNNING" | "CANCEL_REQUESTED" | "CANCELLED" | "COMPLETED" | "DEGRADED" | "FAILED";
+            /** Item Count */
+            item_count?: number | null;
+            /** Kind */
+            kind: string;
+            /** Sequence */
+            sequence: number;
+            /** Status */
+            status: string;
+            /** Step Id */
+            step_id: string;
+            /** Title */
+            title: string;
+        };
+        /** AgentExecutionResponse */
+        AgentExecutionResponse: {
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error Code */
+            error_code: string | null;
+            /** Events */
+            events: components["schemas"]["AgentEventResponse"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Model Id */
+            model_id: string | null;
+            /** Next Event Sequence */
+            next_event_sequence: number;
+            /** Saved Memory Id */
+            saved_memory_id: string | null;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "RECEIVED" | "PLANNING" | "TOOL_PENDING" | "TOOL_RUNNING" | "MODEL_RUNNING" | "CANCEL_REQUESTED" | "CANCELLED" | "COMPLETED" | "DEGRADED" | "FAILED";
+        };
         /** AssetResponse */
         AssetResponse: {
             /**
@@ -634,6 +816,7 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            document?: components["schemas"]["DocumentStatusResponse"] | null;
             /**
              * Id
              * Format: uuid
@@ -708,6 +891,28 @@ export interface components {
             status: "ANSWERED" | "NO_EVIDENCE" | "NEEDS_CLARIFICATION";
             /** Topic */
             topic: string | null;
+        };
+        /** ClientErrorReport */
+        ClientErrorReport: {
+            /** Digest */
+            digest?: string | null;
+            /**
+             * Error Type
+             * @default Error
+             */
+            error_type: string;
+            /**
+             * Recovery Action
+             * @default none
+             * @enum {string}
+             */
+            recovery_action: "retry" | "reload" | "navigate_home" | "none";
+            /**
+             * Surface
+             * @default unknown
+             * @enum {string}
+             */
+            surface: "root" | "auth" | "workbench" | "capture" | "library" | "team" | "settings" | "unknown";
         };
         /** ContributorResponse */
         ContributorResponse: {
@@ -839,6 +1044,8 @@ export interface components {
             body: string;
             /** Conversation Id */
             conversation_id?: string | null;
+            /** Document Citations */
+            document_citations?: components["schemas"]["DocumentCitationInput"][];
             /** Supersedes Id */
             supersedes_id?: string | null;
             /**
@@ -852,6 +1059,8 @@ export interface components {
         CreateMemoryRevisionRequest: {
             /** Body */
             body: string;
+            /** Document Citations */
+            document_citations?: components["schemas"]["DocumentCitationInput"][];
             /**
              * Mode
              * @enum {string}
@@ -879,6 +1088,82 @@ export interface components {
             workspace_id: string;
             /** Workspace Name */
             workspace_name: string;
+        };
+        /** DocumentCitationInput */
+        DocumentCitationInput: {
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+        };
+        /** DocumentCitationResponse */
+        DocumentCitationResponse: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /** Asset Name */
+            asset_name: string;
+            /** Chunk Id */
+            chunk_id: string | null;
+            /** Content Url */
+            content_url: string;
+            /** Excerpt */
+            excerpt: string;
+            /** Heading */
+            heading: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Page Number */
+            page_number: number;
+        };
+        /** DocumentStatusResponse */
+        DocumentStatusResponse: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /** Can Cancel */
+            can_cancel: boolean;
+            /** Can Retry */
+            can_retry: boolean;
+            /** Chunk Count */
+            chunk_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error Code */
+            error_code: string | null;
+            /** Message */
+            message: string;
+            /** Ocr Page Count */
+            ocr_page_count: number;
+            /** Page Count */
+            page_count: number | null;
+            /** Processed Pages */
+            processed_pages: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "QUEUED" | "PARSING" | "OCR" | "COMPLETED" | "FAILED" | "CANCEL_REQUESTED" | "CANCELLED";
+            /** Text Page Count */
+            text_page_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Warning Code */
+            warning_code: string | null;
         };
         /** DraftAttachmentInput */
         DraftAttachmentInput: {
@@ -912,8 +1197,12 @@ export interface components {
             assistant_message: string;
             /** Citations */
             citations: components["schemas"]["EvidenceCitationResponse"][];
+            /** Document Citations */
+            document_citations?: components["schemas"]["DraftDocumentCitationResponse"][];
             /** Draft Changed */
             draft_changed: boolean;
+            /** Execution Id */
+            execution_id?: string | null;
             /** Markdown */
             markdown: string;
             /** Model Id */
@@ -939,6 +1228,8 @@ export interface components {
         DraftChatStreamErrorEvent: {
             /** Code */
             code: string;
+            /** Execution Id */
+            execution_id?: string | null;
             /** Message */
             message: string;
             trace: components["schemas"]["DraftTraceResponse"];
@@ -951,6 +1242,10 @@ export interface components {
         };
         /** DraftChatStreamProgressEvent */
         DraftChatStreamProgressEvent: {
+            /** Execution Id */
+            execution_id?: string | null;
+            /** Sequence */
+            sequence?: number | null;
             step: components["schemas"]["DraftTraceStepResponse"];
             /**
              * Type
@@ -961,6 +1256,8 @@ export interface components {
         };
         /** DraftChatStreamResultEvent */
         DraftChatStreamResultEvent: {
+            /** Execution Id */
+            execution_id?: string | null;
             response: components["schemas"]["DraftChatResponse"];
             /**
              * Type
@@ -982,6 +1279,29 @@ export interface components {
              * @enum {string}
              */
             role: "USER" | "ASSISTANT";
+        };
+        /** DraftDocumentCitationResponse */
+        DraftDocumentCitationResponse: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /** Asset Name */
+            asset_name: string;
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /** Content Url */
+            content_url: string;
+            /** Excerpt */
+            excerpt: string;
+            /** Heading */
+            heading: string | null;
+            /** Page Number */
+            page_number: number;
         };
         /** DraftImageInput */
         DraftImageInput: {
@@ -1047,7 +1367,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "ANALYSIS" | "ATTACHMENT" | "RETRIEVAL" | "MODEL" | "TOOL" | "OUTPUT";
+            kind: "PLAN" | "ANALYSIS" | "ATTACHMENT" | "RETRIEVAL" | "MODEL" | "TOOL" | "OUTPUT";
             /**
              * Status
              * @enum {string}
@@ -1152,6 +1472,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Document Citations */
+            document_citations?: components["schemas"]["DocumentCitationResponse"][];
             /**
              * Id
              * Format: uuid
@@ -1319,6 +1641,43 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** SearchDiagnostics */
+        SearchDiagnostics: {
+            /** Active Filters */
+            active_filters: string[];
+            /** Authorization Applied */
+            authorization_applied: boolean;
+            /** Elapsed Ms */
+            elapsed_ms: number;
+            /**
+             * Fusion
+             * @constant
+             */
+            fusion: "RRF";
+            /** Keyword Candidates */
+            keyword_candidates: number;
+            /**
+             * Reranker Status
+             * @enum {string}
+             */
+            reranker_status: "DISABLED" | "APPLIED" | "DEGRADED";
+            /** Returned Candidates */
+            returned_candidates: number;
+            /** Semantic Candidates */
+            semantic_candidates: number;
+        };
+        /** SearchMatchDetail */
+        SearchMatchDetail: {
+            /** Rank */
+            rank: number;
+            /**
+             * Retriever
+             * @enum {string}
+             */
+            retriever: "FILTER" | "EXACT" | "FULL_TEXT" | "TRIGRAM" | "SEMANTIC" | "RERANKER";
+            /** Score */
+            score: number;
+        };
         /** SearchRequest */
         SearchRequest: {
             /** Author Id */
@@ -1354,6 +1713,7 @@ export interface components {
         };
         /** SearchResponse */
         SearchResponse: {
+            diagnostics?: components["schemas"]["SearchDiagnostics"] | null;
             /** Query */
             query: string;
             /** Results */
@@ -1368,6 +1728,8 @@ export interface components {
         SearchResultResponse: {
             /** Match Reasons */
             match_reasons: ("KEYWORD" | "SEMANTIC")[];
+            /** Matches */
+            matches?: components["schemas"]["SearchMatchDetail"][];
             memory: components["schemas"]["MemoryResponse"];
             /** Score */
             score: number;
@@ -1510,6 +1872,70 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_agent_execution_agent_executions__execution_id__get: {
+        parameters: {
+            query?: {
+                after_sequence?: number;
+            };
+            header?: never;
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentExecutionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_agent_execution_agent_executions__execution_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentExecutionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     upload_asset_assets_post: {
         parameters: {
             query?: never;
@@ -1543,6 +1969,35 @@ export interface operations {
             };
         };
     };
+    delete_document_asset_assets__asset_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_asset_content_assets__asset_id__content_get: {
         parameters: {
             query?: never;
@@ -1561,6 +2016,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_status_assets__asset_id__document_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_document_parse_assets__asset_id__document_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_document_parse_job_assets__asset_id__document_retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1874,6 +2422,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_client_error_client_errors_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientErrorReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

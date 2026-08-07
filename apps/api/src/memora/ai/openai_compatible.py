@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Mapping
+from time import perf_counter
 from typing import Any, Protocol, cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+
+import structlog
 
 from memora.ai.ports import (
     AIProviderError,
@@ -23,7 +27,16 @@ from memora.ai.ports import (
     WebSearchResult,
     WebSource,
 )
+from memora.observability import (
+    ModelPricing,
+    current_trace_headers,
+    metrics,
+    parse_model_pricing,
+    record_ai_usage,
+)
 from memora.settings import Settings
+
+logger = structlog.get_logger("memora.ai.provider")
 
 
 class JSONTransport(Protocol):
@@ -77,6 +90,51 @@ class UrllibJSONTransport:
         return cast(dict[str, Any], decoded)
 
 
+def _observed_post(
+    transport: JSONTransport,
+    url: str,
+    *,
+    headers: dict[str, str],
+    payload: dict[str, object],
+    timeout: float,
+    operation: str,
+    model: str,
+) -> dict[str, Any]:
+    started_at = perf_counter()
+    outcome = "success"
+    try:
+        return transport.post(
+            url,
+            headers={**headers, **current_trace_headers()},
+            payload=payload,
+            timeout=timeout,
+        )
+    except AIProviderError as error:
+        outcome = error.code
+        raise
+    except Exception:
+        outcome = "unexpected_error"
+        raise
+    finally:
+        duration_seconds = max(0.0, perf_counter() - started_at)
+        metrics.increment(
+            "memora_ai_requests_total",
+            labels={"operation": operation, "model": model, "outcome": outcome},
+        )
+        metrics.observe(
+            "memora_ai_request_duration_seconds",
+            labels={"operation": operation, "model": model},
+            value=duration_seconds,
+        )
+        logger.info(
+            "ai.provider_request_completed",
+            operation=operation,
+            model=model,
+            outcome=outcome,
+            duration_ms=round(duration_seconds * 1000, 2),
+        )
+
+
 class OpenAICompatibleEmbeddingModel(EmbeddingModelPort):
     def __init__(
         self,
@@ -86,12 +144,14 @@ class OpenAICompatibleEmbeddingModel(EmbeddingModelPort):
         model: str,
         timeout_seconds: float,
         transport: JSONTransport | None = None,
+        pricing: Mapping[str, ModelPricing] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._model = model
         self._timeout_seconds = timeout_seconds
         self._transport = transport or UrllibJSONTransport()
+        self._pricing = dict(pricing or {})
 
     @property
     def model_id(self) -> str:
@@ -100,7 +160,8 @@ class OpenAICompatibleEmbeddingModel(EmbeddingModelPort):
     def embed(self, texts: list[str]) -> EmbeddingBatch:
         if not texts or any(not text.strip() for text in texts):
             raise ValueError("embedding inputs must be non-empty")
-        response = self._transport.post(
+        response = _observed_post(
+            self._transport,
             f"{self._base_url}/embeddings",
             headers={
                 "Authorization": f"Bearer {self._api_key}",
@@ -108,6 +169,8 @@ class OpenAICompatibleEmbeddingModel(EmbeddingModelPort):
             },
             payload={"input": texts, "model": self._model, "encoding_format": "float"},
             timeout=self._timeout_seconds,
+            operation="embedding",
+            model=self._model,
         )
         data = response.get("data")
         if not isinstance(data, list) or len(data) != len(texts):
@@ -135,11 +198,19 @@ class OpenAICompatibleEmbeddingModel(EmbeddingModelPort):
         usage = response.get("usage", {})
         input_tokens = usage.get("prompt_tokens", 0) if isinstance(usage, dict) else 0
         response_model = response.get("model")
-        return EmbeddingBatch(
+        result = EmbeddingBatch(
             vectors=vectors,
             model=response_model if isinstance(response_model, str) else self._model,
             usage=ModelUsage(input_tokens=input_tokens if isinstance(input_tokens, int) else 0),
         )
+        record_ai_usage(
+            operation="embedding",
+            model=result.model,
+            input_tokens=result.usage.input_tokens,
+            output_tokens=result.usage.output_tokens,
+            pricing=self._pricing,
+        )
+        return result
 
 
 class OpenAICompatibleChatModel(ChatModelPort):
@@ -152,6 +223,7 @@ class OpenAICompatibleChatModel(ChatModelPort):
         timeout_seconds: float,
         max_output_tokens: int,
         transport: JSONTransport | None = None,
+        pricing: Mapping[str, ModelPricing] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -159,6 +231,7 @@ class OpenAICompatibleChatModel(ChatModelPort):
         self._timeout_seconds = timeout_seconds
         self._max_output_tokens = max_output_tokens
         self._transport = transport or UrllibJSONTransport()
+        self._pricing = dict(pricing or {})
 
     @property
     def model_id(self) -> str:
@@ -192,7 +265,8 @@ class OpenAICompatibleChatModel(ChatModelPort):
 
     def complete(self, messages: list[ChatMessage]) -> ChatResult:
         provider_messages = self._provider_messages_for(messages)
-        response = self._transport.post(
+        response = _observed_post(
+            self._transport,
             f"{self._base_url}/chat/completions",
             headers={
                 "Authorization": f"Bearer {self._api_key}",
@@ -205,6 +279,8 @@ class OpenAICompatibleChatModel(ChatModelPort):
                 "stream": False,
             },
             timeout=self._timeout_seconds,
+            operation="chat",
+            model=self._model,
         )
         choices = response.get("choices")
         if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
@@ -217,7 +293,7 @@ class OpenAICompatibleChatModel(ChatModelPort):
         input_tokens = usage.get("prompt_tokens", 0) if isinstance(usage, dict) else 0
         output_tokens = usage.get("completion_tokens", 0) if isinstance(usage, dict) else 0
         response_model = response.get("model")
-        return ChatResult(
+        result = ChatResult(
             content=content.strip(),
             model=response_model if isinstance(response_model, str) else self._model,
             usage=ModelUsage(
@@ -225,6 +301,14 @@ class OpenAICompatibleChatModel(ChatModelPort):
                 output_tokens=output_tokens if isinstance(output_tokens, int) else 0,
             ),
         )
+        record_ai_usage(
+            operation="chat",
+            model=result.model,
+            input_tokens=result.usage.input_tokens,
+            output_tokens=result.usage.output_tokens,
+            pricing=self._pricing,
+        )
+        return result
 
     def complete_with_tools(
         self,
@@ -249,7 +333,8 @@ class OpenAICompatibleChatModel(ChatModelPort):
         total_usage = ModelUsage()
         response_model = self._model
         for _attempt in range(5):
-            response = self._transport.post(
+            response = _observed_post(
+                self._transport,
                 f"{self._base_url}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {self._api_key}",
@@ -264,6 +349,8 @@ class OpenAICompatibleChatModel(ChatModelPort):
                     "stream": False,
                 },
                 timeout=self._timeout_seconds,
+                operation="chat_tools",
+                model=self._model,
             )
             usage = response.get("usage", {})
             input_tokens = usage.get("prompt_tokens", 0) if isinstance(usage, dict) else 0
@@ -277,6 +364,13 @@ class OpenAICompatibleChatModel(ChatModelPort):
             raw_response_model = response.get("model")
             if isinstance(raw_response_model, str):
                 response_model = raw_response_model
+            record_ai_usage(
+                operation="chat_tools",
+                model=response_model,
+                input_tokens=input_tokens if isinstance(input_tokens, int) else 0,
+                output_tokens=output_tokens if isinstance(output_tokens, int) else 0,
+                pricing=self._pricing,
+            )
 
             choices = response.get("choices")
             if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
@@ -356,12 +450,14 @@ class OpenAICompatibleWebSearch(WebSearchPort):
         model: str,
         timeout_seconds: float,
         transport: JSONTransport | None = None,
+        pricing: Mapping[str, ModelPricing] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._model = model
         self._timeout_seconds = timeout_seconds
         self._transport = transport or UrllibJSONTransport()
+        self._pricing = dict(pricing or {})
 
     @property
     def model_id(self) -> str:
@@ -376,7 +472,8 @@ class OpenAICompatibleWebSearch(WebSearchPort):
         normalized_query = query.strip()
         if not normalized_query:
             raise ValueError("web search query must be non-empty")
-        response = self._transport.post(
+        response = _observed_post(
+            self._transport,
             f"{self._base_url}/responses",
             headers={
                 "Authorization": f"Bearer {self._api_key}",
@@ -396,6 +493,8 @@ class OpenAICompatibleWebSearch(WebSearchPort):
                 "input": normalized_query,
             },
             timeout=self._timeout_seconds,
+            operation="web_search",
+            model=self._model,
         )
         output = response.get("output")
         if not isinstance(output, list):
@@ -459,7 +558,7 @@ class OpenAICompatibleWebSearch(WebSearchPort):
         input_tokens = usage.get("input_tokens", 0) if isinstance(usage, dict) else 0
         output_tokens = usage.get("output_tokens", 0) if isinstance(usage, dict) else 0
         response_model = response.get("model")
-        return WebSearchResult(
+        result = WebSearchResult(
             content=content,
             sources=tuple(sources),
             model=response_model if isinstance(response_model, str) else self._model,
@@ -468,6 +567,14 @@ class OpenAICompatibleWebSearch(WebSearchPort):
                 output_tokens=output_tokens if isinstance(output_tokens, int) else 0,
             ),
         )
+        record_ai_usage(
+            operation="web_search",
+            model=result.model,
+            input_tokens=result.usage.input_tokens,
+            output_tokens=result.usage.output_tokens,
+            pricing=self._pricing,
+        )
+        return result
 
 
 def build_embedding_model(settings: Settings) -> EmbeddingModelPort | None:
@@ -480,10 +587,16 @@ def build_embedding_model(settings: Settings) -> EmbeddingModelPort | None:
         api_key=api_key,
         model=model,
         timeout_seconds=settings.ai_request_timeout_seconds,
+        pricing=parse_model_pricing(settings.ai_model_pricing_json),
     )
 
 
-def build_chat_model(settings: Settings, *, model: str | None = None) -> ChatModelPort | None:
+def build_chat_model(
+    settings: Settings,
+    *,
+    model: str | None = None,
+    timeout_seconds: float | None = None,
+) -> ChatModelPort | None:
     api_key = settings.ai_chat_api_key.get_secret_value()
     resolved_model = (model or settings.ai_chat_model).strip()
     if not api_key or not resolved_model:
@@ -492,8 +605,9 @@ def build_chat_model(settings: Settings, *, model: str | None = None) -> ChatMod
         base_url=settings.ai_chat_base_url,
         api_key=api_key,
         model=resolved_model,
-        timeout_seconds=settings.ai_request_timeout_seconds,
+        timeout_seconds=timeout_seconds or settings.ai_request_timeout_seconds,
         max_output_tokens=settings.ai_chat_max_output_tokens,
+        pricing=parse_model_pricing(settings.ai_model_pricing_json),
     )
 
 
@@ -507,4 +621,5 @@ def build_web_search(settings: Settings, *, model: str | None = None) -> WebSear
         api_key=api_key,
         model=resolved_model,
         timeout_seconds=settings.ai_web_search_timeout_seconds,
+        pricing=parse_model_pricing(settings.ai_model_pricing_json),
     )

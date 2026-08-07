@@ -1,6 +1,7 @@
 import base64
 from collections.abc import Iterator
 from typing import cast
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -14,6 +15,7 @@ from memora.database import Base
 from memora.identity.dependencies import SESSION_COOKIE_NAME
 from memora.identity.models import User, UserSession
 from memora.identity.rate_limit import LoginRateLimiter
+from memora.identity.seed import main as seed_main
 from memora.identity.seed import seed_database, seed_users_from_settings, validate_seed_users
 from memora.main import create_app
 from memora.settings import Settings
@@ -46,6 +48,23 @@ def test_seed_creates_four_argon2_users_idempotently(
 
     assert len(users) == 4
     assert all(user.password_hash.startswith("$argon2id$") for user in users)
+
+
+def test_seed_cli_is_a_noop_without_explicit_opt_in() -> None:
+    settings = Settings(
+        app_env="development",
+        database_url="postgresql+psycopg://must-not-connect",
+        session_secret="seed-cli-test-secret",
+        seed_development_data_enabled=False,
+    )
+
+    with (
+        patch("memora.identity.seed.get_settings", return_value=settings),
+        patch("memora.identity.seed.build_engine") as build_engine,
+    ):
+        assert seed_main() == 0
+
+    build_engine.assert_not_called()
 
 
 def test_login_cookie_me_members_and_logout(

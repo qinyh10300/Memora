@@ -1,0 +1,8 @@
+{
+  "min_recall_at_k": 0.99,
+  "min_mrr": 0.99,
+  "min_ndcg_at_k": 0.99,
+  "min_citation_precision": 1.0,
+  "min_no_evidence_accuracy": 1.0,
+  "max_unauthorized_candidate_count": 0
+}
