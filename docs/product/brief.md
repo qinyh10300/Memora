@@ -219,6 +219,73 @@ conversation 历史继续存在，但只作为恢复工作上下文的辅助入�
 
 完整交互和验收以 `docs/product/minimum-viable-product-requirements.md` 为准。
 
+## Approved knowledge workspace and subscription extension
+
+本节由 2026-08-07 的产品要求批准，是当前界面的增量范围。它覆盖前文“多 conversation 及
+聊天历史导航暂时隐藏”、知识图谱和商业计费不进入当前版本的旧决定，但不改变默认私有、
+workspace 隔离、显式共享和事实引用规则。
+
+### Subscription and credits
+
+- 每个注册用户拥有 Plus、Pro 或 Ultra 订阅和独立 credits 余额。Plus 默认每周期 2,000，
+  Pro 10,000，Ultra 50,000 credits；套餐数字属于产品配置，不构成支付供应商账单。
+- 用户可以在账号区查看当前套餐、周期余额、已用额度和非正文账本，并执行内部套餐升级。
+  在接入明确的支付供应商前，产品不得展示银行卡扣款、自动续费或退款已经完成。
+- 成功调用聊天模型的草稿对话消耗 10 credits；禁用模型、调用失败或本地降级不扣费。
+  credits 只控制付费计算资源，不改变用户能看到哪些 workspace、记忆、文档或图。
+
+### Knowledge diagrams
+
+- 一级导航增加“知识框图”。用户可以从当前有权访问的记忆中选择节点，创建思维导图或
+  流程图，拖动节点、建立显式连线、保存并重新打开。
+- 图绑定当前 workspace 和创建者。私有图只有创建者可见；共享图对当前空间成员可见，
+  但只能引用仍为 `WORKSPACE` 的同空间记忆。共享图不得以节点标签、缓存正文或失效快照
+  暴露私有或已撤回的记忆。
+- 图用于表达用户确认的关系，不自动把语义相似当成事实关系，也不引入第二个图数据库。
+
+### Research, knowledge base, and history
+
+- 一级导航增加“深度调研”和“云知识库”。深度调研复用受控 Agent、联网来源、授权记忆和
+  文档页码引用；AI 仍只能修改未保存草稿，不能代替用户确认正式记忆。
+- 云知识库聚合当前授权的记忆与这些记忆引用的受保护文档来源。它不是通用网盘，不提供
+  无鉴权静态 URL，也不显示未被当前用户授权访问的团队文件。
+- 侧栏恢复当前用户在当前 workspace 的 conversation 历史，支持新建、恢复和归档。
+  conversation 继续仅属于创建者，不因为在团队空间中使用而自动共享。
+
+### Personal, team, and family spaces
+
+- workspace 增加 `FAMILY` 类型。家庭空间复用团队号、加入申请、所有者审核、按邮箱添加
+  已注册成员、移除普通成员和选择性共享规则。
+- 团队和家庭的名称只表达使用场景，不形成不同的隐私模型；成员仍只能读取本人私有记忆和
+  当前空间中其他成员主动共享的记忆。
+
+## Approved AI Native visuals and team intelligence extension
+
+本扩展于 2026-08-07 批准，详细需求以
+`docs/product/ai-native-workspace-requirements.md` 为准，并继续服从默认私有、来源授权、不可变
+记忆和证据优先原则。
+
+- “科研绘图”从授权记忆或提示词生成可编辑的思维导图、流程图、时间线，以及由外部图片模型
+  生成的科研视觉。文字密集型结构图使用受校验的结构数据，不依赖图片模型绘制文字。
+- 首批生图产品选项为 GPT Image 2、Nano Banana、Nano Banana 2、Nano Banana Pro；支持图片
+  比例、1–4 张、科研风格增强、水印处理和输出语言。展示名称不代表供应商一定可用，真实模型
+  ID、套餐门槛和能力由服务端配置。
+- 聊天注册表支持 Claude 4.5 Haiku、GPT 5.6 Luna、Gemini 3 Flash、GPT 5.6 Terra、Claude 5
+  Sonnet、Gemini 3.1 Pro、GPT 5.6 Sol、Claude 5 Opus，并由服务端统一返回可用性与套餐门槛。
+- 报告可以持久保存并回溯授权来源；成员报告只能读取该成员主动共享到当前空间的记忆，默认
+  仅报告创建者可见。
+- 所有成员可以创建对齐议题，但每位成员只能确认、修正或撤回自己的观点。AI 只提出候选差异，
+  第一版由 workspace OWNER 发布最终决定，并保留未确认状态与保留意见。
+- 长任务在入队时预留 credits，成功后结算，失败、取消或超时后释放；credits 永远不改变访问
+  权限。
+
+### Navigation and account surface
+
+- 展开侧栏按新对话、知识框图、云知识库、深度调研、空间、历史对话和账户套餐分组；收起
+  后保留可识别图标、tooltip、当前状态和展开按钮。
+- 没有自定义头像的用户显示统一的 Memora 默认头像；上传头像后在桌面侧栏、移动端和设置
+  中同步替换。
+
 ## Representative interactions
 
 1. 把我刚才的想法整理成一篇 Markdown，但不要改变原意。

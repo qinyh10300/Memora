@@ -135,7 +135,7 @@ v0.2 在同一模块化单体内增加工作区切换、持久化 conversation �
 
 ## Technology baseline
 
-- **Web**：Next.js App Router、React、TypeScript。
+- **Web**：Next.js App Router、React、TypeScript；React Flow 只负责知识框图的画布交互。
 - **API and worker**：Python、FastAPI、Pydantic、SQLAlchemy、Alembic。
 - **Database**：PostgreSQL，使用 pgvector 保存 embedding，并结合 PostgreSQL 关键词检索。
 - **API contract**：FastAPI 生成 OpenAPI，前端使用生成的 TypeScript client。
@@ -160,8 +160,10 @@ apps/api/
     ├── reports/        # 个人/同事/团队报告编排
     ├── documents/      # PDF 解析、OCR、页级分块、引用与异步任务
     ├── agent/          # 公开计划、工具注册、执行状态与事件
+    ├── billing/        # 用户套餐、credits 账本、额度检查和幂等升级
+    ├── diagrams/       # workspace 图、节点/边验证和记忆引用授权
     ├── ai/             # ChatModelPort、EmbeddingModelPort 与 adapters
-    ├── api/drafts.py   # 无持久化的 Markdown 草稿修改编排
+    ├── api/drafts.py   # Markdown 草稿、Agent、credits 与 conversation 编排
     ├── jobs/           # transactional outbox、重试和状态
     └── shared/         # 少量跨模块基础设施；禁止成为杂物目录
 ```
@@ -173,7 +175,7 @@ apps/api/
 | Entity                  | Purpose                              | Important fields                                                                                                             |
 | ----------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
 | `users`                 | 测试账号和身份                       | id, email, password_hash, display_name, avatar_asset_id, status                                                              |
-| `workspaces`            | 个人或团队隔离边界                   | id, name, kind, join_code                                                                                                    |
+| `workspaces`            | 个人、团队或家庭隔离边界             | id, name, kind, join_code                                                                                                    |
 | `workspace_memberships` | 用户与工作区关系                     | workspace_id, user_id, role, created_at                                                                                      |
 | `workspace_join_requests` | 不构成权限的团队加入申请           | workspace_id, user_id, status, requested_at, reviewed_at, reviewed_by_user_id                                               |
 | `memories`              | 不可原地改写的想法与修订             | id, author_id, workspace_id, title, body, visibility, supersedes_id, timeline_entry_id, timeline_visible, revision_kind, created_at |
@@ -188,10 +190,17 @@ apps/api/
 | `memory_document_citations` | 记忆到文档页的可审计引用快照      | memory_id, asset_id, chunk_id, page_number, heading, excerpt, ordinal                                                       |
 | `agent_executions`      | 可取消和恢复的公开 Agent 执行         | id, workspace_id, actor_id, status, model_id, saved_memory_id, next_event_sequence, error_code, created_at, started_at, completed_at |
 | `agent_events`          | 有序且不含隐藏推理的执行事件          | execution_id, sequence, step_id, kind, status, execution_status, title, detail, elapsed_ms, duration_ms, item_count, created_at |
+| `subscriptions`        | 用户当前套餐、周期和 credits 余额     | user_id, plan_code, status, period_started_at, period_ends_at, credits_granted, credits_used, version                         |
+| `credit_ledger_entries` | 不含正文的 credits 变更账本          | id, user_id, delta, balance_after, reason, idempotency_key, reference_type, reference_id, created_at                          |
+| `diagrams`             | workspace 内私有或共享知识框图        | id, workspace_id, owner_id, title, kind, visibility, nodes, edges, created_at, updated_at                                    |
 | `jobs`                  | embedding 等异步任务                 | type, payload_ref, status, attempts, next_run_at                                                                             |
 | `audit_events`          | 权限事件及不含正文的 AI 用量元数据   | actor_id, action, resource_id, model, input_tokens, output_tokens, created_at                                                |
 
 `memories.visibility` v0.1 只有 `PRIVATE` 和 `WORKSPACE`。未来如果引入群组或点对点分享，必须通过新的 ADR 扩展，不能复用含义模糊的布尔字段。
+
+`subscriptions` 和 credits 只控制需要付费的模型计算，不参与任何授权查询。`diagrams` 的共享
+读取必须同时验证 workspace membership 和节点 memory 的当前授权；节点 JSON 不是正文缓存，
+撤回共享或删除 memory 后不得继续返回原始标签。`FAMILY` 与 `TEAM` 共用协作空间权限模型。
 
 ## Memory lifecycle
 
