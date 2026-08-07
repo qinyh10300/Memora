@@ -3,11 +3,17 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOST = "0.0.0.0"
 PORT = 18081
+ONE_PIXEL_PNG = base64.b64encode(
+    base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2dEsAAAAASUVORK5CYII="
+    )
+).decode()
 
 
 def _chat_context(messages: list[object]) -> tuple[str, str, list[str]]:
@@ -42,11 +48,15 @@ def _chat_context(messages: list[object]) -> tuple[str, str, list[str]]:
         attachments = decoded.get("ATTACHMENT_CONTEXT_JSON")
         if isinstance(attachments, list):
             for attachment in attachments:
-                chunks = attachment.get("chunks") if isinstance(attachment, dict) else None
+                chunks = (
+                    attachment.get("chunks") if isinstance(attachment, dict) else None
+                )
                 if not isinstance(chunks, list):
                     continue
                 for chunk in chunks:
-                    chunk_id = chunk.get("chunk_id") if isinstance(chunk, dict) else None
+                    chunk_id = (
+                        chunk.get("chunk_id") if isinstance(chunk, dict) else None
+                    )
                     if isinstance(chunk_id, str):
                         chunk_ids.append(chunk_id)
     return latest_message, current_markdown, chunk_ids[:24]
@@ -58,7 +68,9 @@ def _draft_result(markdown: str, chunk_ids: list[str], *, saved: bool) -> str:
     )
     return json.dumps(
         {
-            "assistant_message": "已整理并保存到个人记忆。" if saved else "已整理到右侧草稿。",
+            "assistant_message": "已整理并保存到个人记忆。"
+            if saved
+            else "已整理到右侧草稿。",
             "markdown": body,
             "draft_changed": True,
             "used_memory_ids": [],
@@ -91,7 +103,9 @@ class ProviderHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         try:
-            content_length = min(int(self.headers.get("Content-Length", "0")), 20 * 1024 * 1024)
+            content_length = min(
+                int(self.headers.get("Content-Length", "0")), 20 * 1024 * 1024
+            )
             decoded = json.loads(self.rfile.read(content_length))
         except (ValueError, json.JSONDecodeError):
             self._json_response(400, {"error": "invalid_json"})
@@ -111,7 +125,31 @@ class ProviderHandler(BaseHTTPRequestHandler):
                         for index in range(input_count)
                     ],
                     "model": decoded.get("model", "e2e-embedding"),
-                    "usage": {"prompt_tokens": input_count * 4, "total_tokens": input_count * 4},
+                    "usage": {
+                        "prompt_tokens": input_count * 4,
+                        "total_tokens": input_count * 4,
+                    },
+                },
+            )
+            return
+
+        if self.path.endswith("/images/generations"):
+            count = decoded.get("n", 1)
+            if not isinstance(count, int) or not 1 <= count <= 4:
+                self._json_response(400, {"error": "invalid_image_count"})
+                return
+            self._json_response(
+                200,
+                {
+                    "data": [
+                        {
+                            "b64_json": ONE_PIXEL_PNG,
+                            "revised_prompt": "Deterministic scientific E2E image",
+                        }
+                        for _ in range(count)
+                    ],
+                    "model": decoded.get("model", "e2e-image"),
+                    "usage": {"input_tokens": 12, "output_tokens": count},
                 },
             )
             return
@@ -161,6 +199,77 @@ class ProviderHandler(BaseHTTPRequestHandler):
 
         messages = decoded.get("messages")
         normalized_messages = messages if isinstance(messages, list) else []
+        graph_request = any(
+            isinstance(message, dict)
+            and isinstance(message.get("content"), str)
+            and "editable evidence-grounded graph" in message["content"]
+            for message in normalized_messages
+        )
+        if graph_request:
+            user_message = next(
+                (
+                    message["content"]
+                    for message in reversed(normalized_messages)
+                    if isinstance(message, dict)
+                    and message.get("role") == "user"
+                    and isinstance(message.get("content"), str)
+                ),
+                "{}",
+            )
+            try:
+                graph_context = json.loads(user_message)
+            except json.JSONDecodeError:
+                graph_context = {}
+            allowed_ids = graph_context.get("allowed_memory_ids", [])
+            memory_ids = [item for item in allowed_ids if isinstance(item, str)]
+            nodes = [
+                {
+                    "id": f"source-{index}",
+                    "kind": "MEMORY",
+                    "memory_id": memory_id,
+                    "position": {"x": index * 260, "y": 0},
+                }
+                for index, memory_id in enumerate(memory_ids, start=1)
+            ]
+            nodes.append(
+                {
+                    "id": "summary",
+                    "kind": "NOTE",
+                    "text": "E2E evidence summary",
+                    "position": {"x": 260, "y": 180},
+                }
+            )
+            edges = [
+                {
+                    "id": f"edge-{index}",
+                    "source": node["id"],
+                    "target": "summary",
+                    "label": "supports",
+                }
+                for index, node in enumerate(nodes[:-1], start=1)
+            ]
+            self._json_response(
+                200,
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "content": json.dumps(
+                                    {
+                                        "title": "E2E evidence graph",
+                                        "nodes": nodes,
+                                        "edges": edges,
+                                    }
+                                ),
+                            }
+                        }
+                    ],
+                    "model": decoded.get("model", "e2e-chat"),
+                    "usage": {"prompt_tokens": 24, "completion_tokens": 18},
+                },
+            )
+            return
         latest_message, current_markdown, chunk_ids = _chat_context(normalized_messages)
         has_tool_result = any(
             isinstance(message, dict) and message.get("role") == "tool"
@@ -169,7 +278,13 @@ class ProviderHandler(BaseHTTPRequestHandler):
         tools = decoded.get("tools")
         explicit_save = any(
             marker in latest_message.casefold()
-            for marker in ("帮我保存", "保存这个", "保存这条", "save this", "remember this")
+            for marker in (
+                "帮我保存",
+                "保存这个",
+                "保存这条",
+                "save this",
+                "remember this",
+            )
         )
         markdown = current_markdown.strip() or (
             "# Browser E2E PDF 记忆\n\n"
@@ -218,7 +333,9 @@ class ProviderHandler(BaseHTTPRequestHandler):
                     {
                         "message": {
                             "role": "assistant",
-                            "content": _draft_result(markdown, chunk_ids, saved=has_tool_result),
+                            "content": _draft_result(
+                                markdown, chunk_ids, saved=has_tool_result
+                            ),
                         }
                     }
                 ],

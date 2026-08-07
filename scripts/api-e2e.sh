@@ -24,6 +24,9 @@ export AI_EMBEDDING_BASE_URL=http://fake-ai:18081/v1
 export AI_EMBEDDING_API_KEY=api-e2e-key
 export AI_EMBEDDING_MODEL=e2e-embedding
 export AI_WEB_SEARCH_MODEL=e2e-search
+export AI_IMAGE_BASE_URL=http://fake-ai:18081/v1
+export AI_IMAGE_API_KEY=api-e2e-key
+export AI_IMAGE_MODEL_REGISTRY_JSON='[{"id":"gpt-image-2","label":"GPT Image 2 E2E","provider_model":"e2e-image","provider_family":"gpt","min_plan":"PLUS","configured":true}]'
 export METRICS_ENABLED=false
 export DOCKER_NO_PROXY=localhost,127.0.0.1,db,api,web,worker,proxy,fake-ai
 

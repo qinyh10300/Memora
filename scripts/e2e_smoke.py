@@ -56,10 +56,35 @@ def expect_status(
     except HTTPError as error:
         if error.code == expected:
             return None
-        raise AssertionError(f"{method} {url} 返回 {error.code}，期望 {expected}") from error
+        raise AssertionError(
+            f"{method} {url} 返回 {error.code}，期望 {expected}"
+        ) from error
     if status != expected:
         raise AssertionError(f"{method} {url} 返回 {status}，期望 {expected}")
     return body
+
+
+def wait_for_visual(
+    client: OpenerDirector,
+    public_url: str,
+    project_id: str,
+    expected_status: str,
+) -> dict[str, Any]:
+    for _ in range(60):
+        project = expect_status(
+            client,
+            "GET",
+            f"{public_url}/api/visuals/{project_id}",
+            200,
+        )
+        if project["status"] == expected_status:
+            return project
+        if project["status"] in {"FAILED", "CANCELLED"}:
+            raise AssertionError(
+                f"visual {project_id} 进入非预期状态 {project['status']}"
+            )
+        time.sleep(0.5)
+    raise AssertionError(f"visual {project_id} 没有进入 {expected_status}")
 
 
 def main() -> int:
@@ -108,7 +133,11 @@ def main() -> int:
             200,
         )
         alex_personal = next(
-            (workspace for workspace in alex_workspaces if workspace["kind"] == "PERSONAL"),
+            (
+                workspace
+                for workspace in alex_workspaces
+                if workspace["kind"] == "PERSONAL"
+            ),
             None,
         )
         alex_team = next(
@@ -120,7 +149,13 @@ def main() -> int:
         if not alex_team["is_current"]:
             raise AssertionError("新登录会话没有进入已有团队空间")
         if (
-            len([workspace for workspace in blair_workspaces if workspace["kind"] == "PERSONAL"])
+            len(
+                [
+                    workspace
+                    for workspace in blair_workspaces
+                    if workspace["kind"] == "PERSONAL"
+                ]
+            )
             != 1
         ):
             raise AssertionError("Blair 没有且仅有一个个人空间")
@@ -326,7 +361,9 @@ def main() -> int:
             200,
         )
         visible_personal_ids = {
-            item["id"] for item in after_new_version if personal_current_marker in item["body"]
+            item["id"]
+            for item in after_new_version
+            if personal_current_marker in item["body"]
         }
         if visible_personal_ids != {personal_updated_id, personal_new_version_id}:
             raise AssertionError("保存为新版本后没有保留两个独立时间点")
@@ -388,7 +425,9 @@ def main() -> int:
         expect_status(blair, "GET", f"{public_url}/api/memories/{created_id}", 404)
         search_url = f"{public_url}/api/search"
         private_search = expect_status(blair, "POST", search_url, 200, {"q": marker})
-        if any(result["memory"]["id"] == created_id for result in private_search["results"]):
+        if any(
+            result["memory"]["id"] == created_id for result in private_search["results"]
+        ):
             raise AssertionError("关键词检索泄露了其他用户的私有记录")
         if private_search["semantic_status"] not in {
             "AVAILABLE",
@@ -444,7 +483,9 @@ def main() -> int:
         if marker not in visible_to_blair["body"]:
             raise AssertionError("共享记录正文与创建内容不一致")
         shared_search = expect_status(blair, "POST", search_url, 200, {"q": marker})
-        if created_id not in {result["memory"]["id"] for result in shared_search["results"]}:
+        if created_id not in {
+            result["memory"]["id"] for result in shared_search["results"]
+        }:
             raise AssertionError("关键词检索没有返回已授权的共享记录")
         shared_chat = expect_status(
             blair,
@@ -485,6 +526,212 @@ def main() -> int:
         ]:
             raise AssertionError("报告没有返回固定的五类证据结构")
 
+        report_history = expect_status(
+            blair,
+            "GET",
+            f"{public_url}/api/reports",
+            200,
+        )
+        if shared_report["report_id"] not in {
+            report["report_id"] for report in report_history
+        }:
+            raise AssertionError("团队报告刷新后没有保留在历史中")
+        report_subscription = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/report-subscriptions",
+            201,
+            {
+                "preset": "MISSED",
+                "scope": "WORKSPACE",
+                "topic": marker,
+                "visibility": "PRIVATE",
+                "cadence": "WEEKLY",
+            },
+        )
+        paused_subscription = expect_status(
+            alex,
+            "PATCH",
+            f"{public_url}/api/report-subscriptions/{report_subscription['id']}",
+            200,
+            {"status": "PAUSED"},
+        )
+        if paused_subscription["status"] != "PAUSED":
+            raise AssertionError("定期报告没有成功暂停")
+
+        structured_project = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/visuals",
+            201,
+            {
+                "title": "E2E 证据思维导图",
+                "mode": "STRUCTURED",
+                "kind": "MIND_MAP",
+                "visibility": "WORKSPACE",
+            },
+        )
+        structured_project_id = str(structured_project["id"])
+        expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/visuals/{structured_project_id}/generate",
+            200,
+            {
+                "prompt": f"根据 {marker} 生成一张证据思维导图",
+                "model_id": "gpt",
+                "memory_ids": [created_id],
+            },
+        )
+        structured_result = wait_for_visual(
+            alex,
+            public_url,
+            structured_project_id,
+            "WAITING_CONFIRMATION",
+        )
+        structured_version = structured_result["versions"][0]
+        confirmed_visual = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/visuals/{structured_project_id}/confirm-structure",
+            200,
+            {"version_id": structured_version["id"]},
+        )
+        if confirmed_visual["versions"][0]["diagram_id"] is None:
+            raise AssertionError("结构图确认后没有创建可编辑 diagram")
+
+        image_project = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/visuals",
+            201,
+            {
+                "title": "E2E 科研图片",
+                "mode": "IMAGE",
+                "kind": "SCIENTIFIC",
+                "visibility": "PRIVATE",
+            },
+        )
+        image_project_id = str(image_project["id"])
+        expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/visuals/{image_project_id}/generate",
+            200,
+            {
+                "prompt": "生成一张 E2E 科研插画",
+                "model_id": "gpt-image-2",
+                "memory_ids": [],
+                "aspect_ratio": "16:9",
+                "count": 1,
+                "scientific_style": True,
+                "watermark_mode": "CLEAN_OUTPUT",
+                "output_language": "中文",
+            },
+        )
+        image_result = wait_for_visual(
+            alex,
+            public_url,
+            image_project_id,
+            "COMPLETED",
+        )
+        if not image_result["versions"][0]["asset_url"]:
+            raise AssertionError("科研图片任务完成后没有受保护 asset")
+
+        alignment_marker = uuid.uuid4().hex
+        alignment_memory = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/memories",
+            201,
+            {"body": f"对齐证据：优先保留可追溯来源 {alignment_marker}"},
+        )
+        expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/memories/{alignment_memory['id']}/share",
+            200,
+        )
+        alignment = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/alignments",
+            201,
+            {
+                "title": alignment_marker,
+                "context": "验证候选观点、本人确认与正式决策",
+                "participant_ids": [],
+                **report_range,
+            },
+        )
+        alex_position = next(
+            position
+            for position in alignment["positions"]
+            if position["is_current_user"]
+        )
+        expect_status(
+            blair,
+            "POST",
+            f"{public_url}/api/alignments/{alignment['id']}/positions/{alex_position['id']}/confirm",
+            403,
+            {"action": "CONFIRM"},
+        )
+        confirmed_position = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/alignments/{alignment['id']}/positions/{alex_position['id']}/confirm",
+            200,
+            {"action": "CONFIRM"},
+        )
+        if confirmed_position["status"] != "CONFIRMED":
+            raise AssertionError("成员没有成功确认自己的观点")
+        expect_status(
+            blair,
+            "POST",
+            f"{public_url}/api/alignments/{alignment['id']}/decisions",
+            403,
+            {"decision": "越权决定", "rationale": "不应成功"},
+        )
+        decision = expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/alignments/{alignment['id']}/decisions",
+            201,
+            {
+                "decision": "保留证据并进入下一轮验证",
+                "rationale": "只有 OWNER 可以发布，且必须保留成员观点快照。",
+                "alternatives": ["继续收集证据"],
+                "review_at": (now + timedelta(days=7)).isoformat(),
+            },
+        )
+        decision_memory = expect_status(
+            blair,
+            "GET",
+            f"{public_url}/api/memories/{decision['memory_id']}",
+            200,
+        )
+        if decision_memory["visibility"] != "WORKSPACE":
+            raise AssertionError("最终决策没有保存为团队记忆")
+        expect_status(
+            alex,
+            "POST",
+            f"{public_url}/api/memories/{alignment_memory['id']}/unshare",
+            200,
+        )
+        refreshed_alignment = expect_status(
+            blair,
+            "GET",
+            f"{public_url}/api/alignments/{alignment['id']}",
+            200,
+        )
+        refreshed_alex_position = next(
+            position
+            for position in refreshed_alignment["positions"]
+            if position["user_id"] == created["author"]["id"]
+        )
+        if refreshed_alex_position["status"] != "NO_RECORDED_POSITION":
+            raise AssertionError("来源撤权后对齐候选观点仍然可见")
+
         expect_status(
             alex,
             "POST",
@@ -493,7 +740,10 @@ def main() -> int:
         )
         expect_status(blair, "GET", f"{public_url}/api/memories/{created_id}", 404)
         unshared_search = expect_status(blair, "POST", search_url, 200, {"q": marker})
-        if any(result["memory"]["id"] == created_id for result in unshared_search["results"]):
+        if any(
+            result["memory"]["id"] == created_id
+            for result in unshared_search["results"]
+        ):
             raise AssertionError("取消共享后关键词检索仍返回记录")
         unshared_chat = expect_status(
             blair,
@@ -525,7 +775,18 @@ def main() -> int:
         )
         if unshared_report["status"] != "NO_EVIDENCE" or unshared_report["citations"]:
             raise AssertionError("取消共享后团队报告仍然返回记录")
-
+        expect_status(
+            blair,
+            "GET",
+            f"{public_url}/api/reports/{shared_report['report_id']}",
+            404,
+        )
+        expect_status(
+            blair,
+            "GET",
+            f"{public_url}/api/visuals/{structured_project_id}",
+            404,
+        )
         for _ in range(20):
             processing = expect_status(
                 alex,
@@ -578,7 +839,9 @@ def main() -> int:
                 )
         if created_id is not None:
             with suppress(AssertionError, HTTPError):
-                expect_status(alex, "DELETE", f"{public_url}/api/memories/{created_id}", 204)
+                expect_status(
+                    alex, "DELETE", f"{public_url}/api/memories/{created_id}", 204
+                )
         if alex_conversation_id is not None:
             with suppress(AssertionError, HTTPError):
                 expect_status(
@@ -598,7 +861,7 @@ def main() -> int:
                     {"archived": True},
                 )
 
-    print(f"Memora 个人 Markdown、修订与既有权限关键路径通过：{public_url}")
+    print(f"Memora 记忆、报告、对齐与科研绘图关键路径通过：{public_url}")
     return 0
 
 
