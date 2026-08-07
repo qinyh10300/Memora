@@ -38,6 +38,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/alignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Alignments */
+        get: operations["list_alignments_alignments_get"];
+        put?: never;
+        /** Create Alignment */
+        post: operations["create_alignment_alignments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alignments/{topic_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Alignment */
+        get: operations["get_alignment_alignments__topic_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alignments/{topic_id}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Decision */
+        post: operations["create_decision_alignments__topic_id__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alignments/{topic_id}/positions/{position_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Alignment Position */
+        post: operations["update_alignment_position_alignments__topic_id__positions__position_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/assets": {
         parameters: {
             query?: never;
@@ -277,6 +346,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/billing/credits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Credit Ledger */
+        get: operations["list_credit_ledger_billing_credits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Plans */
+        get: operations["list_plans_billing_plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing/subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Subscription */
+        get: operations["get_subscription_billing_subscription_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing/subscription/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upgrade Current Subscription */
+        post: operations["upgrade_current_subscription_billing_subscription_upgrade_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chat/questions": {
         parameters: {
             query?: never;
@@ -345,6 +482,43 @@ export interface paths {
         head?: never;
         /** Update Conversation */
         patch: operations["update_conversation_conversations__conversation_id__patch"];
+        trace?: never;
+    };
+    "/diagrams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Diagrams */
+        get: operations["list_diagrams_diagrams_get"];
+        put?: never;
+        /** Create Diagram */
+        post: operations["create_diagram_diagrams_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/diagrams/{diagram_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Diagram */
+        get: operations["get_diagram_diagrams__diagram_id__get"];
+        /** Update Diagram */
+        put: operations["update_diagram_diagrams__diagram_id__put"];
+        post?: never;
+        /** Delete Diagram */
+        delete: operations["delete_diagram_diagrams__diagram_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/drafts/chat": {
@@ -554,7 +728,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/reports": {
+    "/report-subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Report Subscriptions */
+        get: operations["list_report_subscriptions_report_subscriptions_get"];
+        put?: never;
+        /** Create Subscription */
+        post: operations["create_subscription_report_subscriptions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/report-subscriptions/{subscription_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -563,8 +755,77 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Subscription */
+        patch: operations["patch_subscription_report_subscriptions__subscription_id__patch"];
+        trace?: never;
+    };
+    "/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reports */
+        get: operations["list_reports_reports_get"];
+        put?: never;
         /** Generate Report */
         post: operations["generate_report_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports/{report_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Report */
+        get: operations["get_report_reports__report_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports/{report_id}/create-visual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Visual From Report */
+        post: operations["create_visual_from_report_reports__report_id__create_visual_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports/{report_id}/save-memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save Report As Memory */
+        post: operations["save_report_as_memory_reports__report_id__save_memory_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -582,6 +843,177 @@ export interface paths {
         put?: never;
         /** Search Memories */
         post: operations["search_memories_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/visual-jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Visual Job */
+        get: operations["get_visual_job_visual_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/visual-jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Visual Generation */
+        post: operations["cancel_visual_generation_visual_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/visuals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Visual Projects */
+        get: operations["list_visual_projects_visuals_get"];
+        put?: never;
+        /** Create Visual */
+        post: operations["create_visual_visuals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/visuals/costs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Visual Costs */
+        get: operations["get_visual_costs_visuals_costs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/visuals/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Image Models */
+        get: operations["list_image_models_visuals_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/visuals/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Visual Templates */
+        get: operations["list_visual_templates_visuals_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/visuals/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Visual */
+        get: operations["get_visual_visuals__project_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/visuals/{project_id}/confirm-structure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Structure */
+        post: operations["confirm_structure_visuals__project_id__confirm_structure_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/visuals/{project_id}/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Visual */
+        post: operations["generate_visual_visuals__project_id__generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/visuals/{project_id}/versions/{version_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Visual Version Content */
+        get: operations["get_visual_version_content_visuals__project_id__versions__version_id__content_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -809,6 +1241,89 @@ export interface components {
              */
             status: "RECEIVED" | "PLANNING" | "TOOL_PENDING" | "TOOL_RUNNING" | "MODEL_RUNNING" | "CANCEL_REQUESTED" | "CANCELLED" | "COMPLETED" | "DEGRADED" | "FAILED";
         };
+        /** AlignmentPositionResponse */
+        AlignmentPositionResponse: {
+            /** Citations */
+            citations: components["schemas"]["EvidenceCitationResponse"][];
+            /** Confirmed At */
+            confirmed_at: string | null;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Current User */
+            is_current_user: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "CANDIDATE" | "CONFIRMED" | "REVISED" | "WITHDRAWN" | "NO_RECORDED_POSITION";
+            /** Text */
+            text: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** AlignmentTopicResponse */
+        AlignmentTopicResponse: {
+            /** Can Publish Decision */
+            can_publish_decision: boolean;
+            /** Context */
+            context: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decisions */
+            decisions: components["schemas"]["DecisionRecordResponse"][];
+            /**
+             * Evidence From
+             * Format: date-time
+             */
+            evidence_from: string;
+            /**
+             * Evidence To
+             * Format: date-time
+             */
+            evidence_to: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Owner */
+            is_owner: boolean;
+            /** Positions */
+            positions: components["schemas"]["AlignmentPositionResponse"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "OPEN" | "DECIDED" | "ARCHIVED";
+            /**
+             * Summary Status
+             * @enum {string}
+             */
+            summary_status: "CONSENSUS" | "DIFFERENCES" | "INSUFFICIENT_EVIDENCE";
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** AssetResponse */
         AssetResponse: {
             /**
@@ -914,6 +1429,14 @@ export interface components {
              */
             surface: "root" | "auth" | "workbench" | "capture" | "library" | "team" | "settings" | "unknown";
         };
+        /** ConfirmVisualStructureRequest */
+        ConfirmVisualStructureRequest: {
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+        };
         /** ContributorResponse */
         ContributorResponse: {
             /**
@@ -1018,6 +1541,22 @@ export interface components {
              */
             updated_at: string;
         };
+        /** CreateAlignmentRequest */
+        CreateAlignmentRequest: {
+            /**
+             * Context
+             * @default
+             */
+            context: string;
+            /** Created From */
+            created_from?: string | null;
+            /** Created To */
+            created_to?: string | null;
+            /** Participant Ids */
+            participant_ids?: string[];
+            /** Title */
+            title: string;
+        };
         /** CreateAssetRequest */
         CreateAssetRequest: {
             /** Data */
@@ -1067,10 +1606,117 @@ export interface components {
              */
             mode: "UPDATE_CURRENT" | "NEW_VERSION";
         };
+        /** CreateReportSubscriptionRequest */
+        CreateReportSubscriptionRequest: {
+            /**
+             * Cadence
+             * @default WEEKLY
+             * @enum {string}
+             */
+            cadence: "DAILY" | "WEEKLY" | "MONTHLY";
+            /** Next Run At */
+            next_run_at?: string | null;
+            /**
+             * Preset
+             * @enum {string}
+             */
+            preset: "MISSED" | "MEETING" | "ONBOARDING" | "HANDOVER" | "KNOWLEDGE_GAPS";
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "PERSONAL" | "MEMBER" | "WORKSPACE" | "PROJECT";
+            /** Subject Author Id */
+            subject_author_id?: string | null;
+            /** Topic */
+            topic?: string | null;
+            /**
+             * Visibility
+             * @default PRIVATE
+             * @enum {string}
+             */
+            visibility: "PRIVATE" | "WORKSPACE";
+        };
+        /** CreateVisualFromReportRequest */
+        CreateVisualFromReportRequest: {
+            /**
+             * Kind
+             * @default MIND_MAP
+             * @enum {string}
+             */
+            kind: "MIND_MAP" | "FLOWCHART" | "TIMELINE";
+            /** Title */
+            title?: string | null;
+            /**
+             * Visibility
+             * @default PRIVATE
+             * @enum {string}
+             */
+            visibility: "PRIVATE" | "WORKSPACE";
+        };
+        /** CreateVisualFromReportResponse */
+        CreateVisualFromReportResponse: {
+            /** Memory Ids */
+            memory_ids: string[];
+            project: components["schemas"]["VisualProjectResponse"];
+        };
+        /** CreateVisualProjectRequest */
+        CreateVisualProjectRequest: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "SCIENTIFIC" | "MIND_MAP" | "FLOWCHART" | "TIMELINE";
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "STRUCTURED" | "IMAGE";
+            /** Title */
+            title: string;
+            /**
+             * Visibility
+             * @default PRIVATE
+             * @enum {string}
+             */
+            visibility: "PRIVATE" | "WORKSPACE";
+        };
         /** CreateWorkspaceRequest */
         CreateWorkspaceRequest: {
+            /**
+             * Kind
+             * @default TEAM
+             * @enum {string}
+             */
+            kind: "TEAM" | "FAMILY";
             /** Name */
             name: string;
+        };
+        /** CreditLedgerEntryResponse */
+        CreditLedgerEntryResponse: {
+            /** Balance After */
+            balance_after: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Delta */
+            delta: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "PERIOD_GRANT" | "PERIOD_RESET" | "PLAN_UPGRADE" | "AI_RESERVATION" | "AI_RESERVATION_RELEASE" | "AI_USAGE" | "REFUND";
+            /** Reference Id */
+            reference_id: string | null;
+            /** Reference Type */
+            reference_type: string | null;
         };
         /** CurrentUserResponse */
         CurrentUserResponse: {
@@ -1088,6 +1734,170 @@ export interface components {
             workspace_id: string;
             /** Workspace Name */
             workspace_name: string;
+        };
+        /** DecisionRecordResponse */
+        DecisionRecordResponse: {
+            /** Alternatives */
+            alternatives: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decision */
+            decision: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Memory Id
+             * Format: uuid
+             */
+            memory_id: string;
+            /** Position Snapshot */
+            position_snapshot: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Published By User Id
+             * Format: uuid
+             */
+            published_by_user_id: string;
+            /** Rationale */
+            rationale: string;
+            /** Review At */
+            review_at: string | null;
+            /** Supersedes Id */
+            supersedes_id: string | null;
+        };
+        /** DiagramEdgeInput */
+        DiagramEdgeInput: {
+            /** Id */
+            id: string;
+            /** Label */
+            label?: string | null;
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+        };
+        /** DiagramNodeInput */
+        DiagramNodeInput: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "MEMORY" | "PERSON" | "NOTE";
+            /** Memory Id */
+            memory_id?: string | null;
+            position: components["schemas"]["DiagramPosition"];
+            /** Text */
+            text?: string | null;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /** DiagramNodeResponse */
+        DiagramNodeResponse: {
+            /** Author Name */
+            author_name?: string | null;
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "MEMORY" | "PERSON" | "NOTE";
+            /** Label */
+            label: string;
+            /** Memory Id */
+            memory_id?: string | null;
+            position: components["schemas"]["DiagramPosition"];
+            /** User Id */
+            user_id?: string | null;
+        };
+        /** DiagramOwnerResponse */
+        DiagramOwnerResponse: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** DiagramPosition */
+        DiagramPosition: {
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+        };
+        /** DiagramResponse */
+        DiagramResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Edges */
+            edges: components["schemas"]["DiagramEdgeInput"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Owner */
+            is_owner: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "MIND_MAP" | "FLOWCHART" | "TIMELINE";
+            /** Nodes */
+            nodes: components["schemas"]["DiagramNodeResponse"][];
+            owner: components["schemas"]["DiagramOwnerResponse"];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            visibility: "PRIVATE" | "WORKSPACE";
+        };
+        /** DiagramWriteRequest */
+        DiagramWriteRequest: {
+            /** Edges */
+            edges?: components["schemas"]["DiagramEdgeInput"][];
+            /**
+             * Kind
+             * @default MIND_MAP
+             * @enum {string}
+             */
+            kind: "MIND_MAP" | "FLOWCHART" | "TIMELINE";
+            /** Nodes */
+            nodes?: components["schemas"]["DiagramNodeInput"][];
+            /** Title */
+            title: string;
+            /**
+             * Visibility
+             * @default PRIVATE
+             * @enum {string}
+             */
+            visibility: "PRIVATE" | "WORKSPACE";
         };
         /** DocumentCitationInput */
         DocumentCitationInput: {
@@ -1175,6 +1985,8 @@ export interface components {
         };
         /** DraftChatRequest */
         DraftChatRequest: {
+            /** Conversation Id */
+            conversation_id?: string | null;
             /**
              * Markdown
              * @default
@@ -1197,6 +2009,15 @@ export interface components {
             assistant_message: string;
             /** Citations */
             citations: components["schemas"]["EvidenceCitationResponse"][];
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /**
+             * Credits Charged
+             * @default 0
+             */
+            credits_charged: number;
+            /** Credits Remaining */
+            credits_remaining?: number | null;
             /** Document Citations */
             document_citations?: components["schemas"]["DraftDocumentCitationResponse"][];
             /** Draft Changed */
@@ -1317,14 +2138,23 @@ export interface components {
         };
         /** DraftModelResponse */
         DraftModelResponse: {
+            /** Badges */
+            badges: ("BEST" | "NEW")[];
             /** Capabilities */
             capabilities: ("chat" | "vision" | "web_search" | "tools")[];
+            /** Description */
+            description: string;
             /** Id */
             id: string;
             /** Is Default */
             is_default: boolean;
             /** Label */
             label: string;
+            /**
+             * Min Plan
+             * @enum {string}
+             */
+            min_plan: "PLUS" | "PRO" | "ULTRA";
         };
         /** DraftToolEventResponse */
         DraftToolEventResponse: {
@@ -1404,6 +2234,48 @@ export interface components {
              */
             memory_id: string;
         };
+        /** GenerateVisualRequest */
+        GenerateVisualRequest: {
+            /**
+             * Aspect Ratio
+             * @default 1:1
+             * @enum {string}
+             */
+            aspect_ratio: "1:1" | "4:3" | "3:4" | "16:9" | "9:16";
+            /**
+             * Count
+             * @default 1
+             */
+            count: number;
+            /** Memory Ids */
+            memory_ids?: string[];
+            /** Model Id */
+            model_id?: string | null;
+            /**
+             * Output Language
+             * @default auto
+             */
+            output_language: string;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Quality
+             * @default standard
+             * @enum {string}
+             */
+            quality: "standard" | "high";
+            /**
+             * Scientific Style
+             * @default true
+             */
+            scientific_style: boolean;
+            /**
+             * Watermark Mode
+             * @default CLEAN_OUTPUT
+             * @enum {string}
+             */
+            watermark_mode: "ALLOW" | "CLEAN_OUTPUT";
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1421,6 +2293,28 @@ export interface components {
             status: "ok";
             /** Version */
             version: string;
+        };
+        /** ImageModelResponse */
+        ImageModelResponse: {
+            /** Badge */
+            badge: ("BEST" | "NEW") | null;
+            /** Configured */
+            configured: boolean;
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /** Is Default */
+            is_default: boolean;
+            /** Label */
+            label: string;
+            /** Locked */
+            locked: boolean;
+            /**
+             * Min Plan
+             * @enum {string}
+             */
+            min_plan: "PLUS" | "PRO" | "ULTRA";
         };
         /** InviteWorkspaceMemberRequest */
         InviteWorkspaceMemberRequest: {
@@ -1510,6 +2404,37 @@ export interface components {
              */
             visibility: "PRIVATE" | "WORKSPACE";
         };
+        /** PlanResponse */
+        PlanResponse: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "PLUS" | "PRO" | "ULTRA";
+            /** Credits Per Period */
+            credits_per_period: number;
+            /** Description */
+            description: string;
+            /** Features */
+            features: string[];
+            /** Is Current */
+            is_current: boolean;
+            /** Name */
+            name: string;
+        };
+        /** PublishDecisionRequest */
+        PublishDecisionRequest: {
+            /** Alternatives */
+            alternatives?: string[];
+            /** Decision */
+            decision: string;
+            /** Rationale */
+            rationale: string;
+            /** Review At */
+            review_at?: string | null;
+            /** Supersedes Id */
+            supersedes_id?: string | null;
+        };
         /** ReadinessFailure */
         ReadinessFailure: {
             /** Service */
@@ -1578,9 +2503,15 @@ export interface components {
              * Scope
              * @enum {string}
              */
-            scope: "PERSONAL" | "COLLEAGUE" | "WORKSPACE";
+            scope: "PERSONAL" | "COLLEAGUE" | "MEMBER" | "WORKSPACE" | "PROJECT";
             /** Topic */
             topic: string;
+            /**
+             * Visibility
+             * @default PRIVATE
+             * @enum {string}
+             */
+            visibility: "PRIVATE" | "WORKSPACE";
         };
         /** ReportResponse */
         ReportResponse: {
@@ -1588,6 +2519,11 @@ export interface components {
             citations: components["schemas"]["EvidenceCitationResponse"][];
             /** Contributors */
             contributors: components["schemas"]["ContributorResponse"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /**
              * Created From
              * Format: date-time
@@ -1598,6 +2534,8 @@ export interface components {
              * Format: date-time
              */
             created_to: string;
+            /** Is Owner */
+            is_owner: boolean;
             /**
              * Model Status
              * @enum {string}
@@ -1608,13 +2546,17 @@ export interface components {
              * Format: uuid
              */
             report_id: string;
+            /** Saved Memory Id */
+            saved_memory_id: string | null;
             /**
              * Scope
              * @enum {string}
              */
-            scope: "PERSONAL" | "COLLEAGUE" | "WORKSPACE";
+            scope: "PERSONAL" | "COLLEAGUE" | "MEMBER" | "WORKSPACE" | "PROJECT";
             /** Sections */
             sections: components["schemas"]["ReportSectionResponse"][];
+            /** Sources Available */
+            sources_available: boolean;
             /**
              * Status
              * @enum {string}
@@ -1626,6 +2568,11 @@ export interface components {
             title: string;
             /** Topic */
             topic: string;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            visibility: "PRIVATE" | "WORKSPACE";
         };
         /** ReportSectionResponse */
         ReportSectionResponse: {
@@ -1640,6 +2587,73 @@ export interface components {
             kind: "TIMELINE" | "CONTINUITY" | "CHANGES" | "CONTRADICTIONS" | "GAPS";
             /** Title */
             title: string;
+        };
+        /** ReportSubscriptionResponse */
+        ReportSubscriptionResponse: {
+            /**
+             * Cadence
+             * @enum {string}
+             */
+            cadence: "DAILY" | "WEEKLY" | "MONTHLY";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error Code */
+            last_error_code: string | null;
+            /** Last Report Id */
+            last_report_id: string | null;
+            /** Last Run At */
+            last_run_at: string | null;
+            /**
+             * Next Run At
+             * Format: date-time
+             */
+            next_run_at: string;
+            /**
+             * Preset
+             * @enum {string}
+             */
+            preset: "MISSED" | "MEETING" | "ONBOARDING" | "HANDOVER" | "KNOWLEDGE_GAPS";
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "PERSONAL" | "MEMBER" | "WORKSPACE" | "PROJECT";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ACTIVE" | "PAUSED";
+            /** Subject Author Id */
+            subject_author_id: string | null;
+            /** Topic */
+            topic: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            visibility: "PRIVATE" | "WORKSPACE";
+        };
+        /** SaveReportMemoryRequest */
+        SaveReportMemoryRequest: {
+            /**
+             * Visibility
+             * @default PRIVATE
+             * @enum {string}
+             */
+            visibility: "PRIVATE" | "WORKSPACE";
         };
         /** SearchDiagnostics */
         SearchDiagnostics: {
@@ -1734,6 +2748,49 @@ export interface components {
             /** Score */
             score: number;
         };
+        /** SubscriptionResponse */
+        SubscriptionResponse: {
+            /** Credits Granted */
+            credits_granted: number;
+            /** Credits Remaining */
+            credits_remaining: number;
+            /** Credits Reserved */
+            credits_reserved: number;
+            /** Credits Used */
+            credits_used: number;
+            /**
+             * Period Ends At
+             * Format: date-time
+             */
+            period_ends_at: string;
+            /**
+             * Period Started At
+             * Format: date-time
+             */
+            period_started_at: string;
+            /**
+             * Plan Code
+             * @enum {string}
+             */
+            plan_code: "PLUS" | "PRO" | "ULTRA";
+            /** Plan Name */
+            plan_name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ACTIVE" | "PAST_DUE" | "CANCELLED";
+        };
+        /** UpdateAlignmentPositionRequest */
+        UpdateAlignmentPositionRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "CONFIRM" | "REVISE" | "WITHDRAW";
+            /** Text */
+            text?: string | null;
+        };
         /** UpdateAvatarRequest */
         UpdateAvatarRequest: {
             /** Data */
@@ -1771,6 +2828,23 @@ export interface components {
             /** Display Name */
             display_name: string;
         };
+        /** UpdateReportSubscriptionRequest */
+        UpdateReportSubscriptionRequest: {
+            /** Cadence */
+            cadence?: ("DAILY" | "WEEKLY" | "MONTHLY") | null;
+            /** Next Run At */
+            next_run_at?: string | null;
+            /** Status */
+            status?: ("ACTIVE" | "PAUSED") | null;
+        };
+        /** UpgradeSubscriptionRequest */
+        UpgradeSubscriptionRequest: {
+            /**
+             * Plan Code
+             * @enum {string}
+             */
+            plan_code: "PLUS" | "PRO" | "ULTRA";
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1783,6 +2857,153 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VisualGenerationResponse */
+        VisualGenerationResponse: {
+            /** Credits Reserved */
+            credits_reserved: number;
+            job: components["schemas"]["VisualJobResponse"];
+            project: components["schemas"]["VisualProjectResponse"];
+        };
+        /** VisualJobResponse */
+        VisualJobResponse: {
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Credit Cost */
+            credit_cost: number;
+            /** Error Code */
+            error_code: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Model Id */
+            model_id: string;
+            /** Progress */
+            progress: number;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Stage */
+            stage: string;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "QUEUED" | "RUNNING" | "WAITING_CONFIGURATION" | "WAITING_CONFIRMATION" | "COMPLETED" | "FAILED" | "CANCELLED";
+        };
+        /** VisualProjectResponse */
+        VisualProjectResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Owner */
+            is_owner: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "SCIENTIFIC" | "MIND_MAP" | "FLOWCHART" | "TIMELINE";
+            latest_job: components["schemas"]["VisualJobResponse"] | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "STRUCTURED" | "IMAGE";
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "DRAFT" | "QUEUED" | "GENERATING" | "WAITING_CONFIRMATION" | "COMPLETED" | "FAILED" | "CANCELLED";
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Versions */
+            versions: components["schemas"]["VisualVersionResponse"][];
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            visibility: "PRIVATE" | "WORKSPACE";
+        };
+        /** VisualTemplateResponse */
+        VisualTemplateResponse: {
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "SCIENTIFIC" | "MIND_MAP" | "FLOWCHART" | "TIMELINE";
+            /** Label */
+            label: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "STRUCTURED" | "IMAGE";
+            /** Preview Tone */
+            preview_tone: string;
+        };
+        /** VisualVersionResponse */
+        VisualVersionResponse: {
+            /** Asset Url */
+            asset_url: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Diagram Id */
+            diagram_id: string | null;
+            /** Graph */
+            graph: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Model Id */
+            model_id: string;
+            /** Sources Available */
+            sources_available: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "CANDIDATE" | "CONFIRMED";
+            /** Version Number */
+            version_number: number;
         };
         /** WebCitationResponse */
         WebCitationResponse: {
@@ -1854,7 +3075,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "PERSONAL" | "TEAM";
+            kind: "PERSONAL" | "TEAM" | "FAMILY";
             /** Name */
             name: string;
             /**
@@ -1923,6 +3144,161 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentExecutionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_alignments_alignments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlignmentTopicResponse"][];
+                };
+            };
+        };
+    };
+    create_alignment_alignments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAlignmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlignmentTopicResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_alignment_alignments__topic_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlignmentTopicResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_decision_alignments__topic_id__decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_alignment_position_alignments__topic_id__positions__position_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic_id: string;
+                position_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAlignmentPositionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlignmentPositionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2402,6 +3778,110 @@ export interface operations {
             };
         };
     };
+    list_credit_ledger_billing_credits_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditLedgerEntryResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plans_billing_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanResponse"][];
+                };
+            };
+        };
+    };
+    get_subscription_billing_subscription_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionResponse"];
+                };
+            };
+        };
+    };
+    upgrade_current_subscription_billing_subscription_upgrade_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     ask_chatbot_chat_questions_post: {
         parameters: {
             query?: never;
@@ -2587,6 +4067,154 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConversationSummaryResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_diagrams_diagrams_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagramResponse"][];
+                };
+            };
+        };
+    };
+    create_diagram_diagrams_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiagramWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagramResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_diagram_diagrams__diagram_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                diagram_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagramResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_diagram_diagrams__diagram_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                diagram_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiagramWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagramResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_diagram_diagrams__diagram_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                diagram_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -3055,6 +4683,114 @@ export interface operations {
             };
         };
     };
+    list_report_subscriptions_report_subscriptions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportSubscriptionResponse"][];
+                };
+            };
+        };
+    };
+    create_subscription_report_subscriptions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReportSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportSubscriptionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_subscription_report_subscriptions__subscription_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateReportSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportSubscriptionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reports_reports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportResponse"][];
+                };
+            };
+        };
+    };
     generate_report_reports_post: {
         parameters: {
             query?: never;
@@ -3088,6 +4824,107 @@ export interface operations {
             };
         };
     };
+    get_report_reports__report_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_visual_from_report_reports__report_id__create_visual_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVisualFromReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateVisualFromReportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_report_as_memory_reports__report_id__save_memory_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveReportMemoryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     search_memories_search_post: {
         parameters: {
             query?: never;
@@ -3108,6 +4945,316 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_visual_job_visual_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_visual_generation_visual_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_visual_projects_visuals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualProjectResponse"][];
+                };
+            };
+        };
+    };
+    create_visual_visuals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVisualProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualProjectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_visual_costs_visuals_costs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+        };
+    };
+    list_image_models_visuals_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageModelResponse"][];
+                };
+            };
+        };
+    };
+    list_visual_templates_visuals_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualTemplateResponse"][];
+                };
+            };
+        };
+    };
+    get_visual_visuals__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualProjectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_structure_visuals__project_id__confirm_structure_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmVisualStructureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualProjectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_visual_visuals__project_id__generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateVisualRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualGenerationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_visual_version_content_visuals__project_id__versions__version_id__content_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

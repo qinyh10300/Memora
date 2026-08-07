@@ -491,3 +491,46 @@ def test_revision_rejects_unchanged_or_stale_memory(
         json={"body": "# 再次更新", "mode": "UPDATE_CURRENT"},
     )
     assert stale.status_code == 404
+
+
+def test_family_workspace_can_share_memory_without_exposing_private_entries(
+    memory_client: TestClient,
+) -> None:
+    alex = _login(memory_client, "alex@memora.local", "memora-local-alex")
+    blair = _login(memory_client, "blair@memora.local", "memora-local-blair")
+    family = memory_client.post(
+        "/workspaces",
+        headers=alex,
+        json={"name": "共同生活档案", "kind": "FAMILY"},
+    ).json()
+    assert (
+        memory_client.post(
+            f"/workspaces/{family['id']}/members",
+            headers=alex,
+            json={"email": "blair@memora.local"},
+        ).status_code
+        == 201
+    )
+    assert (
+        memory_client.post(f"/workspaces/{family['id']}/activate", headers=alex).status_code == 200
+    )
+    assert (
+        memory_client.post(f"/workspaces/{family['id']}/activate", headers=blair).status_code == 200
+    )
+
+    private = memory_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "只属于 Alex 的准备记录", "visibility": "PRIVATE"},
+    )
+    shared = memory_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "全家都能看到的安排", "visibility": "WORKSPACE"},
+    )
+
+    assert private.status_code == 201
+    assert shared.status_code == 201
+    assert [item["id"] for item in memory_client.get("/memories", headers=blair).json()] == [
+        shared.json()["id"]
+    ]

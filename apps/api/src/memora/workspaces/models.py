@@ -19,7 +19,10 @@ from memora.database import Base
 class Workspace(Base):
     __tablename__ = "workspaces"
     __table_args__ = (
-        CheckConstraint("kind IN ('PERSONAL', 'TEAM')", name="ck_workspaces_kind"),
+        CheckConstraint(
+            "kind IN ('PERSONAL', 'TEAM', 'FAMILY')",
+            name="ck_workspaces_kind",
+        ),
         UniqueConstraint("slug", name="workspaces_slug_key"),
     )
 

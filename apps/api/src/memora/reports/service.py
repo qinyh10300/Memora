@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
+from sqlalchemy import Select, or_, select
 from sqlalchemy.orm import Session
 
 from memora.ai.ports import ChatMessage, ChatModelPort, ChatResult
@@ -16,6 +17,7 @@ from memora.identity.dependencies import Principal
 from memora.identity.models import User
 from memora.memories.models import Memory
 from memora.memories.service import authorized_memories_statement
+from memora.reports.models import GeneratedReport, ReportSource
 
 ReportSectionKind = Literal["TIMELINE", "CONTINUITY", "CHANGES", "CONTRADICTIONS", "GAPS"]
 ALL_TOPICS = {"全部", "所有", "*"}
@@ -34,6 +36,51 @@ class ReportSectionData:
     title: str
     content: str
     memory_ids: tuple[UUID, ...]
+
+
+def accessible_reports_statement(principal: Principal) -> Select[tuple[GeneratedReport]]:
+    return select(GeneratedReport).where(
+        GeneratedReport.workspace_id == principal.workspace_id,
+        or_(
+            GeneratedReport.created_by_user_id == principal.user_id,
+            GeneratedReport.visibility == "WORKSPACE",
+        ),
+    )
+
+
+def get_accessible_report(
+    database: Session,
+    principal: Principal,
+    report_id: UUID,
+) -> GeneratedReport | None:
+    return database.scalar(
+        accessible_reports_statement(principal).where(GeneratedReport.id == report_id)
+    )
+
+
+def authorized_report_evidence(
+    database: Session,
+    principal: Principal,
+    report: GeneratedReport,
+) -> tuple[bool, list[ReportEvidence]]:
+    source_rows = database.execute(
+        select(ReportSource.memory_id, ReportSource.memory_created_at)
+        .where(ReportSource.report_id == report.id)
+        .order_by(ReportSource.memory_created_at.asc(), ReportSource.memory_id.asc())
+    ).all()
+    if not source_rows:
+        return True, []
+    source_ids = [row.memory_id for row in source_rows]
+    authorized_rows = database.execute(
+        authorized_memories_statement(principal).where(Memory.id.in_(source_ids))
+    ).tuples()
+    by_id = {
+        memory.id: ReportEvidence(memory=memory, author=author, score=1.0)
+        for memory, author, _projection in authorized_rows
+    }
+    if set(by_id) != set(source_ids):
+        return False, []
+    return True, [by_id[memory_id] for memory_id in source_ids]
 
 
 def _topic_terms(topic: str) -> list[str]:
@@ -61,7 +108,7 @@ def select_report_evidence(
     )
     if scope == "PERSONAL":
         statement = statement.where(Memory.author_id == principal.user_id)
-    elif scope == "COLLEAGUE":
+    elif scope in {"COLLEAGUE", "MEMBER"}:
         statement = statement.where(
             Memory.author_id == subject_author_id,
             Memory.visibility == "WORKSPACE",

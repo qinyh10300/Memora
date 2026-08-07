@@ -16,7 +16,7 @@ from memora.workspaces.models import Workspace, WorkspaceJoinRequest, WorkspaceM
 from memora.workspaces.service import generate_unique_join_code, normalize_join_code
 
 router = APIRouter(tags=["workspaces"])
-WorkspaceKind = Literal["PERSONAL", "TEAM"]
+WorkspaceKind = Literal["PERSONAL", "TEAM", "FAMILY"]
 WorkspaceRole = Literal["OWNER", "MEMBER"]
 JoinRequestStatus = Literal["PENDING", "APPROVED", "REJECTED"]
 JoinWorkspaceStatus = Literal["PENDING", "ACTIVE"]
@@ -33,6 +33,7 @@ class WorkspaceResponse(BaseModel):
 
 class CreateWorkspaceRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+    kind: Literal["TEAM", "FAMILY"] = "TEAM"
 
     @field_validator("name")
     @classmethod
@@ -100,7 +101,7 @@ def _workspace_response(
         kind=cast(WorkspaceKind, workspace.kind),
         role=cast(WorkspaceRole, membership.role),
         is_current=workspace.id == current_workspace_id,
-        join_code=workspace.join_code if workspace.kind == "TEAM" else None,
+        join_code=workspace.join_code if workspace.kind in {"TEAM", "FAMILY"} else None,
     )
 
 
@@ -142,10 +143,10 @@ def _current_owner_team(
     workspace = database.get(Workspace, principal.workspace_id)
     if workspace is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="团队不存在")
-    if workspace.kind != "TEAM":
+    if workspace.kind not in {"TEAM", "FAMILY"}:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="个人空间没有成员审核",
+            detail="个人空间没有成员管理",
         )
     if principal.role != "OWNER":
         raise HTTPException(
@@ -218,7 +219,7 @@ def create_workspace(
         id=uuid4(),
         slug=f"workspace-{uuid4().hex[:20]}",
         name=payload.name,
-        kind="TEAM",
+        kind=payload.kind,
         join_code=generate_unique_join_code(database),
     )
     membership = WorkspaceMembership(
@@ -258,7 +259,7 @@ def join_workspace(
     workspace = database.scalar(
         select(Workspace).where(
             Workspace.join_code == payload.code,
-            Workspace.kind == "TEAM",
+            Workspace.kind.in_(("TEAM", "FAMILY")),
         )
     )
     if workspace is None:
@@ -375,7 +376,7 @@ def invite_workspace_member(
     if owner_row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="团队不存在")
     workspace, owner_membership = owner_row
-    if workspace.kind != "TEAM":
+    if workspace.kind not in {"TEAM", "FAMILY"}:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="个人空间不能邀请成员",

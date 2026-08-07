@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import math
 from collections.abc import Mapping
@@ -11,6 +13,7 @@ from urllib.request import Request, urlopen
 
 import structlog
 
+from memora.ai.image_registry import image_api_key
 from memora.ai.ports import (
     AIProviderError,
     ChatMessage,
@@ -21,6 +24,10 @@ from memora.ai.ports import (
     ChatToolExecutor,
     EmbeddingBatch,
     EmbeddingModelPort,
+    GeneratedImage,
+    ImageGenerationPort,
+    ImageGenerationRequest,
+    ImageGenerationResult,
     ModelUsage,
     WebSearchContextSize,
     WebSearchPort,
@@ -37,6 +44,7 @@ from memora.observability import (
 from memora.settings import Settings
 
 logger = structlog.get_logger("memora.ai.provider")
+MAX_GENERATED_IMAGE_BYTES = 8 * 1024 * 1024
 
 
 class JSONTransport(Protocol):
@@ -432,6 +440,116 @@ class OpenAICompatibleChatModel(ChatModelPort):
         raise AIProviderError("tool_loop_exceeded", retryable=True)
 
 
+def _generated_image_for(raw_data: object) -> GeneratedImage:
+    if not isinstance(raw_data, str) or len(raw_data) > ((MAX_GENERATED_IMAGE_BYTES + 2) // 3) * 4:
+        raise AIProviderError("invalid_provider_response", retryable=True)
+    try:
+        content = base64.b64decode(raw_data, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise AIProviderError("invalid_provider_response", retryable=True) from error
+    if len(content) > MAX_GENERATED_IMAGE_BYTES:
+        raise AIProviderError("invalid_provider_response", retryable=True)
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        media_type = "image/png"
+    elif content.startswith(b"\xff\xd8\xff"):
+        media_type = "image/jpeg"
+    elif len(content) >= 12 and content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        media_type = "image/webp"
+    else:
+        raise AIProviderError("invalid_provider_response", retryable=True)
+    return GeneratedImage(media_type=cast(Any, media_type), content=content)
+
+
+def _image_size_for(aspect_ratio: str) -> str:
+    return {
+        "1:1": "1024x1024",
+        "4:3": "1536x1024",
+        "3:4": "1024x1536",
+        "16:9": "1536x1024",
+        "9:16": "1024x1536",
+    }[aspect_ratio]
+
+
+class OpenAICompatibleImageGenerator(ImageGenerationPort):
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        timeout_seconds: float,
+        transport: JSONTransport | None = None,
+        pricing: Mapping[str, ModelPricing] | None = None,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._api_key = api_key
+        self._model = model
+        self._timeout_seconds = timeout_seconds
+        self._transport = transport or UrllibJSONTransport()
+        self._pricing = dict(pricing or {})
+
+    @property
+    def model_id(self) -> str:
+        return self._model
+
+    def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
+        prompt = request.prompt.strip()
+        if not prompt or request.model_id != self._model or not 1 <= request.count <= 4:
+            raise ValueError("image generation request is invalid")
+        response = _observed_post(
+            self._transport,
+            f"{self._base_url}/images/generations",
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+            payload={
+                "model": self._model,
+                "prompt": prompt,
+                "n": request.count,
+                "size": _image_size_for(request.aspect_ratio),
+                "quality": request.quality,
+                "response_format": "b64_json",
+            },
+            timeout=self._timeout_seconds,
+            operation="image_generation",
+            model=self._model,
+        )
+        data = response.get("data")
+        if not isinstance(data, list) or len(data) != request.count:
+            raise AIProviderError("invalid_provider_response", retryable=True)
+        images: list[GeneratedImage] = []
+        revised_prompts: list[str] = []
+        for item in data:
+            if not isinstance(item, dict):
+                raise AIProviderError("invalid_provider_response", retryable=True)
+            images.append(_generated_image_for(item.get("b64_json")))
+            revised_prompt = item.get("revised_prompt")
+            if isinstance(revised_prompt, str) and revised_prompt.strip():
+                revised_prompts.append(revised_prompt.strip())
+        usage = response.get("usage", {})
+        input_tokens = usage.get("input_tokens", 0) if isinstance(usage, dict) else 0
+        output_tokens = usage.get("output_tokens", 0) if isinstance(usage, dict) else 0
+        response_model = response.get("model")
+        result = ImageGenerationResult(
+            images=tuple(images),
+            revised_prompt="\n\n".join(revised_prompts) or None,
+            model=response_model if isinstance(response_model, str) else self._model,
+            usage=ModelUsage(
+                input_tokens=input_tokens if isinstance(input_tokens, int) else 0,
+                output_tokens=output_tokens if isinstance(output_tokens, int) else 0,
+            ),
+        )
+        record_ai_usage(
+            operation="image_generation",
+            model=result.model,
+            input_tokens=result.usage.input_tokens,
+            output_tokens=result.usage.output_tokens,
+            pricing=self._pricing,
+        )
+        return result
+
+
 def _valid_http_url(value: object) -> str | None:
     if not isinstance(value, str) or len(value) > 2_048:
         return None
@@ -621,5 +739,22 @@ def build_web_search(settings: Settings, *, model: str | None = None) -> WebSear
         api_key=api_key,
         model=resolved_model,
         timeout_seconds=settings.ai_web_search_timeout_seconds,
+        pricing=parse_model_pricing(settings.ai_model_pricing_json),
+    )
+
+
+def build_image_generator(
+    settings: Settings,
+    *,
+    model: str,
+) -> ImageGenerationPort | None:
+    api_key = image_api_key(settings)
+    if not settings.ai_visuals_enabled or not api_key or not model.strip():
+        return None
+    return OpenAICompatibleImageGenerator(
+        base_url=settings.ai_image_base_url,
+        api_key=api_key,
+        model=model.strip(),
+        timeout_seconds=settings.ai_image_request_timeout_seconds,
         pricing=parse_model_pricing(settings.ai_model_pricing_json),
     )

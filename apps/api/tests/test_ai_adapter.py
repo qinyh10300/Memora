@@ -6,12 +6,20 @@ from pydantic import SecretStr
 from memora.ai.openai_compatible import (
     OpenAICompatibleChatModel,
     OpenAICompatibleEmbeddingModel,
+    OpenAICompatibleImageGenerator,
     OpenAICompatibleWebSearch,
     build_chat_model,
     build_embedding_model,
+    build_image_generator,
     build_web_search,
 )
-from memora.ai.ports import AIProviderError, ChatImageInput, ChatMessage, ModelUsage
+from memora.ai.ports import (
+    AIProviderError,
+    ChatImageInput,
+    ChatMessage,
+    ImageGenerationRequest,
+    ModelUsage,
+)
 from memora.settings import Settings
 
 
@@ -228,6 +236,73 @@ def test_chat_factory_requires_key_and_model() -> None:
         Settings(ai_chat_api_key=SecretStr("test-key"), ai_chat_model="chat-model")
     )
     assert model is not None and model.model_id == "chat-model"
+
+
+def test_image_adapter_uses_b64_contract_and_rejects_urls() -> None:
+    png = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8A"
+        "AQUBAScY42YAAAAASUVORK5CYII="
+    )
+    transport = FakeTransport(
+        {
+            "data": [{"b64_json": png, "revised_prompt": "清晰的科研图"}],
+            "model": "image-model-v1",
+            "usage": {"input_tokens": 11, "output_tokens": 2},
+        }
+    )
+    model = OpenAICompatibleImageGenerator(
+        base_url="https://relay.example/v1/",
+        api_key="test-secret-key",
+        model="image-model-v1",
+        timeout_seconds=180,
+        transport=transport,
+    )
+
+    result = model.generate(
+        ImageGenerationRequest(
+            prompt="绘制细胞信号通路",
+            model_id="image-model-v1",
+            aspect_ratio="16:9",
+            count=1,
+            quality="high",
+        )
+    )
+
+    assert result.images[0].media_type == "image/png"
+    assert result.images[0].content.startswith(b"\x89PNG")
+    assert result.revised_prompt == "清晰的科研图"
+    assert transport.request is not None
+    url, _headers, payload, timeout = transport.request
+    assert url == "https://relay.example/v1/images/generations"
+    assert payload == {
+        "model": "image-model-v1",
+        "prompt": "绘制细胞信号通路",
+        "n": 1,
+        "size": "1536x1024",
+        "quality": "high",
+        "response_format": "b64_json",
+    }
+    assert timeout == 180
+
+    invalid = OpenAICompatibleImageGenerator(
+        base_url="https://relay.example/v1",
+        api_key="test-secret-key",
+        model="image-model-v1",
+        timeout_seconds=180,
+        transport=FakeTransport({"data": [{"url": "https://untrusted.example/image.png"}]}),
+    )
+    with pytest.raises(AIProviderError, match="invalid_provider_response"):
+        invalid.generate(ImageGenerationRequest(prompt="测试", model_id="image-model-v1"))
+
+
+def test_image_factory_requires_dedicated_configuration() -> None:
+    assert build_image_generator(Settings(), model="image-model") is None
+    settings = Settings(
+        ai_image_api_key=SecretStr("test-key"),
+        ai_image_base_url="https://relay.example/v1",
+    )
+    model = build_image_generator(settings, model="image-model")
+    assert model is not None and model.model_id == "image-model"
 
 
 def test_web_search_adapter_uses_responses_contract_and_collects_safe_sources() -> None:

@@ -111,10 +111,10 @@ def _require_team_workspace(database: DatabaseSession, principal: Principal) -> 
     workspace_kind = database.scalar(
         select(Workspace.kind).where(Workspace.id == principal.workspace_id)
     )
-    if workspace_kind != "TEAM":
+    if workspace_kind not in {"TEAM", "FAMILY"}:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="个人空间不能共享给团队",
+            detail="个人空间不能共享给其他成员",
         )
 
 

@@ -17,7 +17,9 @@ from memora.jobs.embedding import process_next_embedding_job
 from memora.logging import configure_logging
 from memora.model_registry import load_all_models
 from memora.observability import metrics, new_request_id, observability_context
+from memora.reports.worker import process_due_report_subscription
 from memora.settings import Settings, get_settings
+from memora.visuals.worker import process_next_visual_job
 
 
 def run_once(
@@ -38,6 +40,12 @@ def run_once(
             if not processed:
                 job_kind = "document_embedding"
                 processed = process_next_document_embedding_batch(engine, settings, embedding_model)
+            if not processed:
+                job_kind = "visual_generation"
+                processed = process_next_visual_job(engine, settings)
+            if not processed:
+                job_kind = "scheduled_report"
+                processed = process_due_report_subscription(engine, settings)
             if not processed:
                 job_kind = "idle"
             outcome = "processed" if processed else "idle"

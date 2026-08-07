@@ -592,6 +592,58 @@ def test_team_owner_rejects_reopened_request_and_removes_member(
     assert client.post(f"/workspaces/{team['id']}/activate").status_code == 404
 
 
+def test_family_workspace_reuses_invitation_and_membership_boundaries(
+    identity_client: tuple[TestClient, Settings],
+) -> None:
+    client, _settings = identity_client
+    assert (
+        client.post(
+            "/auth/login",
+            json={"email": "alex@memora.local", "password": "memora-local-alex"},
+        ).status_code
+        == 200
+    )
+
+    created = client.post(
+        "/workspaces",
+        json={"name": "Alex 的家庭", "kind": "FAMILY"},
+    )
+    assert created.status_code == 201
+    family = created.json()
+    assert family["kind"] == "FAMILY"
+    assert len(family["join_code"]) == 12
+    assert client.post(f"/workspaces/{family['id']}/activate").status_code == 200
+
+    invited = client.post(
+        f"/workspaces/{family['id']}/members",
+        json={"email": "blair@memora.local"},
+    )
+    assert invited.status_code == 201
+    assert invited.json()["display_name"] == "Blair"
+    assert [member["display_name"] for member in client.get("/workspace/members").json()] == [
+        "Alex",
+        "Blair",
+    ]
+
+    client.cookies.clear()
+    assert (
+        client.post(
+            "/auth/login",
+            json={"email": "blair@memora.local", "password": "memora-local-blair"},
+        ).status_code
+        == 200
+    )
+    assert client.post(f"/workspaces/{family['id']}/activate").status_code == 200
+    assert client.get("/auth/me").json()["workspace_name"] == "Alex 的家庭"
+    assert (
+        client.post(
+            f"/workspaces/{family['id']}/members",
+            json={"email": "casey@memora.local"},
+        ).status_code
+        == 403
+    )
+
+
 def test_protected_routes_reject_anonymous_users(
     identity_client: tuple[TestClient, Settings],
 ) -> None:

@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     ai_web_search_timeout_seconds: float = Field(default=90, gt=0, le=300)
     ai_chat_max_output_tokens: int = Field(default=2400, ge=100, le=8000)
     ai_model_pricing_json: str = ""
+    ai_image_base_url: str = "https://yunwu.ai/v1"
+    ai_image_api_key: SecretStr = SecretStr("")
+    ai_image_model_registry_json: str = ""
+    ai_image_request_timeout_seconds: float = Field(default=180, gt=0, le=600)
+    ai_image_max_attempts: int = Field(default=3, ge=1, le=10)
+    ai_visuals_enabled: bool = True
+    team_intelligence_enabled: bool = True
+    ai_task_credit_costs_json: str = ""
     ai_embedding_max_attempts: int = Field(default=5, ge=1, le=20)
     ai_job_retry_base_seconds: int = Field(default=15, ge=1, le=3600)
     retrieval_reranker_timeout_seconds: float = Field(default=3, gt=0, le=30)

@@ -21,6 +21,9 @@ def _models() -> list[dict[str, object]]:
             "timeout_seconds": 80,
             "fallback_ids": ["gemini"],
             "default": True,
+            "description": "旗舰模型",
+            "min_plan": "ULTRA",
+            "badges": ["BEST"],
         },
         {
             "id": "claude",
@@ -129,3 +132,5 @@ def test_legacy_model_registry_defaults_remain_backward_compatible() -> None:
     assert model.cost_tier == "balanced"
     assert model.timeout_seconds is None
     assert model.fallback_ids == ()
+    assert model.min_plan == "PLUS"
+    assert model.badges == ()

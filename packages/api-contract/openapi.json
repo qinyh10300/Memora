@@ -214,6 +214,181 @@
         "title": "AgentExecutionResponse",
         "type": "object"
       },
+      "AlignmentPositionResponse": {
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceCitationResponse"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_current_user": {
+            "title": "Is Current User",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "CANDIDATE",
+              "CONFIRMED",
+              "REVISED",
+              "WITHDRAWN",
+              "NO_RECORDED_POSITION"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "display_name",
+          "status",
+          "text",
+          "is_current_user",
+          "citations",
+          "confirmed_at",
+          "updated_at"
+        ],
+        "title": "AlignmentPositionResponse",
+        "type": "object"
+      },
+      "AlignmentTopicResponse": {
+        "properties": {
+          "can_publish_decision": {
+            "title": "Can Publish Decision",
+            "type": "boolean"
+          },
+          "context": {
+            "title": "Context",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionRecordResponse"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "evidence_from": {
+            "format": "date-time",
+            "title": "Evidence From",
+            "type": "string"
+          },
+          "evidence_to": {
+            "format": "date-time",
+            "title": "Evidence To",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_owner": {
+            "title": "Is Owner",
+            "type": "boolean"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/AlignmentPositionResponse"
+            },
+            "title": "Positions",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "OPEN",
+              "DECIDED",
+              "ARCHIVED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary_status": {
+            "enum": [
+              "CONSENSUS",
+              "DIFFERENCES",
+              "INSUFFICIENT_EVIDENCE"
+            ],
+            "title": "Summary Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "context",
+          "status",
+          "summary_status",
+          "is_owner",
+          "can_publish_decision",
+          "evidence_from",
+          "evidence_to",
+          "positions",
+          "decisions",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AlignmentTopicResponse",
+        "type": "object"
+      },
       "AssetResponse": {
         "properties": {
           "created_at": {
@@ -520,6 +695,20 @@
         "title": "ClientErrorReport",
         "type": "object"
       },
+      "ConfirmVisualStructureRequest": {
+        "properties": {
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id"
+        ],
+        "title": "ConfirmVisualStructureRequest",
+        "type": "object"
+      },
       "ContributorResponse": {
         "properties": {
           "author_id": {
@@ -742,6 +931,60 @@
         "title": "ConversationSummaryResponse",
         "type": "object"
       },
+      "CreateAlignmentRequest": {
+        "properties": {
+          "context": {
+            "default": "",
+            "maxLength": 3000,
+            "title": "Context",
+            "type": "string"
+          },
+          "created_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created From"
+          },
+          "created_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created To"
+          },
+          "participant_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Participant Ids",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "CreateAlignmentRequest",
+        "type": "object"
+      },
       "CreateAssetRequest": {
         "properties": {
           "data": {
@@ -875,8 +1118,206 @@
         "title": "CreateMemoryRevisionRequest",
         "type": "object"
       },
+      "CreateReportSubscriptionRequest": {
+        "properties": {
+          "cadence": {
+            "default": "WEEKLY",
+            "enum": [
+              "DAILY",
+              "WEEKLY",
+              "MONTHLY"
+            ],
+            "title": "Cadence",
+            "type": "string"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
+          "preset": {
+            "enum": [
+              "MISSED",
+              "MEETING",
+              "ONBOARDING",
+              "HANDOVER",
+              "KNOWLEDGE_GAPS"
+            ],
+            "title": "Preset",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "PERSONAL",
+              "MEMBER",
+              "WORKSPACE",
+              "PROJECT"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "subject_author_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Author Id"
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic"
+          },
+          "visibility": {
+            "default": "PRIVATE",
+            "enum": [
+              "PRIVATE",
+              "WORKSPACE"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "preset",
+          "scope"
+        ],
+        "title": "CreateReportSubscriptionRequest",
+        "type": "object"
+      },
+      "CreateVisualFromReportRequest": {
+        "properties": {
+          "kind": {
+            "default": "MIND_MAP",
+            "enum": [
+              "MIND_MAP",
+              "FLOWCHART",
+              "TIMELINE"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "visibility": {
+            "default": "PRIVATE",
+            "enum": [
+              "PRIVATE",
+              "WORKSPACE"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "title": "CreateVisualFromReportRequest",
+        "type": "object"
+      },
+      "CreateVisualFromReportResponse": {
+        "properties": {
+          "memory_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Memory Ids",
+            "type": "array"
+          },
+          "project": {
+            "$ref": "#/components/schemas/VisualProjectResponse"
+          }
+        },
+        "required": [
+          "project",
+          "memory_ids"
+        ],
+        "title": "CreateVisualFromReportResponse",
+        "type": "object"
+      },
+      "CreateVisualProjectRequest": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "SCIENTIFIC",
+              "MIND_MAP",
+              "FLOWCHART",
+              "TIMELINE"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "STRUCTURED",
+              "IMAGE"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "visibility": {
+            "default": "PRIVATE",
+            "enum": [
+              "PRIVATE",
+              "WORKSPACE"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "mode",
+          "kind"
+        ],
+        "title": "CreateVisualProjectRequest",
+        "type": "object"
+      },
       "CreateWorkspaceRequest": {
         "properties": {
+          "kind": {
+            "default": "TEAM",
+            "enum": [
+              "TEAM",
+              "FAMILY"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "name": {
             "maxLength": 120,
             "minLength": 1,
@@ -888,6 +1329,75 @@
           "name"
         ],
         "title": "CreateWorkspaceRequest",
+        "type": "object"
+      },
+      "CreditLedgerEntryResponse": {
+        "properties": {
+          "balance_after": {
+            "minimum": 0.0,
+            "title": "Balance After",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "delta": {
+            "title": "Delta",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "PERIOD_GRANT",
+              "PERIOD_RESET",
+              "PLAN_UPGRADE",
+              "AI_RESERVATION",
+              "AI_RESERVATION_RELEASE",
+              "AI_USAGE",
+              "REFUND"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "reference_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Id"
+          },
+          "reference_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Type"
+          }
+        },
+        "required": [
+          "id",
+          "delta",
+          "balance_after",
+          "reason",
+          "reference_type",
+          "reference_id",
+          "created_at"
+        ],
+        "title": "CreditLedgerEntryResponse",
         "type": "object"
       },
       "CurrentUserResponse": {
@@ -938,6 +1448,437 @@
           "role"
         ],
         "title": "CurrentUserResponse",
+        "type": "object"
+      },
+      "DecisionRecordResponse": {
+        "properties": {
+          "alternatives": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Alternatives",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "memory_id": {
+            "format": "uuid",
+            "title": "Memory Id",
+            "type": "string"
+          },
+          "position_snapshot": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Position Snapshot",
+            "type": "array"
+          },
+          "published_by_user_id": {
+            "format": "uuid",
+            "title": "Published By User Id",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "review_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review At"
+          },
+          "supersedes_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Id"
+          }
+        },
+        "required": [
+          "id",
+          "decision",
+          "rationale",
+          "alternatives",
+          "position_snapshot",
+          "review_at",
+          "memory_id",
+          "supersedes_id",
+          "published_by_user_id",
+          "created_at"
+        ],
+        "title": "DecisionRecordResponse",
+        "type": "object"
+      },
+      "DiagramEdgeInput": {
+        "properties": {
+          "id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "source": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "target"
+        ],
+        "title": "DiagramEdgeInput",
+        "type": "object"
+      },
+      "DiagramNodeInput": {
+        "properties": {
+          "id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "MEMORY",
+              "PERSON",
+              "NOTE"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "memory_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Id"
+          },
+          "position": {
+            "$ref": "#/components/schemas/DiagramPosition"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "position"
+        ],
+        "title": "DiagramNodeInput",
+        "type": "object"
+      },
+      "DiagramNodeResponse": {
+        "properties": {
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "available": {
+            "default": true,
+            "title": "Available",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "MEMORY",
+              "PERSON",
+              "NOTE"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "memory_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Id"
+          },
+          "position": {
+            "$ref": "#/components/schemas/DiagramPosition"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "position",
+          "label"
+        ],
+        "title": "DiagramNodeResponse",
+        "type": "object"
+      },
+      "DiagramOwnerResponse": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "DiagramOwnerResponse",
+        "type": "object"
+      },
+      "DiagramPosition": {
+        "properties": {
+          "x": {
+            "maximum": 100000.0,
+            "minimum": -100000.0,
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "maximum": 100000.0,
+            "minimum": -100000.0,
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "DiagramPosition",
+        "type": "object"
+      },
+      "DiagramResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/DiagramEdgeInput"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_owner": {
+            "title": "Is Owner",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "MIND_MAP",
+              "FLOWCHART",
+              "TIMELINE"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/DiagramNodeResponse"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/DiagramOwnerResponse"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "PRIVATE",
+              "WORKSPACE"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind",
+          "visibility",
+          "owner",
+          "is_owner",
+          "nodes",
+          "edges",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DiagramResponse",
+        "type": "object"
+      },
+      "DiagramWriteRequest": {
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/DiagramEdgeInput"
+            },
+            "maxItems": 240,
+            "title": "Edges",
+            "type": "array"
+          },
+          "kind": {
+            "default": "MIND_MAP",
+            "enum": [
+              "MIND_MAP",
+              "FLOWCHART",
+              "TIMELINE"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/DiagramNodeInput"
+            },
+            "maxItems": 120,
+            "title": "Nodes",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "visibility": {
+            "default": "PRIVATE",
+            "enum": [
+              "PRIVATE",
+              "WORKSPACE"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "DiagramWriteRequest",
         "type": "object"
       },
       "DocumentCitationInput": {
@@ -1147,6 +2088,18 @@
       },
       "DraftChatRequest": {
         "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
           "markdown": {
             "default": "",
             "maxLength": 10000,
@@ -1204,6 +2157,36 @@
             },
             "title": "Citations",
             "type": "array"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "credits_charged": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Credits Charged",
+            "type": "integer"
+          },
+          "credits_remaining": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credits Remaining"
           },
           "document_citations": {
             "items": {
@@ -1555,6 +2538,17 @@
       },
       "DraftModelResponse": {
         "properties": {
+          "badges": {
+            "items": {
+              "enum": [
+                "BEST",
+                "NEW"
+              ],
+              "type": "string"
+            },
+            "title": "Badges",
+            "type": "array"
+          },
           "capabilities": {
             "items": {
               "enum": [
@@ -1568,6 +2562,10 @@
             "title": "Capabilities",
             "type": "array"
           },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -1579,13 +2577,25 @@
           "label": {
             "title": "Label",
             "type": "string"
+          },
+          "min_plan": {
+            "enum": [
+              "PLUS",
+              "PRO",
+              "ULTRA"
+            ],
+            "title": "Min Plan",
+            "type": "string"
           }
         },
         "required": [
           "id",
           "label",
           "capabilities",
-          "is_default"
+          "is_default",
+          "description",
+          "min_plan",
+          "badges"
         ],
         "title": "DraftModelResponse",
         "type": "object"
@@ -1812,6 +2822,92 @@
         "title": "EvidenceCitationResponse",
         "type": "object"
       },
+      "GenerateVisualRequest": {
+        "properties": {
+          "aspect_ratio": {
+            "default": "1:1",
+            "enum": [
+              "1:1",
+              "4:3",
+              "3:4",
+              "16:9",
+              "9:16"
+            ],
+            "title": "Aspect Ratio",
+            "type": "string"
+          },
+          "count": {
+            "default": 1,
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "memory_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Memory Ids",
+            "type": "array"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "output_language": {
+            "default": "auto",
+            "maxLength": 40,
+            "minLength": 2,
+            "title": "Output Language",
+            "type": "string"
+          },
+          "prompt": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "quality": {
+            "default": "standard",
+            "enum": [
+              "standard",
+              "high"
+            ],
+            "title": "Quality",
+            "type": "string"
+          },
+          "scientific_style": {
+            "default": true,
+            "title": "Scientific Style",
+            "type": "boolean"
+          },
+          "watermark_mode": {
+            "default": "CLEAN_OUTPUT",
+            "enum": [
+              "ALLOW",
+              "CLEAN_OUTPUT"
+            ],
+            "title": "Watermark Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "GenerateVisualRequest",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1847,6 +2943,70 @@
           "version"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "ImageModelResponse": {
+        "properties": {
+          "badge": {
+            "anyOf": [
+              {
+                "enum": [
+                  "BEST",
+                  "NEW"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Badge"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "locked": {
+            "title": "Locked",
+            "type": "boolean"
+          },
+          "min_plan": {
+            "enum": [
+              "PLUS",
+              "PRO",
+              "ULTRA"
+            ],
+            "title": "Min Plan",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description",
+          "min_plan",
+          "badge",
+          "is_default",
+          "configured",
+          "locked"
+        ],
+        "title": "ImageModelResponse",
         "type": "object"
       },
       "InviteWorkspaceMemberRequest": {
@@ -2077,6 +3237,107 @@
         "title": "MemoryResponse",
         "type": "object"
       },
+      "PlanResponse": {
+        "properties": {
+          "code": {
+            "enum": [
+              "PLUS",
+              "PRO",
+              "ULTRA"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "credits_per_period": {
+            "minimum": 0.0,
+            "title": "Credits Per Period",
+            "type": "integer"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "is_current": {
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "credits_per_period",
+          "description",
+          "features",
+          "is_current"
+        ],
+        "title": "PlanResponse",
+        "type": "object"
+      },
+      "PublishDecisionRequest": {
+        "properties": {
+          "alternatives": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Alternatives",
+            "type": "array"
+          },
+          "decision": {
+            "maxLength": 6000,
+            "minLength": 1,
+            "title": "Decision",
+            "type": "string"
+          },
+          "rationale": {
+            "maxLength": 6000,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "review_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review At"
+          },
+          "supersedes_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Id"
+          }
+        },
+        "required": [
+          "decision",
+          "rationale"
+        ],
+        "title": "PublishDecisionRequest",
+        "type": "object"
+      },
       "ReadinessFailure": {
         "properties": {
           "service": {
@@ -2211,7 +3472,9 @@
             "enum": [
               "PERSONAL",
               "COLLEAGUE",
-              "WORKSPACE"
+              "MEMBER",
+              "WORKSPACE",
+              "PROJECT"
             ],
             "title": "Scope",
             "type": "string"
@@ -2220,6 +3483,15 @@
             "maxLength": 500,
             "minLength": 1,
             "title": "Topic",
+            "type": "string"
+          },
+          "visibility": {
+            "default": "PRIVATE",
+            "enum": [
+              "PRIVATE",
+              "WORKSPACE"
+            ],
+            "title": "Visibility",
             "type": "string"
           }
         },
@@ -2248,6 +3520,11 @@
             "title": "Contributors",
             "type": "array"
           },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
           "created_from": {
             "format": "date-time",
             "title": "Created From",
@@ -2257,6 +3534,10 @@
             "format": "date-time",
             "title": "Created To",
             "type": "string"
+          },
+          "is_owner": {
+            "title": "Is Owner",
+            "type": "boolean"
           },
           "model_status": {
             "enum": [
@@ -2272,11 +3553,25 @@
             "title": "Report Id",
             "type": "string"
           },
+          "saved_memory_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saved Memory Id"
+          },
           "scope": {
             "enum": [
               "PERSONAL",
               "COLLEAGUE",
-              "WORKSPACE"
+              "MEMBER",
+              "WORKSPACE",
+              "PROJECT"
             ],
             "title": "Scope",
             "type": "string"
@@ -2287,6 +3582,10 @@
             },
             "title": "Sections",
             "type": "array"
+          },
+          "sources_available": {
+            "title": "Sources Available",
+            "type": "boolean"
           },
           "status": {
             "enum": [
@@ -2307,6 +3606,14 @@
           "topic": {
             "title": "Topic",
             "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "PRIVATE",
+              "WORKSPACE"
+            ],
+            "title": "Visibility",
+            "type": "string"
           }
         },
         "required": [
@@ -2321,7 +3628,12 @@
           "summary",
           "contributors",
           "sections",
-          "citations"
+          "citations",
+          "visibility",
+          "is_owner",
+          "sources_available",
+          "saved_memory_id",
+          "created_at"
         ],
         "title": "ReportResponse",
         "type": "object"
@@ -2363,6 +3675,160 @@
           "citation_memory_ids"
         ],
         "title": "ReportSectionResponse",
+        "type": "object"
+      },
+      "ReportSubscriptionResponse": {
+        "properties": {
+          "cadence": {
+            "enum": [
+              "DAILY",
+              "WEEKLY",
+              "MONTHLY"
+            ],
+            "title": "Cadence",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Code"
+          },
+          "last_report_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Report Id"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "next_run_at": {
+            "format": "date-time",
+            "title": "Next Run At",
+            "type": "string"
+          },
+          "preset": {
+            "enum": [
+              "MISSED",
+              "MEETING",
+              "ONBOARDING",
+              "HANDOVER",
+              "KNOWLEDGE_GAPS"
+            ],
+            "title": "Preset",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "PERSONAL",
+              "MEMBER",
+              "WORKSPACE",
+              "PROJECT"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ACTIVE",
+              "PAUSED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "subject_author_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Author Id"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "PRIVATE",
+              "WORKSPACE"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "preset",
+          "scope",
+          "topic",
+          "subject_author_id",
+          "visibility",
+          "cadence",
+          "status",
+          "next_run_at",
+          "last_run_at",
+          "last_report_id",
+          "last_error_code",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ReportSubscriptionResponse",
+        "type": "object"
+      },
+      "SaveReportMemoryRequest": {
+        "properties": {
+          "visibility": {
+            "default": "PRIVATE",
+            "enum": [
+              "PRIVATE",
+              "WORKSPACE"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "title": "SaveReportMemoryRequest",
         "type": "object"
       },
       "SearchDiagnostics": {
@@ -2618,6 +4084,105 @@
         "title": "SearchResultResponse",
         "type": "object"
       },
+      "SubscriptionResponse": {
+        "properties": {
+          "credits_granted": {
+            "minimum": 0.0,
+            "title": "Credits Granted",
+            "type": "integer"
+          },
+          "credits_remaining": {
+            "minimum": 0.0,
+            "title": "Credits Remaining",
+            "type": "integer"
+          },
+          "credits_reserved": {
+            "minimum": 0.0,
+            "title": "Credits Reserved",
+            "type": "integer"
+          },
+          "credits_used": {
+            "minimum": 0.0,
+            "title": "Credits Used",
+            "type": "integer"
+          },
+          "period_ends_at": {
+            "format": "date-time",
+            "title": "Period Ends At",
+            "type": "string"
+          },
+          "period_started_at": {
+            "format": "date-time",
+            "title": "Period Started At",
+            "type": "string"
+          },
+          "plan_code": {
+            "enum": [
+              "PLUS",
+              "PRO",
+              "ULTRA"
+            ],
+            "title": "Plan Code",
+            "type": "string"
+          },
+          "plan_name": {
+            "title": "Plan Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ACTIVE",
+              "PAST_DUE",
+              "CANCELLED"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_code",
+          "plan_name",
+          "status",
+          "period_started_at",
+          "period_ends_at",
+          "credits_granted",
+          "credits_used",
+          "credits_reserved",
+          "credits_remaining"
+        ],
+        "title": "SubscriptionResponse",
+        "type": "object"
+      },
+      "UpdateAlignmentPositionRequest": {
+        "properties": {
+          "action": {
+            "enum": [
+              "CONFIRM",
+              "REVISE",
+              "WITHDRAW"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "UpdateAlignmentPositionRequest",
+        "type": "object"
+      },
       "UpdateAvatarRequest": {
         "properties": {
           "data": {
@@ -2720,6 +4285,73 @@
         "title": "UpdateProfileRequest",
         "type": "object"
       },
+      "UpdateReportSubscriptionRequest": {
+        "properties": {
+          "cadence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "DAILY",
+                  "WEEKLY",
+                  "MONTHLY"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cadence"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ACTIVE",
+                  "PAUSED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "UpdateReportSubscriptionRequest",
+        "type": "object"
+      },
+      "UpgradeSubscriptionRequest": {
+        "properties": {
+          "plan_code": {
+            "enum": [
+              "PLUS",
+              "PRO",
+              "ULTRA"
+            ],
+            "title": "Plan Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_code"
+        ],
+        "title": "UpgradeSubscriptionRequest",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -2758,6 +4390,363 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VisualGenerationResponse": {
+        "properties": {
+          "credits_reserved": {
+            "exclusiveMinimum": 0.0,
+            "title": "Credits Reserved",
+            "type": "integer"
+          },
+          "job": {
+            "$ref": "#/components/schemas/VisualJobResponse"
+          },
+          "project": {
+            "$ref": "#/components/schemas/VisualProjectResponse"
+          }
+        },
+        "required": [
+          "project",
+          "job",
+          "credits_reserved"
+        ],
+        "title": "VisualGenerationResponse",
+        "type": "object"
+      },
+      "VisualJobResponse": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "credit_cost": {
+            "exclusiveMinimum": 0.0,
+            "title": "Credit Cost",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "progress": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress",
+            "type": "integer"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "WAITING_CONFIGURATION",
+              "WAITING_CONFIRMATION",
+              "COMPLETED",
+              "FAILED",
+              "CANCELLED"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "status",
+          "stage",
+          "progress",
+          "model_id",
+          "credit_cost",
+          "error_code",
+          "created_at",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "VisualJobResponse",
+        "type": "object"
+      },
+      "VisualProjectResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_owner": {
+            "title": "Is Owner",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "SCIENTIFIC",
+              "MIND_MAP",
+              "FLOWCHART",
+              "TIMELINE"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "latest_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisualJobResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mode": {
+            "enum": [
+              "STRUCTURED",
+              "IMAGE"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "QUEUED",
+              "GENERATING",
+              "WAITING_CONFIRMATION",
+              "COMPLETED",
+              "FAILED",
+              "CANCELLED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/VisualVersionResponse"
+            },
+            "title": "Versions",
+            "type": "array"
+          },
+          "visibility": {
+            "enum": [
+              "PRIVATE",
+              "WORKSPACE"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "mode",
+          "kind",
+          "visibility",
+          "status",
+          "owner_id",
+          "is_owner",
+          "latest_job",
+          "versions",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "VisualProjectResponse",
+        "type": "object"
+      },
+      "VisualTemplateResponse": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "SCIENTIFIC",
+              "MIND_MAP",
+              "FLOWCHART",
+              "TIMELINE"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "STRUCTURED",
+              "IMAGE"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "preview_tone": {
+            "title": "Preview Tone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description",
+          "mode",
+          "kind",
+          "preview_tone"
+        ],
+        "title": "VisualTemplateResponse",
+        "type": "object"
+      },
+      "VisualVersionResponse": {
+        "properties": {
+          "asset_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Url"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "diagram_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagram Id"
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graph"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "sources_available": {
+            "title": "Sources Available",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "CANDIDATE",
+              "CONFIRMED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version_number": {
+            "title": "Version Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version_number",
+          "status",
+          "model_id",
+          "graph",
+          "asset_url",
+          "diagram_id",
+          "sources_available",
+          "created_at"
+        ],
+        "title": "VisualVersionResponse",
         "type": "object"
       },
       "WebCitationResponse": {
@@ -2904,7 +4893,8 @@
           "kind": {
             "enum": [
               "PERSONAL",
-              "TEAM"
+              "TEAM",
+              "FAMILY"
             ],
             "title": "Kind",
             "type": "string"
@@ -3036,6 +5026,229 @@
         "summary": "Cancel Agent Execution",
         "tags": [
           "agent"
+        ]
+      }
+    },
+    "/alignments": {
+      "get": {
+        "operationId": "list_alignments_alignments_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AlignmentTopicResponse"
+                  },
+                  "title": "Response List Alignments Alignments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Alignments",
+        "tags": [
+          "alignments"
+        ]
+      },
+      "post": {
+        "operationId": "create_alignment_alignments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAlignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlignmentTopicResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Alignment",
+        "tags": [
+          "alignments"
+        ]
+      }
+    },
+    "/alignments/{topic_id}": {
+      "get": {
+        "operationId": "get_alignment_alignments__topic_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Topic Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlignmentTopicResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Alignment",
+        "tags": [
+          "alignments"
+        ]
+      }
+    },
+    "/alignments/{topic_id}/decisions": {
+      "post": {
+        "operationId": "create_decision_alignments__topic_id__decisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Topic Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Decision",
+        "tags": [
+          "alignments"
+        ]
+      }
+    },
+    "/alignments/{topic_id}/positions/{position_id}/confirm": {
+      "post": {
+        "operationId": "update_alignment_position_alignments__topic_id__positions__position_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Topic Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "position_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Position Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAlignmentPositionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlignmentPositionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Alignment Position",
+        "tags": [
+          "alignments"
         ]
       }
     },
@@ -3591,6 +5804,142 @@
         ]
       }
     },
+    "/billing/credits": {
+      "get": {
+        "operationId": "list_credit_ledger_billing_credits_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CreditLedgerEntryResponse"
+                  },
+                  "title": "Response List Credit Ledger Billing Credits Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Credit Ledger",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/billing/plans": {
+      "get": {
+        "operationId": "list_plans_billing_plans_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlanResponse"
+                  },
+                  "title": "Response List Plans Billing Plans Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Plans",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/billing/subscription": {
+      "get": {
+        "operationId": "get_subscription_billing_subscription_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Subscription",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/billing/subscription/upgrade": {
+      "post": {
+        "operationId": "upgrade_current_subscription_billing_subscription_upgrade_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpgradeSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upgrade Current Subscription",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
     "/chat/questions": {
       "post": {
         "operationId": "ask_chatbot_chat_questions_post",
@@ -3860,6 +6209,198 @@
         "summary": "Update Conversation",
         "tags": [
           "conversations"
+        ]
+      }
+    },
+    "/diagrams": {
+      "get": {
+        "operationId": "list_diagrams_diagrams_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DiagramResponse"
+                  },
+                  "title": "Response List Diagrams Diagrams Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Diagrams",
+        "tags": [
+          "diagrams"
+        ]
+      },
+      "post": {
+        "operationId": "create_diagram_diagrams_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagramWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagramResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Diagram",
+        "tags": [
+          "diagrams"
+        ]
+      }
+    },
+    "/diagrams/{diagram_id}": {
+      "delete": {
+        "operationId": "delete_diagram_diagrams__diagram_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "diagram_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Diagram Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Diagram",
+        "tags": [
+          "diagrams"
+        ]
+      },
+      "get": {
+        "operationId": "get_diagram_diagrams__diagram_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "diagram_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Diagram Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagramResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Diagram",
+        "tags": [
+          "diagrams"
+        ]
+      },
+      "put": {
+        "operationId": "update_diagram_diagrams__diagram_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "diagram_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Diagram Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagramWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagramResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Diagram",
+        "tags": [
+          "diagrams"
         ]
       }
     },
@@ -4538,7 +7079,147 @@
         ]
       }
     },
+    "/report-subscriptions": {
+      "get": {
+        "operationId": "list_report_subscriptions_report_subscriptions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReportSubscriptionResponse"
+                  },
+                  "title": "Response List Report Subscriptions Report Subscriptions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Report Subscriptions",
+        "tags": [
+          "reports"
+        ]
+      },
+      "post": {
+        "operationId": "create_subscription_report_subscriptions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReportSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportSubscriptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Subscription",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/report-subscriptions/{subscription_id}": {
+      "patch": {
+        "operationId": "patch_subscription_report_subscriptions__subscription_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subscription Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateReportSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportSubscriptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Subscription",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
     "/reports": {
+      "get": {
+        "operationId": "list_reports_reports_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReportResponse"
+                  },
+                  "title": "Response List Reports Reports Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Reports",
+        "tags": [
+          "reports"
+        ]
+      },
       "post": {
         "operationId": "generate_report_reports_post",
         "requestBody": {
@@ -4574,6 +7255,155 @@
           }
         },
         "summary": "Generate Report",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/reports/{report_id}": {
+      "get": {
+        "operationId": "get_report_reports__report_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Report",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/reports/{report_id}/create-visual": {
+      "post": {
+        "operationId": "create_visual_from_report_reports__report_id__create_visual_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVisualFromReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateVisualFromReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Visual From Report",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/reports/{report_id}/save-memory": {
+      "post": {
+        "operationId": "save_report_as_memory_reports__report_id__save_memory_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveReportMemoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Report As Memory",
         "tags": [
           "reports"
         ]
@@ -4617,6 +7447,431 @@
         "summary": "Search Memories",
         "tags": [
           "retrieval"
+        ]
+      }
+    },
+    "/visual-jobs/{job_id}": {
+      "get": {
+        "operationId": "get_visual_job_visual_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisualJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Visual Job",
+        "tags": [
+          "visuals"
+        ]
+      }
+    },
+    "/visual-jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_visual_generation_visual_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisualJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Visual Generation",
+        "tags": [
+          "visuals"
+        ]
+      }
+    },
+    "/visuals": {
+      "get": {
+        "operationId": "list_visual_projects_visuals_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VisualProjectResponse"
+                  },
+                  "title": "Response List Visual Projects Visuals Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Visual Projects",
+        "tags": [
+          "visuals"
+        ]
+      },
+      "post": {
+        "operationId": "create_visual_visuals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVisualProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisualProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Visual",
+        "tags": [
+          "visuals"
+        ]
+      }
+    },
+    "/visuals/costs": {
+      "get": {
+        "operationId": "get_visual_costs_visuals_costs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Get Visual Costs Visuals Costs Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Visual Costs",
+        "tags": [
+          "visuals"
+        ]
+      }
+    },
+    "/visuals/models": {
+      "get": {
+        "operationId": "list_image_models_visuals_models_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImageModelResponse"
+                  },
+                  "title": "Response List Image Models Visuals Models Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Image Models",
+        "tags": [
+          "visuals"
+        ]
+      }
+    },
+    "/visuals/templates": {
+      "get": {
+        "operationId": "list_visual_templates_visuals_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VisualTemplateResponse"
+                  },
+                  "title": "Response List Visual Templates Visuals Templates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Visual Templates",
+        "tags": [
+          "visuals"
+        ]
+      }
+    },
+    "/visuals/{project_id}": {
+      "get": {
+        "operationId": "get_visual_visuals__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisualProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Visual",
+        "tags": [
+          "visuals"
+        ]
+      }
+    },
+    "/visuals/{project_id}/confirm-structure": {
+      "post": {
+        "operationId": "confirm_structure_visuals__project_id__confirm_structure_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmVisualStructureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisualProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Structure",
+        "tags": [
+          "visuals"
+        ]
+      }
+    },
+    "/visuals/{project_id}/generate": {
+      "post": {
+        "operationId": "generate_visual_visuals__project_id__generate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateVisualRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisualGenerationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Visual",
+        "tags": [
+          "visuals"
+        ]
+      }
+    },
+    "/visuals/{project_id}/versions/{version_id}/content": {
+      "get": {
+        "operationId": "get_visual_version_content_visuals__project_id__versions__version_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Visual Version Content",
+        "tags": [
+          "visuals"
         ]
       }
     },

@@ -15,6 +15,9 @@ def isolate_external_ai_configuration(monkeypatch: MonkeyPatch) -> Iterator[None
         "AI_MODEL_REGISTRY_JSON",
         "AI_EMBEDDING_API_KEY",
         "AI_EMBEDDING_MODEL",
+        "AI_IMAGE_API_KEY",
+        "AI_IMAGE_MODEL_REGISTRY_JSON",
+        "AI_TASK_CREDIT_COSTS_JSON",
     ):
         monkeypatch.setenv(name, "")
     get_settings.cache_clear()

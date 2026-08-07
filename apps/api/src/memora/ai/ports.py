@@ -51,6 +51,44 @@ class ChatModelPort(Protocol):
     def complete(self, messages: list[ChatMessage]) -> ChatResult: ...
 
 
+ImageAspectRatio = Literal["1:1", "4:3", "3:4", "16:9", "9:16"]
+ImageQuality = Literal["standard", "high"]
+ImageWatermarkMode = Literal["ALLOW", "CLEAN_OUTPUT"]
+
+
+@dataclass(frozen=True)
+class ImageGenerationRequest:
+    prompt: str
+    model_id: str
+    aspect_ratio: ImageAspectRatio = "1:1"
+    count: int = 1
+    quality: ImageQuality = "standard"
+    scientific_style: bool = True
+    watermark_mode: ImageWatermarkMode = "CLEAN_OUTPUT"
+    output_language: str = "auto"
+
+
+@dataclass(frozen=True)
+class GeneratedImage:
+    media_type: Literal["image/png", "image/jpeg", "image/webp"]
+    content: bytes
+
+
+@dataclass(frozen=True)
+class ImageGenerationResult:
+    images: tuple[GeneratedImage, ...]
+    revised_prompt: str | None
+    model: str
+    usage: ModelUsage
+
+
+class ImageGenerationPort(Protocol):
+    @property
+    def model_id(self) -> str: ...
+
+    def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult: ...
+
+
 @dataclass(frozen=True)
 class ChatToolDefinition:
     name: str

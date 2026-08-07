@@ -9,9 +9,13 @@ from memora.settings import Settings
 ModelCapability = Literal["chat", "vision", "web_search", "tools"]
 ModelCostTier = Literal["economy", "balanced", "premium"]
 ModelProviderFamily = Literal["gpt", "claude", "gemini", "other"]
+ModelPlanCode = Literal["PLUS", "PRO", "ULTRA"]
+ModelBadge = Literal["BEST", "NEW"]
 _VALID_CAPABILITIES = {"chat", "vision", "web_search", "tools"}
 _VALID_COST_TIERS = {"economy", "balanced", "premium"}
 _VALID_PROVIDER_FAMILIES = {"gpt", "claude", "gemini", "other"}
+_VALID_PLAN_CODES = {"PLUS", "PRO", "ULTRA"}
+_VALID_BADGES = {"BEST", "NEW"}
 _MODEL_ID_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$")
 
 
@@ -27,6 +31,9 @@ class AIModelSpec:
     priority: int = 100
     timeout_seconds: float | None = None
     fallback_ids: tuple[str, ...] = ()
+    description: str = ""
+    min_plan: ModelPlanCode = "PLUS"
+    badges: tuple[ModelBadge, ...] = ()
 
 
 def _provider_family_for(model: str) -> ModelProviderFamily:
@@ -64,6 +71,9 @@ def _validate_model_spec(raw: object, *, index: int) -> AIModelSpec:
     raw_priority = raw.get("priority", index)
     raw_timeout = raw.get("timeout_seconds")
     raw_fallback_ids = raw.get("fallback_ids", [])
+    raw_description = raw.get("description", "")
+    raw_min_plan = raw.get("min_plan", "PLUS")
+    raw_badges = raw.get("badges", [])
     if not isinstance(model_id, str) or not _MODEL_ID_PATTERN.fullmatch(model_id):
         raise ValueError(f"AI_MODEL_REGISTRY_JSON item {index} has an invalid id")
     if not isinstance(label, str) or not label.strip() or len(label) > 80:
@@ -112,6 +122,16 @@ def _validate_model_spec(raw: object, *, index: int) -> AIModelSpec:
         raise ValueError(f"AI_MODEL_REGISTRY_JSON item {index} has invalid fallback_ids")
     if len(set(raw_fallback_ids)) != len(raw_fallback_ids):
         raise ValueError(f"AI_MODEL_REGISTRY_JSON item {index} has duplicate fallback_ids")
+    if not isinstance(raw_description, str) or len(raw_description) > 160:
+        raise ValueError(f"AI_MODEL_REGISTRY_JSON item {index} has an invalid description")
+    if not isinstance(raw_min_plan, str) or raw_min_plan not in _VALID_PLAN_CODES:
+        raise ValueError(f"AI_MODEL_REGISTRY_JSON item {index} has an invalid min_plan")
+    if (
+        not isinstance(raw_badges, list)
+        or any(not isinstance(badge, str) or badge not in _VALID_BADGES for badge in raw_badges)
+        or len(set(raw_badges)) != len(raw_badges)
+    ):
+        raise ValueError(f"AI_MODEL_REGISTRY_JSON item {index} has invalid badges")
     return AIModelSpec(
         id=model_id,
         label=label.strip(),
@@ -123,6 +143,9 @@ def _validate_model_spec(raw: object, *, index: int) -> AIModelSpec:
         priority=raw_priority,
         timeout_seconds=float(raw_timeout) if raw_timeout is not None else None,
         fallback_ids=tuple(raw_fallback_ids),
+        description=raw_description.strip(),
+        min_plan=cast(ModelPlanCode, raw_min_plan),
+        badges=tuple(cast(ModelBadge, badge) for badge in raw_badges),
     )
 
 
@@ -179,3 +202,10 @@ def resolve_ai_model(settings: Settings, model_id: str | None) -> AIModelSpec | 
     if model_id is None:
         return next((model for model in models if model.is_default), models[0])
     return next((model for model in models if model.id == model_id), None)
+
+
+def model_plan_allows(current_plan: str, required_plan: ModelPlanCode) -> bool:
+    ranks = {"PLUS": 0, "PRO": 1, "ULTRA": 2}
+    if current_plan not in _VALID_PLAN_CODES:
+        return False
+    return ranks[cast(ModelPlanCode, current_plan)] >= ranks[required_plan]

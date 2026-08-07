@@ -206,3 +206,58 @@ def test_report_requires_explicit_valid_time_range(report_client: TestClient) ->
         },
     )
     assert reversed_range.status_code == 422
+
+
+def test_report_history_rechecks_shared_sources_after_unshare(
+    report_client: TestClient,
+) -> None:
+    alex = _login(report_client, "alex@memora.local", "memora-local-alex")
+    blair = _login(report_client, "blair@memora.local", "memora-local-blair")
+    shared = _create(report_client, alex, "历史报告：已共享的定价记录。")
+    assert report_client.post(f"/memories/{shared['id']}/share", headers=alex).status_code == 200
+    created_from, created_to = _range()
+    generated = report_client.post(
+        "/reports",
+        headers=blair,
+        json={
+            "scope": "WORKSPACE",
+            "topic": "历史报告",
+            "created_from": created_from,
+            "created_to": created_to,
+            "visibility": "WORKSPACE",
+        },
+    )
+    assert generated.status_code == 200
+    report_id = generated.json()["report_id"]
+    history = report_client.get("/reports", headers=alex)
+    assert history.status_code == 200
+    assert report_id in {report["report_id"] for report in history.json()}
+
+    assert report_client.post(f"/memories/{shared['id']}/unshare", headers=alex).status_code == 200
+    unavailable = report_client.get(f"/reports/{report_id}", headers=blair)
+    assert unavailable.status_code == 404
+    refreshed_history = report_client.get("/reports", headers=blair)
+    assert report_id not in {report["report_id"] for report in refreshed_history.json()}
+
+
+def test_report_can_be_saved_once_as_a_new_immutable_memory(
+    report_client: TestClient,
+) -> None:
+    alex = _login(report_client, "alex@memora.local", "memora-local-alex")
+    _create(report_client, alex, "保存报告：第一条明确记录。")
+    report = _report(report_client, alex, topic="保存报告")
+
+    first = report_client.post(
+        f"/reports/{report['report_id']}/save-memory",
+        headers=alex,
+        json={"visibility": "PRIVATE"},
+    )
+    assert first.status_code == 200
+    assert "# 我的想法报告 · 保存报告" in first.json()["body"]
+    second = report_client.post(
+        f"/reports/{report['report_id']}/save-memory",
+        headers=alex,
+        json={"visibility": "PRIVATE"},
+    )
+    assert second.status_code == 200
+    assert second.json()["id"] == first.json()["id"]

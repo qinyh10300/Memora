@@ -27,6 +27,7 @@ from memora.ai.ports import (
     WebSource,
 )
 from memora.audit.models import AuditEvent
+from memora.billing.models import Subscription
 from memora.database import Base
 from memora.identity.dependencies import SESSION_COOKIE_NAME
 from memora.identity.models import User
@@ -369,6 +370,9 @@ def test_draft_models_fall_back_to_legacy_chat_model(tool_draft_client: TestClie
             "label": "tool-provider-model",
             "capabilities": ["chat", "tools", "web_search"],
             "is_default": True,
+            "description": "",
+            "min_plan": "PLUS",
+            "badges": [],
         }
     ]
 
@@ -449,6 +453,11 @@ def test_draft_chat_receives_conversation_and_only_authorized_personal_memory(
     assert response.json()["markdown"] == "我们先保持原来的表达，不要改写。"
     assert response.json()["draft_changed"] is True
     assert response.json()["model_status"] == "AVAILABLE"
+    assert response.json()["credits_charged"] == 10
+    assert response.json()["credits_remaining"] == 1_990
+    assert (
+        draft_client.get("/billing/subscription", headers=alex).json()["credits_remaining"] == 1_990
+    )
     assert [item["memory_id"] for item in response.json()["citations"]] == [
         alex_memory.json()["id"]
     ]
@@ -465,6 +474,78 @@ def test_draft_chat_receives_conversation_and_only_authorized_personal_memory(
         )
     assert len(memories) == 2
     assert event is not None and event.model == "draft-chat-model"
+
+
+def test_draft_chat_appends_user_visible_exchange_to_owned_conversation(
+    draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alex = _login(draft_client)
+    conversation = draft_client.post(
+        "/conversations",
+        headers=alex,
+        json={"title": "新对话"},
+    ).json()
+    model = TraceHeadersDraftModel()
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+
+    first = draft_client.post(
+        "/drafts/chat",
+        headers=alex,
+        json={
+            "conversation_id": conversation["id"],
+            "markdown": "",
+            "messages": [{"role": "USER", "content": "整理第一轮研究假设"}],
+        },
+    )
+    second = draft_client.post(
+        "/drafts/chat",
+        headers=alex,
+        json={
+            "conversation_id": conversation["id"],
+            "markdown": first.json()["markdown"],
+            "messages": [
+                {"role": "USER", "content": "整理第一轮研究假设"},
+                {"role": "ASSISTANT", "content": first.json()["assistant_message"]},
+                {"role": "USER", "content": "再补充一轮可验证指标"},
+            ],
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["conversation_id"] == conversation["id"]
+    assert second.json()["conversation_id"] == conversation["id"]
+    detail = draft_client.get(f"/conversations/{conversation['id']}", headers=alex).json()
+    assert detail["message_count"] == 4
+    assert [message["role"] for message in detail["messages"]] == [
+        "USER",
+        "ASSISTANT",
+        "USER",
+        "ASSISTANT",
+    ]
+    assert detail["messages"][0]["content"] == "整理第一轮研究假设"
+    assert detail["messages"][2]["content"] == "再补充一轮可验证指标"
+    assert detail["title"] == "整理第一轮研究假设"
+
+    blair_login = draft_client.post(
+        "/auth/login",
+        json={"email": "blair@memora.local", "password": "memora-local-blair"},
+    )
+    assert blair_login.status_code == 200
+    blair_token = blair_login.cookies.get(SESSION_COOKIE_NAME)
+    assert blair_token
+    blair = {"Cookie": f"{SESSION_COOKIE_NAME}={blair_token}"}
+    forbidden = draft_client.post(
+        "/drafts/chat",
+        headers=blair,
+        json={
+            "conversation_id": conversation["id"],
+            "markdown": "",
+            "messages": [{"role": "USER", "content": "不应写入别人的历史"}],
+        },
+    )
+    assert forbidden.status_code == 404
 
 
 def test_draft_chat_sends_validated_current_turn_images_without_persisting_them(
@@ -678,6 +759,9 @@ def test_draft_chat_restores_first_user_message_without_model_rewrite(
         "tool_events": [],
         "saved_memory": None,
         "document_citations": [],
+        "credits_charged": 0,
+        "credits_remaining": None,
+        "conversation_id": None,
     }
 
     engine = cast(FastAPI, draft_client.app).state.engine
@@ -714,6 +798,9 @@ def test_draft_chat_keeps_working_copy_when_model_is_disabled_or_fails(
         "tool_events": [],
         "saved_memory": None,
         "document_citations": [],
+        "credits_charged": 0,
+        "credits_remaining": None,
+        "conversation_id": None,
     }
 
     monkeypatch.setattr(
@@ -740,6 +827,9 @@ def test_draft_chat_keeps_working_copy_when_model_is_disabled_or_fails(
         "tool_events": [],
         "saved_memory": None,
         "document_citations": [],
+        "credits_charged": 0,
+        "credits_remaining": None,
+        "conversation_id": None,
     }
 
     first_turn_failure = draft_client.post(
@@ -753,6 +843,38 @@ def test_draft_chat_keeps_working_copy_when_model_is_disabled_or_fails(
     assert first_turn_failure.status_code == 200
     assert first_turn_failure.json()["markdown"] == "# 新想法\n\n首次原话不能丢。"
     assert first_turn_failure.json()["model_status"] == "DISABLED"
+    assert (
+        draft_client.get("/billing/subscription", headers=headers).json()["credits_remaining"]
+        == 2_000
+    )
+
+
+def test_draft_chat_rejects_model_call_when_credits_are_insufficient(
+    draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = _login(draft_client)
+    draft_client.get("/billing/subscription", headers=headers)
+    engine = cast(FastAPI, draft_client.app).state.engine
+    with Session(engine) as database, database.begin():
+        subscription = database.scalar(select(Subscription))
+        assert subscription is not None
+        subscription.credits_used = subscription.credits_granted
+
+    model = CaptureDraftChatModel(memory_id="")
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+    response = draft_client.post(
+        "/drafts/chat",
+        headers=headers,
+        json={
+            "markdown": "",
+            "messages": [{"role": "USER", "content": "这次不应该调用模型。"}],
+        },
+    )
+
+    assert response.status_code == 402
+    assert response.json()["detail"] == "credits 余额不足，请升级套餐后继续"
+    assert model.messages == []
 
 
 def test_draft_chat_can_force_web_search_and_only_returns_used_allowed_sources(
@@ -959,6 +1081,9 @@ def test_draft_chat_web_search_failure_preserves_markdown_and_skips_generation(
         "tool_events": [],
         "saved_memory": None,
         "document_citations": [],
+        "credits_charged": 0,
+        "credits_remaining": None,
+        "conversation_id": None,
     }
     assert model.messages == []
 

@@ -34,6 +34,7 @@ from memora.ai.model_registry import (
     AIModelSpec,
     ModelCapability,
     available_ai_models,
+    model_plan_allows,
 )
 from memora.ai.openai_compatible import (
     build_chat_model,
@@ -60,9 +61,19 @@ from memora.ai.router import (
 )
 from memora.assets.service import get_authorized_asset
 from memora.audit.models import AuditEvent
+from memora.billing.service import (
+    InsufficientCreditsError,
+    consume_credits,
+    credits_remaining,
+    get_or_create_subscription,
+    require_available_credits,
+)
+from memora.conversations.models import Conversation
 from memora.conversations.service import (
     ChatEvidence,
     excerpt_for,
+    get_owned_conversation,
+    persist_exchange,
     reauthorize_evidence,
     select_chat_evidence,
 )
@@ -218,6 +229,7 @@ class DraftChatTurn(BaseModel):
 
 class DraftChatRequest(BaseModel):
     markdown: str = Field(default="", max_length=10_000)
+    conversation_id: UUID | None = None
     model_id: str | None = Field(default=None, min_length=1, max_length=64)
     web_search: WebSearchMode = "AUTO"
     messages: list[DraftChatTurn] = Field(
@@ -291,6 +303,9 @@ class DraftChatResponse(BaseModel):
     saved_memory: MemoryResponse | None
     trace: DraftTraceResponse | None = None
     execution_id: UUID | None = None
+    conversation_id: UUID | None = None
+    credits_charged: int = Field(default=0, ge=0)
+    credits_remaining: int | None = Field(default=None, ge=0)
 
 
 class DraftChatStreamProgressEvent(BaseModel):
@@ -404,12 +419,93 @@ _agent_execution_context: ContextVar[UUID | None] = ContextVar(
     default=None,
 )
 
+DRAFT_CHAT_CREDIT_COST = 10
+
+
+def _draft_credit_reference(request: Request) -> tuple[str, str, str]:
+    execution_id = _agent_execution_context.get()
+    if execution_id is not None:
+        reference = str(execution_id)
+        return "AGENT_EXECUTION", reference, f"draft-chat:{reference}"
+    request_id = normalize_request_id(getattr(request.state, "request_id", None))
+    return "REQUEST", request_id, f"draft-chat:{request_id}"
+
+
+def _require_draft_chat_credits(database: Session, user_id: UUID) -> None:
+    try:
+        require_available_credits(database, user_id, DRAFT_CHAT_CREDIT_COST)
+        database.commit()
+    except InsufficientCreditsError as error:
+        database.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="credits 余额不足，请升级套餐后继续",
+        ) from error
+
+
+def _charge_draft_chat_credits(
+    database: Session,
+    user_id: UUID,
+    request: Request,
+) -> int:
+    reference_type, reference_id, idempotency_key = _draft_credit_reference(request)
+    try:
+        subscription = consume_credits(
+            database,
+            user_id,
+            DRAFT_CHAT_CREDIT_COST,
+            idempotency_key=idempotency_key,
+            reference_type=reference_type,
+            reference_id=reference_id,
+        )
+        remaining = credits_remaining(subscription)
+        database.commit()
+        return remaining
+    except InsufficientCreditsError as error:
+        database.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="credits 余额不足，请升级套餐后继续",
+        ) from error
+
+
+def _persist_draft_conversation(
+    database: Session,
+    principal: CurrentPrincipal,
+    conversation: Conversation | None,
+    payload: DraftChatRequest,
+    response: DraftChatResponse,
+    evidence: list[ChatEvidence],
+    model_result: ChatResult | None,
+) -> DraftChatResponse:
+    if conversation is None:
+        return response
+    used_memory_ids = {citation.memory_id for citation in response.citations}
+    used_evidence = [item for item in evidence if item.memory.id in used_memory_ids]
+    persisted_conversation, _assistant = persist_exchange(
+        database,
+        principal,
+        conversation=conversation,
+        question=payload.messages[-1].content,
+        answer=response.assistant_message,
+        topic="全部",
+        scope="PERSONAL",
+        subject_author_id=None,
+        evidence=used_evidence,
+        model_result=model_result,
+    )
+    database.commit()
+    return response.model_copy(update={"conversation_id": persisted_conversation.id})
+
 
 class DraftModelResponse(BaseModel):
     id: str
     label: str
     capabilities: list[ModelCapability]
     is_default: bool
+    description: str
+    min_plan: Literal["PLUS", "PRO", "ULTRA"]
+    badges: list[Literal["BEST", "NEW"]]
 
 
 class DraftChatModelOutput(BaseModel):
@@ -441,6 +537,9 @@ def _draft_model_response_for(model: AIModelSpec) -> DraftModelResponse:
         label=model.label,
         capabilities=list(model.capabilities),
         is_default=model.is_default,
+        description=model.description,
+        min_plan=model.min_plan,
+        badges=list(model.badges),
     )
 
 
@@ -1655,6 +1754,13 @@ def chat_with_draft(
     limiter: LoginRateLimiter = request.app.state.ai_rate_limiter
     if not limiter.consume(str(principal.user_id)):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="请稍后再试")
+    conversation = (
+        get_owned_conversation(database, principal, payload.conversation_id)
+        if payload.conversation_id is not None
+        else None
+    )
+    if payload.conversation_id is not None and conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="对话不存在")
     trace = _draft_trace_context.get()
     if trace is not None:
         trace.update(
@@ -1674,8 +1780,26 @@ def chat_with_draft(
         required_capabilities.add("tools")
     try:
         configured_models = available_ai_models(settings)
+        subscription = get_or_create_subscription(database, principal.user_id)
+        requested_model = next(
+            (model for model in configured_models if model.id == payload.model_id),
+            None,
+        )
+        if requested_model is not None and not model_plan_allows(
+            subscription.plan_code,
+            requested_model.min_plan,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=f"{requested_model.label} 需要 {requested_model.min_plan.title()} 套餐",
+            )
+        allowed_models = [
+            model
+            for model in configured_models
+            if model_plan_allows(subscription.plan_code, model.min_plan)
+        ]
         model_route = route_ai_models(
-            configured_models,
+            allowed_models,
             required_capabilities=frozenset(required_capabilities),
             preferred_model_id=payload.model_id,
             default_timeout_seconds=settings.ai_request_timeout_seconds,
@@ -1758,7 +1882,7 @@ def chat_with_draft(
             action="DRAFT_ORIGINAL_RESTORED",
             result=None,
         )
-        return DraftChatResponse(
+        response = DraftChatResponse(
             markdown=original_text,
             assistant_message=(
                 "已恢复为你本次对话的第一段原话，没有进行改写。确认无误后，请点击“保存为我的记忆”。"
@@ -1771,6 +1895,15 @@ def chat_with_draft(
             web_citations=[],
             tool_events=[],
             saved_memory=None,
+        )
+        return _persist_draft_conversation(
+            database,
+            principal,
+            conversation,
+            payload,
+            response,
+            [],
+            None,
         )
 
     if (
@@ -1859,7 +1992,7 @@ def chat_with_draft(
             action="DRAFT_CHAT_WITHOUT_MODEL",
             result=None,
         )
-        return DraftChatResponse(
+        response = DraftChatResponse(
             markdown=markdown,
             assistant_message=(
                 "AI 尚未配置，我已把你的原话放到右侧草稿；请检查后再保存。"
@@ -1875,6 +2008,17 @@ def chat_with_draft(
             tool_events=[],
             saved_memory=None,
         )
+        return _persist_draft_conversation(
+            database,
+            principal,
+            conversation,
+            payload,
+            response,
+            [],
+            None,
+        )
+
+    _require_draft_chat_credits(database, principal.user_id)
 
     resolved_provider_model = (
         selected_model.provider_model if selected_model is not None else chat_model.model_id
@@ -2044,7 +2188,7 @@ def chat_with_draft(
                         action="DRAFT_WEB_SEARCH_DISABLED",
                         result=None,
                     )
-                    return DraftChatResponse(
+                    response = DraftChatResponse(
                         markdown=payload.markdown,
                         assistant_message=(
                             "联网搜索当前未启用，右侧 Markdown 保持不变。你可以关闭联网后继续，"
@@ -2058,6 +2202,15 @@ def chat_with_draft(
                         web_citations=[],
                         tool_events=[],
                         saved_memory=None,
+                    )
+                    return _persist_draft_conversation(
+                        database,
+                        principal,
+                        conversation,
+                        payload,
+                        response,
+                        evidence,
+                        None,
                     )
                 try:
                     web_search_result = web_search.search(
@@ -2125,7 +2278,7 @@ def chat_with_draft(
                         action="DRAFT_WEB_SEARCH_FAILED",
                         result=None,
                     )
-                    return DraftChatResponse(
+                    response = DraftChatResponse(
                         markdown=payload.markdown,
                         assistant_message=(
                             "这次联网搜索没有成功，我没有使用未经核实的网页信息，"
@@ -2139,6 +2292,15 @@ def chat_with_draft(
                         web_citations=[],
                         tool_events=[],
                         saved_memory=None,
+                    )
+                    return _persist_draft_conversation(
+                        database,
+                        principal,
+                        conversation,
+                        payload,
+                        response,
+                        evidence,
+                        None,
                     )
             elif should_search_web:
                 web_search_status = "DISABLED"
@@ -2293,7 +2455,23 @@ def chat_with_draft(
         action=action,
         result=None if direct_web_answer else result,
     )
-    return response
+    if response.model_status == "AVAILABLE" and result is not None:
+        remaining = _charge_draft_chat_credits(database, principal.user_id, request)
+        response = response.model_copy(
+            update={
+                "credits_charged": DRAFT_CHAT_CREDIT_COST,
+                "credits_remaining": remaining,
+            }
+        )
+    return _persist_draft_conversation(
+        database,
+        principal,
+        conversation,
+        payload,
+        response,
+        evidence,
+        result if response.model_status == "AVAILABLE" else None,
+    )
 
 
 def _serialize_sse_event(event: DraftChatStreamEvent) -> str:
