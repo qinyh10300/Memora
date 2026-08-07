@@ -230,11 +230,15 @@ def main() -> int:
                 "instruction": f"记录个人 Markdown {personal_original_marker}",
             },
         )
-        if (
-            draft_result["model_status"] not in {"AVAILABLE", "DISABLED"}
-            or personal_original_marker not in draft_result["markdown"]
-        ):
-            raise AssertionError("草稿整理没有安全保留用户原文")
+        model_status = draft_result["model_status"]
+        if model_status == "AVAILABLE":
+            if not draft_result["markdown"].strip():
+                raise AssertionError("模型成功时没有生成 Markdown")
+        elif model_status in {"DISABLED", "DEGRADED"}:
+            if personal_original_marker not in draft_result["markdown"]:
+                raise AssertionError("模型不可用时没有安全保留用户原文")
+        else:
+            raise AssertionError(f"未知的草稿模型状态: {model_status}")
         before_save = expect_status(
             alex,
             "GET",

@@ -12,7 +12,7 @@ while [ "$attempt" -le "$max_attempts" ]; do
         exit 0
     fi
 
-    echo "等待 Memora 服务启动（$attempt/$max_attempts）..."
+    echo "等待 Memora 服务启动（$attempt/${max_attempts}）..."
     attempt=$((attempt + 1))
     sleep 2
 done

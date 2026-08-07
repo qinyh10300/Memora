@@ -1,6 +1,25 @@
 name: memora
 
 services:
+  fake-ai:
+    image: python:3.13-slim
+    profiles: ["e2e"]
+    command: ["python", "/opt/memora/fake-ai-provider.py"]
+    volumes:
+      - ./scripts/fake-ai-provider.py:/opt/memora/fake-ai-provider.py:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18081/health', timeout=2)",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    restart: "no"
+
   db:
     image: pgvector/pgvector:pg17
     environment:
@@ -17,6 +36,7 @@ services:
     restart: unless-stopped
 
   migrate:
+    image: ${MEMORA_MIGRATE_IMAGE:-memora-api:local}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -27,6 +47,12 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:-development-only-change-me}
       SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-1209600}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      METRICS_ENABLED: ${METRICS_ENABLED:-false}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      OBSERVABILITY_SINK_URL: ${OBSERVABILITY_SINK_URL:-}
+      OBSERVABILITY_SINK_TOKEN: ${OBSERVABILITY_SINK_TOKEN:-}
+      OBSERVABILITY_SINK_TIMEOUT_SECONDS: ${OBSERVABILITY_SINK_TIMEOUT_SECONDS:-2}
+      SEED_DEVELOPMENT_DATA_ENABLED: ${SEED_DEVELOPMENT_DATA_ENABLED:-false}
       SEED_USER_1_EMAIL: ${SEED_USER_1_EMAIL:-alex@memora.local}
       SEED_USER_1_DISPLAY_NAME: ${SEED_USER_1_DISPLAY_NAME:-Alex}
       SEED_USER_1_PASSWORD: ${SEED_USER_1_PASSWORD:-memora-local-alex}
@@ -51,22 +77,34 @@ services:
       AI_WEB_SEARCH_MODEL: ${AI_WEB_SEARCH_MODEL:-}
       AI_WEB_SEARCH_TIMEOUT_SECONDS: ${AI_WEB_SEARCH_TIMEOUT_SECONDS:-90}
       AI_CHAT_MAX_OUTPUT_TOKENS: ${AI_CHAT_MAX_OUTPUT_TOKENS:-2400}
+      AI_MODEL_PRICING_JSON: ${AI_MODEL_PRICING_JSON:-}
       AI_EMBEDDING_MAX_ATTEMPTS: ${AI_EMBEDDING_MAX_ATTEMPTS:-5}
       AI_JOB_RETRY_BASE_SECONDS: ${AI_JOB_RETRY_BASE_SECONDS:-15}
+      DOCUMENT_PARSE_MAX_PAGES: ${DOCUMENT_PARSE_MAX_PAGES:-100}
+      DOCUMENT_PARSE_MAX_CHARS: ${DOCUMENT_PARSE_MAX_CHARS:-500000}
+      DOCUMENT_PARSE_TIMEOUT_SECONDS: ${DOCUMENT_PARSE_TIMEOUT_SECONDS:-120}
+      DOCUMENT_PARSE_MAX_ATTEMPTS: ${DOCUMENT_PARSE_MAX_ATTEMPTS:-3}
+      DOCUMENT_PARSE_MAX_CONCURRENCY: ${DOCUMENT_PARSE_MAX_CONCURRENCY:-1}
+      DOCUMENT_CHUNK_MAX_CHARS: ${DOCUMENT_CHUNK_MAX_CHARS:-1400}
+      DOCUMENT_CHUNK_OVERLAP_CHARS: ${DOCUMENT_CHUNK_OVERLAP_CHARS:-120}
+      DOCUMENT_OCR_MIN_TEXT_CHARS: ${DOCUMENT_OCR_MIN_TEXT_CHARS:-40}
+      DOCUMENT_OCR_PAGE_TIMEOUT_SECONDS: ${DOCUMENT_OCR_PAGE_TIMEOUT_SECONDS:-30}
+      DOCUMENT_OCR_LANGUAGES: ${DOCUMENT_OCR_LANGUAGES:-chi_sim+eng}
       HTTP_PROXY: ${DOCKER_HTTP_PROXY:-}
       HTTPS_PROXY: ${DOCKER_HTTPS_PROXY:-}
       ALL_PROXY: ${DOCKER_ALL_PROXY:-}
-      NO_PROXY: ${DOCKER_NO_PROXY:-localhost,127.0.0.1,db,api,web,worker,proxy}
+      NO_PROXY: ${DOCKER_NO_PROXY:-localhost,127.0.0.1,db,api,web,worker,proxy,fake-ai}
       http_proxy: ${DOCKER_HTTP_PROXY:-}
       https_proxy: ${DOCKER_HTTPS_PROXY:-}
       all_proxy: ${DOCKER_ALL_PROXY:-}
-      no_proxy: ${DOCKER_NO_PROXY:-localhost,127.0.0.1,db,api,web,worker,proxy}
+      no_proxy: ${DOCKER_NO_PROXY:-localhost,127.0.0.1,db,api,web,worker,proxy,fake-ai}
     depends_on:
       db:
         condition: service_healthy
     restart: "no"
 
   seed:
+    image: ${MEMORA_SEED_IMAGE:-memora-api:local}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -78,6 +116,7 @@ services:
     restart: "no"
 
   api:
+    image: ${MEMORA_API_IMAGE:-memora-api:local}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -102,6 +141,7 @@ services:
     restart: unless-stopped
 
   worker:
+    image: ${MEMORA_WORKER_IMAGE:-memora-worker:local}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -114,6 +154,7 @@ services:
     restart: unless-stopped
 
   web:
+    image: ${MEMORA_WEB_IMAGE:-memora-web:local}
     build:
       context: .
       dockerfile: apps/web/Dockerfile
