@@ -42,6 +42,7 @@ const chatResponse: DraftChatResponse = {
   web_citations: [],
   tool_events: [],
   saved_memory: null,
+  credits_charged: 10,
   trace,
 };
 

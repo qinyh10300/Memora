@@ -9,6 +9,9 @@ import "../styles/settings.css";
 import "../styles/team.css";
 import "../styles/capture.css";
 import "../styles/library.css";
+import "@xyflow/react/dist/style.css";
+import "../styles/features.css";
+import "../styles/insights.css";
 import "../styles/responsive.css";
 
 export const metadata: Metadata = {

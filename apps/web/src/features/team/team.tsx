@@ -38,7 +38,10 @@ export function TeamAccessDialog({
   onClose: () => void;
   onWorkspaceReady: (workspace: Workspace, alreadyActive: boolean) => Promise<void>;
 }) {
-  const [mode, setMode] = useState(initialMode);
+  const [mode, setMode] = useState<"CREATE" | "JOIN">(initialMode === "JOIN" ? "JOIN" : "CREATE");
+  const [workspaceKind, setWorkspaceKind] = useState<"TEAM" | "FAMILY">(
+    initialMode === "CREATE_FAMILY" ? "FAMILY" : "TEAM",
+  );
   const [teamName, setTeamName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -61,7 +64,7 @@ export function TeamAccessDialog({
     const normalizedName = teamName.trim();
     const normalizedCode = joinCode.replace(/[^a-z0-9]/gi, "").toUpperCase();
     if (mode === "CREATE" && !normalizedName) {
-      setError("请输入团队名称");
+      setError(`请输入${workspaceKind === "FAMILY" ? "家庭" : "团队"}名称`);
       return;
     }
     if (mode === "JOIN" && normalizedCode.length !== 12) {
@@ -73,9 +76,11 @@ export function TeamAccessDialog({
     setError("");
     try {
       if (mode === "CREATE") {
-        const result = await api.POST("/workspaces", { body: { name: normalizedName } });
+        const result = await api.POST("/workspaces", {
+          body: { name: normalizedName, kind: workspaceKind },
+        });
         if (!result.data || !result.response.ok) {
-          throw new Error(apiErrorMessage(result.error, "创建团队失败"));
+          throw new Error(apiErrorMessage(result.error, "创建空间失败"));
         }
         await onWorkspaceReady(result.data, false);
         onClose();
@@ -120,9 +125,13 @@ export function TeamAccessDialog({
             <X aria-hidden="true" size={18} strokeWidth={1.8} />
           </button>
         </header>
-        <p className="eyebrow">TEAM WORKSPACE</p>
+        <p className="eyebrow">COLLABORATIVE WORKSPACE</p>
         <h2 id="team-access-title">
-          {pendingTeamName ? "申请已提交" : mode === "CREATE" ? "创建团队" : "加入团队"}
+          {pendingTeamName
+            ? "申请已提交"
+            : mode === "CREATE"
+              ? `创建${workspaceKind === "FAMILY" ? "家庭" : "团队"}`
+              : "加入空间"}
         </h2>
         {pendingTeamName ? (
           <div className="team-request-success" role="status">
@@ -163,16 +172,36 @@ export function TeamAccessDialog({
             </div>
             <form onSubmit={submit}>
               {mode === "CREATE" ? (
-                <label>
-                  <span>团队名称</span>
-                  <input
-                    autoFocus
-                    maxLength={120}
-                    value={teamName}
-                    onChange={(event) => setTeamName(event.target.value)}
-                    placeholder="例如：产品研究组"
-                  />
-                </label>
+                <>
+                  <div className="workspace-kind-control" role="group" aria-label="空间类型">
+                    <button
+                      type="button"
+                      className={workspaceKind === "TEAM" ? "is-active" : ""}
+                      onClick={() => setWorkspaceKind("TEAM")}
+                    >
+                      团队
+                    </button>
+                    <button
+                      type="button"
+                      className={workspaceKind === "FAMILY" ? "is-active" : ""}
+                      onClick={() => setWorkspaceKind("FAMILY")}
+                    >
+                      家庭
+                    </button>
+                  </div>
+                  <label>
+                    <span>{workspaceKind === "FAMILY" ? "家庭名称" : "团队名称"}</span>
+                    <input
+                      autoFocus
+                      maxLength={120}
+                      value={teamName}
+                      onChange={(event) => setTeamName(event.target.value)}
+                      placeholder={
+                        workspaceKind === "FAMILY" ? "例如：我们的家" : "例如：产品研究组"
+                      }
+                    />
+                  </label>
+                </>
               ) : (
                 <label>
                   <span>团队号</span>
@@ -223,6 +252,7 @@ export function TeamWorkspace({
   const [removingMemberId, setRemovingMemberId] = useState("");
   const [confirmRemoveId, setConfirmRemoveId] = useState("");
   const joinCode = formattedTeamCode(workspace.join_code);
+  const spaceNoun = workspace.kind === "FAMILY" ? "家庭" : "团队";
 
   useEffect(() => {
     let active = true;
@@ -245,9 +275,9 @@ export function TeamWorkspace({
     if (!joinCode) return;
     try {
       await navigator.clipboard.writeText(joinCode);
-      onNotify("团队号已复制");
+      onNotify(`${spaceNoun}号已复制`);
     } catch {
-      onNotify("复制失败，请手动选择团队号");
+      onNotify(`复制失败，请手动选择${spaceNoun}号`);
     }
   }
 
@@ -270,7 +300,7 @@ export function TeamWorkspace({
     setJoinRequests((current) => current.filter((item) => item.user_id !== result.data?.id));
     setEmail("");
     setInviting(false);
-    onNotify(`已邀请 ${result.data.display_name} 加入团队`);
+    onNotify(`已邀请 ${result.data.display_name} 加入${spaceNoun}`);
   }
 
   async function reviewJoinRequest(
@@ -286,7 +316,7 @@ export function TeamWorkspace({
         });
         if (!result.data || !result.response.ok) throw new Error("approve_failed");
         onMemberInvited(result.data);
-        onNotify(`已允许 ${joinRequest.display_name} 加入团队`);
+        onNotify(`已允许 ${joinRequest.display_name} 加入${spaceNoun}`);
       } else {
         const result = await api.POST("/workspace/join-requests/{user_id}/reject", {
           params: { path: { user_id: joinRequest.user_id } },
@@ -316,7 +346,7 @@ export function TeamWorkspace({
       if (!result.response.ok) throw new Error("remove_failed");
       onMemberRemoved(member.id);
       setConfirmRemoveId("");
-      onNotify(`已将 ${member.display_name} 移出团队`);
+      onNotify(`已将 ${member.display_name} 移出${spaceNoun}`);
     } catch {
       onNotify("移除成员失败，请稍后重试");
     } finally {
@@ -328,9 +358,11 @@ export function TeamWorkspace({
     <section className="team-workspace" aria-labelledby="team-workspace-title">
       <header className="team-workspace-header">
         <div>
-          <p className="eyebrow">TEAM WORKSPACE</p>
+          <p className="eyebrow">
+            {workspace.kind === "FAMILY" ? "FAMILY SPACE" : "TEAM WORKSPACE"}
+          </p>
           <h1 id="team-workspace-title">{workspace.name}</h1>
-          <p>团队记忆只包含成员主动设为“团队共享”的内容。</p>
+          <p>{spaceNoun}记忆只包含成员主动设为“空间共享”的内容。</p>
         </div>
         <span className="team-role-badge">{workspace.role === "OWNER" ? "所有者" : "成员"}</span>
       </header>
@@ -339,14 +371,14 @@ export function TeamWorkspace({
         <div>
           <Hash aria-hidden="true" size={18} strokeWidth={1.7} />
           <span>
-            <small>团队号</small>
+            <small>{spaceNoun}号</small>
             <code>{joinCode || "尚未生成"}</code>
           </span>
           {joinCode ? (
             <button
               type="button"
-              aria-label="复制团队号"
-              title="复制团队号"
+              aria-label={`复制${spaceNoun}号`}
+              title={`复制${spaceNoun}号`}
               onClick={() => void copyJoinCode()}
             >
               <Copy aria-hidden="true" size={16} strokeWidth={1.8} />
@@ -356,7 +388,7 @@ export function TeamWorkspace({
         <div>
           <Users aria-hidden="true" size={18} strokeWidth={1.7} />
           <span>
-            <small>团队成员</small>
+            <small>{spaceNoun}成员</small>
             <strong>{members.length}</strong>
           </span>
         </div>
@@ -460,7 +492,9 @@ export function TeamWorkspace({
                         className={confirmRemoveId === member.id ? "is-confirming" : ""}
                         disabled={Boolean(removingMemberId)}
                         aria-label={`移除成员 ${member.display_name}`}
-                        title={confirmRemoveId === member.id ? "再次点击确认移除" : "移出团队"}
+                        title={
+                          confirmRemoveId === member.id ? "再次点击确认移除" : `移出${spaceNoun}`
+                        }
                         onBlur={() => setConfirmRemoveId("")}
                         onClick={() => void removeMember(member)}
                       >
@@ -493,15 +527,15 @@ export function TeamWorkspace({
               {inviteError ? <p role="alert">{inviteError}</p> : null}
               <button className="primary-action" type="submit" disabled={!email.trim() || inviting}>
                 <UserPlus aria-hidden="true" size={16} strokeWidth={1.8} />
-                {inviting ? "邀请中…" : "添加到团队"}
+                {inviting ? "邀请中…" : `添加到${spaceNoun}`}
               </button>
             </form>
           ) : (
-            <p>团队所有者可以通过已注册邮箱添加成员。</p>
+            <p>{spaceNoun}所有者可以通过已注册邮箱添加成员。</p>
           )}
           <div className="team-invite-code">
             <Hash aria-hidden="true" size={17} strokeWidth={1.8} />
-            <span>也可以把团队号发给对方；对方提交申请后，由所有者审核。</span>
+            <span>也可以把{spaceNoun}号发给对方；对方提交申请后，由所有者审核。</span>
           </div>
         </section>
       </div>

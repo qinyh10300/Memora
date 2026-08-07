@@ -122,9 +122,51 @@ const teammateMemory: Memory = {
 const draftModel: DraftModel = {
   id: "balanced",
   label: "Balanced",
+  description: "平衡速度与质量",
+  min_plan: "PLUS",
+  badges: [],
   capabilities: ["chat", "vision", "web_search", "tools"],
   is_default: true,
 };
+
+const subscription = {
+  plan_code: "PLUS" as const,
+  plan_name: "Plus",
+  status: "ACTIVE" as const,
+  credits_granted: 2000,
+  credits_used: 0,
+  credits_reserved: 0,
+  credits_remaining: 2000,
+  period_started_at: "2026-08-01T00:00:00Z",
+  period_ends_at: "2026-09-01T00:00:00Z",
+};
+
+const plans = [
+  {
+    code: "PLUS" as const,
+    name: "Plus",
+    credits_per_period: 2000,
+    description: "适合个人日常记录",
+    features: ["Markdown 记忆", "基础模型"],
+    is_current: true,
+  },
+  {
+    code: "PRO" as const,
+    name: "Pro",
+    credits_per_period: 10000,
+    description: "适合持续研究",
+    features: ["更多 Credits", "深度调研"],
+    is_current: false,
+  },
+  {
+    code: "ULTRA" as const,
+    name: "Ultra",
+    credits_per_period: 50000,
+    description: "适合高频团队使用",
+    features: ["最高额度", "团队工作台"],
+    is_current: false,
+  },
+];
 
 const completedDocumentStatus = {
   asset_id: "asset-pdf",
@@ -175,7 +217,7 @@ function mockAuthenticatedSession(
         personalWorkspace;
       return Promise.resolve(
         ok(
-          currentWorkspace.kind === "TEAM"
+          currentWorkspace.kind !== "PERSONAL"
             ? {
                 ...teamUser,
                 workspace_id: currentWorkspace.id,
@@ -187,6 +229,53 @@ function mockAuthenticatedSession(
       );
     }
     if (path === "/drafts/models") return Promise.resolve(ok([draftModel]));
+    if (path === "/billing/subscription") return Promise.resolve(ok(subscription));
+    if (path === "/conversations") return Promise.resolve(ok([]));
+    if (path === "/visuals") return Promise.resolve(ok([]));
+    if (path === "/visuals/templates") {
+      return Promise.resolve(
+        ok([
+          {
+            id: "scientific-illustration",
+            label: "科研图像",
+            description: "适合论文概念与机制示意",
+            mode: "IMAGE" as const,
+            kind: "SCIENTIFIC" as const,
+            preview_tone: "blue",
+          },
+          {
+            id: "mind-map",
+            label: "思维导图",
+            description: "从中心主题展开层级关系",
+            mode: "STRUCTURED" as const,
+            kind: "MIND_MAP" as const,
+            preview_tone: "blue",
+          },
+        ]),
+      );
+    }
+    if (path === "/visuals/models") {
+      return Promise.resolve(
+        ok([
+          {
+            id: "gpt-image-2",
+            label: "GPT Image 2",
+            description: "高质量科研图像",
+            min_plan: "PLUS" as const,
+            badge: "BEST" as const,
+            is_default: true,
+            configured: true,
+            locked: false,
+          },
+        ]),
+      );
+    }
+    if (path === "/visuals/costs") {
+      return Promise.resolve(ok({ structured_visual: 10, "gpt-image-2": 150 }));
+    }
+    if (path === "/billing/plans" || path === "/billing/credits" || path === "/diagrams") {
+      return Promise.resolve(ok([]));
+    }
     if (path === "/workspaces") {
       return Promise.resolve(
         ok(
@@ -209,6 +298,24 @@ function mockAuthenticatedSession(
   });
 
   apiMocks.POST.mockImplementation((path: string, options?: unknown) => {
+    if (path === "/conversations") {
+      const body = (options as { body: { title: string } }).body;
+      return Promise.resolve(
+        ok(
+          {
+            id: "conversation-current",
+            title: body.title,
+            scope: "PERSONAL" as const,
+            topic: "全部",
+            created_at: "2026-08-07T08:00:00Z",
+            updated_at: "2026-08-07T08:00:00Z",
+            archived_at: null,
+            message_count: 0,
+          },
+          201,
+        ),
+      );
+    }
     if (path === "/workspaces/{workspace_id}/activate") {
       const workspaceId = (options as { params: { path: { workspace_id: string } } }).params.path
         .workspace_id;
@@ -217,11 +324,11 @@ function mockAuthenticatedSession(
       return Promise.resolve(ok({ ...workspace, is_current: true }));
     }
     if (path === "/workspaces") {
-      const body = (options as { body: { name: string } }).body;
+      const body = (options as { body: { name: string; kind: "TEAM" | "FAMILY" } }).body;
       const created: Workspace = {
         id: "workspace-created",
         name: body.name,
-        kind: "TEAM",
+        kind: body.kind,
         role: "OWNER",
         is_current: false,
         join_code: "JKLM23NPQR45",
@@ -488,6 +595,20 @@ function mockAuthenticatedSession(
       const body = (options as { body: { display_name: string } }).body;
       return Promise.resolve(ok({ ...personalUser, display_name: body.display_name }));
     }
+    if (path === "/conversations/{conversation_id}") {
+      return Promise.resolve(
+        ok({
+          id: "conversation-history",
+          title: "历史研究记录",
+          scope: "PERSONAL" as const,
+          topic: "全部",
+          created_at: "2026-08-06T08:00:00Z",
+          updated_at: "2026-08-07T08:00:00Z",
+          archived_at: "2026-08-07T09:00:00Z",
+          message_count: 2,
+        }),
+      );
+    }
     return Promise.resolve(missing());
   });
   apiMocks.PUT.mockImplementation((path: string) => {
@@ -526,7 +647,7 @@ function mockAuthenticatedSession(
 }
 
 async function openCaptureView() {
-  fireEvent.click(await screen.findByRole("button", { name: "记录想法" }));
+  fireEvent.click(await screen.findByRole("button", { name: "新对话" }));
 }
 
 async function openLibraryView() {
@@ -682,13 +803,13 @@ describe("Memora personal Markdown MVP", () => {
       "/workspaces/{workspace_id}/activate",
       expect.anything(),
     );
-    expect(screen.getByRole("button", { name: "记录想法" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新对话" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "记忆库" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "首页" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Balanced" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "今天在想什么？" })).toBeInTheDocument();
     expect(screen.getByLabelText("Markdown 草稿")).toBeInTheDocument();
-    expect(screen.getByText("所有新记忆仅你可见")).toBeInTheDocument();
+    expect(screen.getByText("默认私有")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "团队" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "分析" })).not.toBeInTheDocument();
   });
@@ -795,7 +916,7 @@ describe("Memora personal Markdown MVP", () => {
 
     await waitFor(() => {
       expect(apiMocks.POST).toHaveBeenCalledWith("/workspaces", {
-        body: { name: "社会智能研究组" },
+        body: { name: "社会智能研究组", kind: "TEAM" },
       });
       expect(apiMocks.POST).toHaveBeenCalledWith("/workspaces/{workspace_id}/activate", {
         params: { path: { workspace_id: "workspace-created" } },
@@ -816,6 +937,29 @@ describe("Memora personal Markdown MVP", () => {
     expect(await screen.findByRole("heading", { name: "申请已提交" })).toBeVisible();
     expect(screen.getByText("加入的研究团队")).toBeVisible();
     expect(screen.getByText(/团队所有者审核通过后/)).toBeVisible();
+  });
+
+  it("可以创建家庭空间并复用成员协作工作台", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: `切换空间，当前为 ${personalWorkspace.name}` }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "创建家庭" }));
+
+    expect(screen.getByRole("heading", { name: "创建家庭" })).toBeVisible();
+    fireEvent.change(screen.getByLabelText("家庭名称"), { target: { value: "Alex 的家庭" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建并进入" }));
+
+    await waitFor(() => {
+      expect(apiMocks.POST).toHaveBeenCalledWith("/workspaces", {
+        body: { name: "Alex 的家庭", kind: "FAMILY" },
+      });
+    });
+    expect(await screen.findByRole("heading", { name: "Alex 的家庭" })).toBeVisible();
+    expect(screen.getByText("FAMILY SPACE")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "家庭成员" })).toBeInTheDocument();
   });
 
   it("有未保存草稿时阻止切换团队空间", async () => {
@@ -893,19 +1037,163 @@ describe("Memora personal Markdown MVP", () => {
     expect(navigation).not.toHaveClass("is-collapsed");
   });
 
+  it("可以查看 credits、账本并从 Plus 升级到 Pro", async () => {
+    mockAuthenticatedSession([]);
+    const baseGet = apiMocks.GET.getMockImplementation();
+    const basePost = apiMocks.POST.getMockImplementation();
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/billing/plans") return Promise.resolve(ok(plans));
+      if (path === "/billing/credits") {
+        return Promise.resolve(
+          ok([
+            {
+              id: "ledger-1",
+              delta: -10,
+              balance_after: 1990,
+              reason: "AI_USAGE" as const,
+              reference_type: "draft_chat",
+              reference_id: "execution-1",
+              created_at: "2026-08-07T08:00:00Z",
+            },
+          ]),
+        );
+      }
+      return baseGet?.(path, options);
+    });
+    apiMocks.POST.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/billing/subscription/upgrade") {
+        return Promise.resolve(
+          ok({
+            ...subscription,
+            plan_code: "PRO" as const,
+            plan_name: "Pro",
+            credits_granted: 10000,
+            credits_remaining: 10000,
+          }),
+        );
+      }
+      return basePost?.(path, options);
+    });
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: /2,000 credits/ }));
+
+    expect(screen.getByRole("dialog", { name: "套餐与 Credits" })).toBeVisible();
+    expect(await screen.findByText("最近额度记录")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "升级到 Pro" }));
+
+    await waitFor(() => {
+      expect(apiMocks.POST).toHaveBeenCalledWith("/billing/subscription/upgrade", {
+        body: { plan_code: "PRO" },
+      });
+    });
+    expect(await screen.findByText("已升级到 Pro")).toBeInTheDocument();
+    expect(screen.getAllByText("10,000 credits").length).toBeGreaterThan(0);
+  });
+
+  it("可以恢复并归档当前空间的历史对话", async () => {
+    mockAuthenticatedSession([]);
+    const summary = {
+      id: "conversation-history",
+      title: "历史研究记录",
+      scope: "PERSONAL" as const,
+      topic: "全部",
+      created_at: "2026-08-06T08:00:00Z",
+      updated_at: "2026-08-07T08:00:00Z",
+      archived_at: null,
+      message_count: 2,
+    };
+    const baseGet = apiMocks.GET.getMockImplementation();
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/conversations") return Promise.resolve(ok([summary]));
+      if (path === "/conversations/{conversation_id}") {
+        return Promise.resolve(
+          ok({
+            ...summary,
+            messages: [
+              {
+                id: "message-user",
+                role: "USER" as const,
+                status: "COMPLETE" as const,
+                content: "整理之前的产品判断",
+                created_at: "2026-08-06T08:00:00Z",
+                citations: [],
+                memory: null,
+              },
+              {
+                id: "message-assistant",
+                role: "ASSISTANT" as const,
+                status: "COMPLETE" as const,
+                content: "已整理并保存。",
+                created_at: "2026-08-06T08:00:02Z",
+                citations: [],
+                memory,
+              },
+            ],
+          }),
+        );
+      }
+      return baseGet?.(path, options);
+    });
+
+    render(<HomePage />);
+    const historyButton = (await screen.findByText("历史研究记录")).closest("button");
+    expect(historyButton).not.toBeNull();
+    fireEvent.click(historyButton!);
+
+    expect(await screen.findByText("整理之前的产品判断")).toBeInTheDocument();
+    expect(screen.getByLabelText("Markdown 草稿")).toHaveValue(memory.body);
+    fireEvent.click(screen.getByRole("button", { name: "归档对话 历史研究记录" }));
+
+    await waitFor(() => {
+      expect(apiMocks.PATCH).toHaveBeenCalledWith("/conversations/{conversation_id}", {
+        params: { path: { conversation_id: summary.id } },
+        body: { archived: true },
+      });
+    });
+    expect(screen.queryByText("历史研究记录")).not.toBeInTheDocument();
+  });
+
+  it("云知识库和 MamaRail 框图可从侧栏进入", async () => {
+    mockAuthenticatedSession([memory]);
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "云知识库" }));
+    expect(await screen.findByRole("heading", { name: "云知识库" })).toBeVisible();
+    expect(screen.getByText("产品方向")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "框图" }));
+    expect(await screen.findByRole("heading", { name: "科研绘图" })).toBeVisible();
+    expect(screen.getByLabelText("绘图描述")).toBeVisible();
+  });
+
   it("模型菜单可以在 GPT、Claude 和 Gemini 之间切换", async () => {
     mockAuthenticatedSession([]);
     const models: DraftModel[] = [
-      { id: "gpt", label: "GPT 5.6", capabilities: ["chat", "tools"], is_default: true },
+      {
+        id: "gpt",
+        label: "GPT 5.6",
+        description: "快速经济",
+        min_plan: "PLUS",
+        badges: [],
+        capabilities: ["chat", "tools"],
+        is_default: true,
+      },
       {
         id: "claude",
         label: "Claude Sonnet 4.6",
+        description: "平衡速度与质量",
+        min_plan: "PLUS",
+        badges: ["NEW"],
         capabilities: ["chat", "tools"],
         is_default: false,
       },
       {
         id: "gemini",
         label: "Gemini 3.1 Pro",
+        description: "多模态旗舰",
+        min_plan: "PRO",
+        badges: [],
         capabilities: ["chat", "tools"],
         is_default: false,
       },
@@ -916,12 +1204,13 @@ describe("Memora personal Markdown MVP", () => {
     );
 
     render(<HomePage />);
-    const modelSelect = await screen.findByLabelText("模型");
-    expect(screen.getByRole("option", { name: "GPT 5.6" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Claude Sonnet 4.6" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Gemini 3.1 Pro" })).toBeInTheDocument();
+    const modelSelect = await screen.findByRole("button", { name: "选择聊天模型" });
+    fireEvent.click(modelSelect);
+    expect(screen.getByRole("option", { name: /GPT 5.6/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Claude Sonnet 4.6/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Gemini 3.1 Pro/ })).toBeInTheDocument();
 
-    fireEvent.change(modelSelect, { target: { value: "claude" } });
+    fireEvent.click(screen.getByRole("option", { name: /Claude Sonnet 4.6/ }));
     expect(screen.getByRole("heading", { name: "Claude Sonnet 4.6" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("告诉 Memora 你的想法"), {
       target: { value: "整理这条想法" },
@@ -937,6 +1226,34 @@ describe("Memora personal Markdown MVP", () => {
         }),
       );
     });
+  });
+
+  it("深度调研入口固定使用本轮联网并保留来源体验", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "深度调研" }));
+
+    expect(await screen.findByRole("heading", { name: "今天想深入研究什么？" })).toBeVisible();
+    const mode = screen.getByRole("combobox", { name: "联网模式" });
+    expect(mode).toHaveValue("REQUIRED");
+    expect(mode).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("告诉 Memora 你的想法"), {
+      target: { value: "调研可解释社会世界模型" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(apiMocks.STREAM).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversation_id: "conversation-current",
+          web_search: "REQUIRED",
+        }),
+        expect.any(Function),
+        expect.anything(),
+      );
+    });
+    expect(await screen.findByText(/已联网 · 1 个来源/)).toBeInTheDocument();
   });
 
   it("可以取消正在运行的 Agent，并从持久化执行记录确认取消", async () => {
@@ -1170,6 +1487,7 @@ describe("Memora personal Markdown MVP", () => {
     expect(screen.getByText("Markdown 编辑区已同步")).toBeInTheDocument();
     expect(apiMocks.POST).toHaveBeenCalledWith("/drafts/chat", {
       body: {
+        conversation_id: "conversation-current",
         markdown: "",
         model_id: "balanced",
         web_search: "AUTO",
@@ -1184,6 +1502,7 @@ describe("Memora personal Markdown MVP", () => {
       expect(apiMocks.POST).toHaveBeenCalledWith("/memories", {
         body: {
           body: "# 产品方向\n\n先验证个人记录和回顾。",
+          conversation_id: "conversation-current",
           visibility: "PRIVATE",
           document_citations: [],
         },
@@ -1199,8 +1518,8 @@ describe("Memora personal Markdown MVP", () => {
     fireEvent.change(await screen.findByLabelText("Markdown 草稿"), {
       target: { value: "# 团队判断\n\n记录共同的产品结论。" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "团队共享" }));
-    fireEvent.click(screen.getByRole("button", { name: "保存为团队记忆" }));
+    fireEvent.click(screen.getByRole("button", { name: "空间共享" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存为空间记忆" }));
 
     await waitFor(() => {
       expect(apiMocks.POST).toHaveBeenCalledWith("/memories", {
@@ -1212,7 +1531,7 @@ describe("Memora personal Markdown MVP", () => {
       });
     });
     expect(
-      await screen.findByText(`已共享到 ${teamWorkspace.name} 的团队记忆库。`),
+      await screen.findByText(`已共享到 ${teamWorkspace.name} 的空间记忆库。`),
     ).toBeInTheDocument();
   });
 
@@ -1251,6 +1570,7 @@ describe("Memora personal Markdown MVP", () => {
     await waitFor(() => {
       expect(apiMocks.POST).toHaveBeenCalledWith("/drafts/chat", {
         body: {
+          conversation_id: "conversation-current",
           markdown: "",
           model_id: "balanced",
           web_search: "REQUIRED",
@@ -1319,6 +1639,7 @@ describe("Memora personal Markdown MVP", () => {
     await waitFor(() => {
       expect(apiMocks.POST).toHaveBeenLastCalledWith("/drafts/chat", {
         body: {
+          conversation_id: "conversation-current",
           markdown: "# 产品方向\n\n先验证个人记录和回顾。",
           model_id: "balanced",
           web_search: "AUTO",
@@ -1359,6 +1680,7 @@ describe("Memora personal Markdown MVP", () => {
     await waitFor(() => {
       expect(apiMocks.POST).toHaveBeenCalledWith("/drafts/chat", {
         body: {
+          conversation_id: "conversation-current",
           markdown: "![截图.png](/api/assets/asset-image/content)",
           model_id: "balanced",
           web_search: "AUTO",
@@ -1391,6 +1713,7 @@ describe("Memora personal Markdown MVP", () => {
     await waitFor(() => {
       expect(apiMocks.POST).toHaveBeenLastCalledWith("/drafts/chat", {
         body: {
+          conversation_id: "conversation-current",
           markdown: "# 产品方向\n\n先验证个人记录和回顾。",
           model_id: "balanced",
           web_search: "AUTO",
@@ -1443,6 +1766,7 @@ describe("Memora personal Markdown MVP", () => {
     await waitFor(() => {
       expect(apiMocks.POST).toHaveBeenCalledWith("/drafts/chat", {
         body: {
+          conversation_id: "conversation-current",
           markdown: "",
           model_id: "balanced",
           web_search: "AUTO",
@@ -1467,6 +1791,7 @@ describe("Memora personal Markdown MVP", () => {
       expect(apiMocks.POST).toHaveBeenCalledWith("/memories", {
         body: {
           body: "# 方案摘要\n\n先验证异步文档解析与页码引用。",
+          conversation_id: "conversation-current",
           visibility: "PRIVATE",
           document_citations: [{ chunk_id: draftDocumentCitation.chunk_id }],
         },
@@ -1539,7 +1864,7 @@ describe("Memora personal Markdown MVP", () => {
     fireEvent.change(screen.getByLabelText("结束日期"), {
       target: { value: "2026-08-06" },
     });
-    fireEvent.change(screen.getByLabelText("团队成员"), {
+    fireEvent.change(screen.getByLabelText("空间成员"), {
       target: { value: "user-blair" },
     });
     fireEvent.click(screen.getByRole("button", { name: "检索" }));
@@ -1660,9 +1985,11 @@ describe("Memora personal Markdown MVP", () => {
 
     const saveButton = screen.getByRole("button", { name: "保存更改" });
     await waitFor(() => {
-      expect(container.querySelector(".avatar-preview-wrap img")?.getAttribute("src")).toContain(
-        "data:image/png",
-      );
+      expect(
+        container
+          .querySelector(".avatar-preview-wrap .user-avatar img:last-child")
+          ?.getAttribute("src"),
+      ).toContain("data:image/png");
       expect(saveButton).toBeEnabled();
     });
     fireEvent.click(saveButton);

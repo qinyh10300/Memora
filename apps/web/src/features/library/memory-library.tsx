@@ -13,6 +13,7 @@ import type {
   Workspace,
   WorkspaceMember,
 } from "@/features/shared/contracts";
+import { isCollaborativeWorkspace } from "@/features/shared/contracts";
 import { LibraryIcon, SparkleIcon } from "@/features/shared/icons";
 import {
   dayKey,
@@ -139,9 +140,9 @@ function MemorySearchPopover({
               />
             </label>
           </div>
-          {workspace.kind === "TEAM" ? (
+          {isCollaborativeWorkspace(workspace) ? (
             <label>
-              <span>团队成员</span>
+              <span>空间成员</span>
               <select
                 value={filters.authorId}
                 onChange={(event) => onChange({ ...filters, authorId: event.target.value })}
@@ -218,11 +219,13 @@ export function Timeline({
   return (
     <section
       className="timeline-panel"
-      aria-label={workspace.kind === "TEAM" ? "团队记忆时间线" : "个人记忆时间线"}
+      aria-label={isCollaborativeWorkspace(workspace) ? "共享记忆时间线" : "个人记忆时间线"}
     >
       <header className="library-list-header">
         <div>
-          <p className="eyebrow">{workspace.kind === "TEAM" ? workspace.name : "个人记忆"}</p>
+          <p className="eyebrow">
+            {isCollaborativeWorkspace(workspace) ? workspace.name : "个人记忆"}
+          </p>
           <h1>记忆库</h1>
         </div>
         <div className="library-list-actions">
@@ -381,7 +384,7 @@ export function MemoryDetail({
             visible={previewVisible}
             onToggle={() => setPreviewVisible((visible) => !visible)}
           />
-          {memory.is_owner && workspace.kind === "TEAM" ? (
+          {memory.is_owner && isCollaborativeWorkspace(workspace) ? (
             <button
               className="visibility-action"
               type="button"
@@ -399,7 +402,7 @@ export function MemoryDetail({
                 ? "更新中…"
                 : memory.visibility === "WORKSPACE"
                   ? "撤回共享"
-                  : "共享给团队"}
+                  : "共享给空间"}
             </button>
           ) : null}
           {memory.is_owner ? (

@@ -118,7 +118,13 @@ export function UserAvatar({
 }) {
   return (
     <span className={`user-avatar ${className}`} aria-hidden="true">
-      <span>{user.display_name.slice(0, 1).toUpperCase()}</span>
+      <Image
+        alt=""
+        className="user-avatar-default"
+        height={96}
+        src="/memora-logo-owl-minimal-tight.png"
+        width={96}
+      />
       {src ? (
         <Image
           alt=""

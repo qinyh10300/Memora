@@ -24,6 +24,7 @@ import type {
   WebSearchMode,
   Workspace,
 } from "@/features/shared/contracts";
+import { isCollaborativeWorkspace } from "@/features/shared/contracts";
 import {
   AttachmentIcon,
   CloseIcon,
@@ -39,6 +40,7 @@ import {
   sourceHostname,
   storeNumber,
 } from "@/features/shared/utils";
+import { planAllows, RichModelPicker } from "@/features/shared/model-picker";
 import {
   clampComposerHeight,
   COMPOSER_DEFAULT_HEIGHT,
@@ -68,6 +70,7 @@ import { MarkdownWorkspace, PreviewToggle } from "./markdown-workspace";
 import { modelSupports, selectedDraftModelLabel } from "./trace";
 
 export function CaptureWorkspace({
+  mode = "CAPTURE",
   workspace,
   draft,
   messages,
@@ -79,6 +82,7 @@ export function CaptureWorkspace({
   savedVisibility,
   modelOptions,
   selectedModelId,
+  subscriptionPlan,
   agentPhase,
   canRetry,
   documentCitations,
@@ -88,10 +92,12 @@ export function CaptureWorkspace({
   onSaveVisibilityChange,
   onReset,
   onModelChange,
+  onUpgrade,
   onOpenCitation,
   onCancel,
   onRetry,
 }: {
+  mode?: "CAPTURE" | "RESEARCH";
   workspace: Workspace;
   draft: string;
   messages: DraftMessage[];
@@ -103,6 +109,7 @@ export function CaptureWorkspace({
   savedVisibility: MemoryVisibility | null;
   modelOptions: DraftModel[];
   selectedModelId: string | null;
+  subscriptionPlan?: "PLUS" | "PRO" | "ULTRA";
   agentPhase: CaptureAgentPhase;
   canRetry: boolean;
   documentCitations: DraftDocumentCitation[];
@@ -118,10 +125,12 @@ export function CaptureWorkspace({
   onSaveVisibilityChange: (visibility: MemoryVisibility) => void;
   onReset: () => void;
   onModelChange: (modelId: string | null) => void;
+  onUpgrade: () => void;
   onOpenCitation: (memoryId: string) => Promise<void>;
   onCancel: () => Promise<void>;
   onRetry: () => Promise<void>;
 }) {
+  const researchMode = mode === "RESEARCH";
   const [instruction, setInstruction] = useState("");
   const [attachments, setAttachments] = useState<DraftImageAttachment[]>([]);
   const [documents, setDocuments] = useState<DraftDocumentAttachment[]>([]);
@@ -222,8 +231,8 @@ export function CaptureWorkspace({
     setDocuments([]);
     setAttachmentError("");
     if (imageInputRef.current) imageInputRef.current.value = "";
-    const selectedWebSearchMode = webSearchMode;
-    if (selectedWebSearchMode === "REQUIRED") setWebSearchMode("AUTO");
+    const selectedWebSearchMode = researchMode ? "REQUIRED" : webSearchMode;
+    if (!researchMode && selectedWebSearchMode === "REQUIRED") setWebSearchMode("AUTO");
     await onRefine(
       message,
       selectedAttachments,
@@ -422,12 +431,14 @@ export function CaptureWorkspace({
               </span>
               <div>
                 <h1>{selectedModelLabel}</h1>
-                <small>Memora Markdown Agent</small>
+                <small>
+                  {researchMode ? "Memora Deep Research Agent" : "Memora Markdown Agent"}
+                </small>
               </div>
             </div>
             <span className="private-status">
               <span className="privacy-dot" />
-              {workspace.kind === "TEAM" ? "团队空间 · 默认私有" : "默认私有"}
+              {isCollaborativeWorkspace(workspace) ? "协作空间 · 默认私有" : "默认私有"}
             </span>
           </header>
 
@@ -436,7 +447,7 @@ export function CaptureWorkspace({
               <span className="intro-mark">
                 <Logo />
               </span>
-              <h2>今天在想什么？</h2>
+              <h2>{researchMode ? "今天想深入研究什么？" : "今天在想什么？"}</h2>
             </div>
             <div className="message-list" aria-live="polite">
               {messages.map((message) => (
@@ -662,29 +673,32 @@ export function CaptureWorkspace({
               ) : null}
               <div className="composer-tools">
                 {modelOptions.length ? (
-                  <label className="model-control">
-                    <SparkleIcon />
-                    <select
-                      aria-label="模型"
-                      value={selectedModelId ?? ""}
-                      onChange={(event) => changeModel(event.target.value || null)}
-                      disabled={refining}
-                    >
-                      {modelOptions.map((model) => (
-                        <option value={model.id} key={model.id}>
-                          {model.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <RichModelPicker
+                    compact
+                    label="选择聊天模型"
+                    options={modelOptions.map((model) => ({
+                      id: model.id,
+                      label: model.label,
+                      description: model.description,
+                      minPlan: model.min_plan,
+                      badges: model.badges,
+                      locked: !planAllows(subscriptionPlan, model.min_plan),
+                    }))}
+                    selectedId={selectedModelId}
+                    disabled={refining}
+                    onChange={changeModel}
+                    onUpgrade={onUpgrade}
+                  />
                 ) : (
                   <span className="model-unavailable">AI 未配置</span>
                 )}
-                <label className={`search-mode-control is-${webSearchMode.toLowerCase()}`}>
+                <label
+                  className={`search-mode-control is-${researchMode ? "required" : webSearchMode.toLowerCase()}`}
+                >
                   <GlobeIcon />
                   <select
                     aria-label="联网模式"
-                    value={webSearchMode}
+                    value={researchMode ? "REQUIRED" : webSearchMode}
                     onChange={(event) => {
                       const nextMode = event.target.value as WebSearchMode;
                       if (nextMode !== "DISABLED" && !canUseWeb) {
@@ -695,7 +709,7 @@ export function CaptureWorkspace({
                       setAttachmentError("");
                       setWebSearchMode(nextMode);
                     }}
-                    disabled={refining || !canUseWeb}
+                    disabled={researchMode || refining || !canUseWeb}
                   >
                     <option value="AUTO">自动联网</option>
                     <option value="REQUIRED">本轮联网</option>
@@ -703,13 +717,15 @@ export function CaptureWorkspace({
                   </select>
                 </label>
                 <span>
-                  {!canUseWeb
-                    ? "当前模型不支持联网"
-                    : webSearchMode === "AUTO"
-                      ? "需要最新信息时自动搜索"
-                      : webSearchMode === "REQUIRED"
-                        ? "发送后恢复自动"
-                        : "只使用对话与个人记忆"}
+                  {researchMode
+                    ? "深度调研会检索实时网页并展示来源"
+                    : !canUseWeb
+                      ? "当前模型不支持联网"
+                      : webSearchMode === "AUTO"
+                        ? "需要最新信息时自动搜索"
+                        : webSearchMode === "REQUIRED"
+                          ? "发送后恢复自动"
+                          : "只使用对话与个人记忆"}
                 </span>
               </div>
               <div className="composer-row">
@@ -746,7 +762,13 @@ export function CaptureWorkspace({
                 <textarea
                   ref={composerRef}
                   aria-label="告诉 Memora 你的想法"
-                  placeholder={draft ? "继续说，或告诉我怎样修改草稿…" : "输入想法或上传图片…"}
+                  placeholder={
+                    researchMode
+                      ? "描述研究问题、范围和期望输出…"
+                      : draft
+                        ? "继续说，或告诉我怎样修改草稿…"
+                        : "输入想法或上传图片…"
+                  }
                   rows={1}
                   value={instruction}
                   onChange={(event) => setInstruction(event.target.value)}
@@ -826,7 +848,7 @@ export function CaptureWorkspace({
               <span>{draft.length.toLocaleString("zh-CN")} 字符</span>
               <small>{draftPreviewVisible ? "Markdown · 实时预览" : "Markdown · 专注编辑"}</small>
             </div>
-            {workspace.kind === "TEAM" ? (
+            {isCollaborativeWorkspace(workspace) ? (
               <div className="memory-visibility-control" role="group" aria-label="保存可见范围">
                 <button
                   type="button"
@@ -844,7 +866,7 @@ export function CaptureWorkspace({
                   onClick={() => onSaveVisibilityChange("WORKSPACE")}
                 >
                   <Users aria-hidden="true" size={14} strokeWidth={1.8} />
-                  团队共享
+                  空间共享
                 </button>
               </div>
             ) : null}
@@ -859,7 +881,7 @@ export function CaptureWorkspace({
                 : isSaved
                   ? "已保存"
                   : saveVisibility === "WORKSPACE"
-                    ? "保存为团队记忆"
+                    ? "保存为空间记忆"
                     : "保存为我的记忆"}
             </button>
           </footer>

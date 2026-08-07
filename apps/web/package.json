@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@memora/api-contract": "workspace:*",
+    "@xyflow/react": "^12.11.2",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^1.28.0",
     "next": "16.2.10",
     "openapi-fetch": "0.17.0",

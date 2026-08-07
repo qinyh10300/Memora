@@ -4,6 +4,25 @@ export type CurrentUser = components["schemas"]["CurrentUserResponse"];
 export type Workspace = components["schemas"]["WorkspaceResponse"];
 export type WorkspaceMember = components["schemas"]["WorkspaceMemberResponse"];
 export type WorkspaceJoinRequest = components["schemas"]["WorkspaceJoinRequestResponse"];
+export type Subscription = components["schemas"]["SubscriptionResponse"];
+export type Plan = components["schemas"]["PlanResponse"];
+export type CreditLedgerEntry = components["schemas"]["CreditLedgerEntryResponse"];
+export type Diagram = components["schemas"]["DiagramResponse"];
+export type DiagramNodeInput = components["schemas"]["DiagramNodeInput"];
+export type DiagramEdgeInput = components["schemas"]["DiagramEdgeInput"];
+export type ImageModel = components["schemas"]["ImageModelResponse"];
+export type VisualProject = components["schemas"]["VisualProjectResponse"];
+export type VisualJob = components["schemas"]["VisualJobResponse"];
+export type VisualVersion = components["schemas"]["VisualVersionResponse"];
+export type VisualTemplate = components["schemas"]["VisualTemplateResponse"];
+export type GenerateVisualRequest = components["schemas"]["GenerateVisualRequest"];
+export type GeneratedReport = components["schemas"]["ReportResponse"];
+export type ReportSubscription = components["schemas"]["ReportSubscriptionResponse"];
+export type AlignmentTopic = components["schemas"]["AlignmentTopicResponse"];
+export type AlignmentPosition = components["schemas"]["AlignmentPositionResponse"];
+export type DecisionRecord = components["schemas"]["DecisionRecordResponse"];
+export type ConversationSummary = components["schemas"]["ConversationSummaryResponse"];
+export type ConversationDetail = components["schemas"]["ConversationDetailResponse"];
 export type Memory = components["schemas"]["MemoryResponse"];
 export type EvidenceCitation = components["schemas"]["EvidenceCitationResponse"];
 export type WebCitation = components["schemas"]["WebCitationResponse"];
@@ -22,10 +41,15 @@ export type RevisionMode = components["schemas"]["CreateMemoryRevisionRequest"][
 export type MemoryVisibility = components["schemas"]["CreateMemoryRequest"]["visibility"];
 export type AvatarMediaType = components["schemas"]["UpdateAvatarRequest"]["media_type"];
 
-export type AppView = "CAPTURE" | "LIBRARY" | "TEAM";
+export type AppView =
+  "CAPTURE" | "RESEARCH" | "KNOWLEDGE" | "DIAGRAMS" | "INSIGHTS" | "LIBRARY" | "TEAM";
 export type SettingsView = "PROFILE" | "SECURITY";
 export type PublicAuthMode = "LOGIN" | "REGISTER";
-export type TeamAccessMode = "CREATE" | "JOIN";
+export type TeamAccessMode = "CREATE" | "CREATE_FAMILY" | "JOIN";
+
+export function isCollaborativeWorkspace(workspace: Workspace) {
+  return workspace.kind === "TEAM" || workspace.kind === "FAMILY";
+}
 
 export type MemorySearchFilters = {
   query: string;

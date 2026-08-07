@@ -1,12 +1,21 @@
 "use client";
 
 import {
-  Building2,
+  Archive,
+  BookOpenText,
+  BrainCircuit,
   Check,
   ChevronDown,
   ChevronRight,
+  Coins,
+  Database,
   Hash,
+  History,
+  House,
   LogOut,
+  MessageSquarePlus,
+  Microscope,
+  Network,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -15,8 +24,23 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-import type { AppView, CurrentUser, TeamAccessMode, Workspace } from "@/features/shared/contracts";
+import type {
+  AppView,
+  ConversationSummary,
+  CurrentUser,
+  Subscription,
+  TeamAccessMode,
+  Workspace,
+} from "@/features/shared/contracts";
+import { isCollaborativeWorkspace } from "@/features/shared/contracts";
 import { CaptureIcon, CloseIcon, LibraryIcon, Logo, UserAvatar } from "@/features/shared/icons";
+
+function workspaceIcon(workspace: Workspace, size = 16) {
+  if (workspace.kind === "FAMILY")
+    return <House aria-hidden="true" size={size} strokeWidth={1.8} />;
+  if (workspace.kind === "TEAM") return <Users aria-hidden="true" size={size} strokeWidth={1.8} />;
+  return <UserRound aria-hidden="true" size={size} strokeWidth={1.8} />;
+}
 
 function WorkspaceSwitcher({
   workspaces,
@@ -32,18 +56,28 @@ function WorkspaceSwitcher({
   onTeamAccess: (mode: TeamAccessMode) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const personalSpaces = workspaces.filter((workspace) => workspace.kind === "PERSONAL");
-  const teamSpaces = workspaces.filter((workspace) => workspace.kind === "TEAM");
+  const groups = [
+    { label: "个人", kind: "PERSONAL" as const, empty: "没有个人空间" },
+    { label: "团队", kind: "TEAM" as const, empty: "还没有加入团队" },
+    { label: "家庭", kind: "FAMILY" as const, empty: "还没有家庭空间" },
+  ];
 
   function selectWorkspace(workspace: Workspace) {
     setOpen(false);
     onSelect(workspace);
   }
 
-  function openTeamAccess(mode: TeamAccessMode) {
+  function openAccess(mode: TeamAccessMode) {
     setOpen(false);
     onTeamAccess(mode);
   }
+
+  const activeLabel =
+    activeWorkspace.kind === "FAMILY"
+      ? "家庭空间"
+      : activeWorkspace.kind === "TEAM"
+        ? "团队空间"
+        : "个人空间";
 
   return (
     <div className={`workspace-switcher ${open ? "is-open" : ""}`}>
@@ -54,15 +88,9 @@ function WorkspaceSwitcher({
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
-        <span className="workspace-trigger-icon">
-          {activeWorkspace.kind === "TEAM" ? (
-            <Building2 aria-hidden="true" size={17} strokeWidth={1.8} />
-          ) : (
-            <UserRound aria-hidden="true" size={17} strokeWidth={1.8} />
-          )}
-        </span>
+        <span className="workspace-trigger-icon">{workspaceIcon(activeWorkspace, 17)}</span>
         <span>
-          <small>{activeWorkspace.kind === "TEAM" ? "团队空间" : "个人空间"}</small>
+          <small>{activeLabel}</small>
           <strong>{activeWorkspace.name}</strong>
         </span>
         <ChevronDown aria-hidden="true" size={16} strokeWidth={1.8} />
@@ -70,54 +98,44 @@ function WorkspaceSwitcher({
 
       {open ? (
         <div className="workspace-menu" role="menu" aria-label="可用空间">
-          <div className="workspace-menu-group">
-            <span>个人</span>
-            {personalSpaces.map((workspace) => (
-              <button
-                type="button"
-                role="menuitem"
-                className={workspace.id === activeWorkspace.id ? "is-current" : ""}
-                key={workspace.id}
-                disabled={busy}
-                onClick={() => selectWorkspace(workspace)}
-              >
-                <UserRound aria-hidden="true" size={15} strokeWidth={1.8} />
-                <span>{workspace.name}</span>
-                {workspace.id === activeWorkspace.id ? (
-                  <Check aria-hidden="true" size={14} strokeWidth={2} />
-                ) : null}
-              </button>
-            ))}
-          </div>
-          <div className="workspace-menu-group">
-            <span>团队</span>
-            {teamSpaces.length ? (
-              teamSpaces.map((workspace) => (
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={workspace.id === activeWorkspace.id ? "is-current" : ""}
-                  key={workspace.id}
-                  disabled={busy}
-                  onClick={() => selectWorkspace(workspace)}
-                >
-                  <Building2 aria-hidden="true" size={15} strokeWidth={1.8} />
-                  <span>{workspace.name}</span>
-                  {workspace.id === activeWorkspace.id ? (
-                    <Check aria-hidden="true" size={14} strokeWidth={2} />
-                  ) : null}
-                </button>
-              ))
-            ) : (
-              <small>还没有加入团队</small>
-            )}
-          </div>
+          {groups.map((group) => {
+            const spaces = workspaces.filter((workspace) => workspace.kind === group.kind);
+            return (
+              <div className="workspace-menu-group" key={group.kind}>
+                <span>{group.label}</span>
+                {spaces.length ? (
+                  spaces.map((workspace) => (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={workspace.id === activeWorkspace.id ? "is-current" : ""}
+                      key={workspace.id}
+                      disabled={busy}
+                      onClick={() => selectWorkspace(workspace)}
+                    >
+                      {workspaceIcon(workspace, 15)}
+                      <span>{workspace.name}</span>
+                      {workspace.id === activeWorkspace.id ? (
+                        <Check aria-hidden="true" size={14} strokeWidth={2} />
+                      ) : null}
+                    </button>
+                  ))
+                ) : (
+                  <small>{group.empty}</small>
+                )}
+              </div>
+            );
+          })}
           <div className="workspace-menu-actions">
-            <button type="button" onClick={() => openTeamAccess("CREATE")}>
+            <button type="button" onClick={() => openAccess("CREATE")}>
               <Plus aria-hidden="true" size={15} strokeWidth={1.8} />
               创建团队
             </button>
-            <button type="button" onClick={() => openTeamAccess("JOIN")}>
+            <button type="button" onClick={() => openAccess("CREATE_FAMILY")}>
+              <House aria-hidden="true" size={15} strokeWidth={1.8} />
+              创建家庭
+            </button>
+            <button type="button" onClick={() => openAccess("JOIN")}>
               <Hash aria-hidden="true" size={15} strokeWidth={1.8} />
               使用团队号加入
             </button>
@@ -128,20 +146,40 @@ function WorkspaceSwitcher({
   );
 }
 
+const navItems: Array<{
+  view: AppView;
+  label: string;
+  icon: React.ReactNode;
+}> = [
+  { view: "CAPTURE", label: "新对话", icon: <MessageSquarePlus size={18} strokeWidth={1.75} /> },
+  { view: "DIAGRAMS", label: "框图", icon: <Network size={18} strokeWidth={1.75} /> },
+  { view: "KNOWLEDGE", label: "云知识库", icon: <Database size={18} strokeWidth={1.75} /> },
+  { view: "RESEARCH", label: "深度调研", icon: <Microscope size={18} strokeWidth={1.75} /> },
+  { view: "INSIGHTS", label: "智能洞察", icon: <BrainCircuit size={18} strokeWidth={1.75} /> },
+  { view: "LIBRARY", label: "记忆库", icon: <BookOpenText size={18} strokeWidth={1.75} /> },
+];
+
 export function Sidebar({
   user,
   workspaces,
   activeWorkspace,
   workspaceBusy,
+  subscription,
+  conversations,
+  activeConversationId,
   view,
   open,
   collapsed,
   onView,
+  onNewConversation,
+  onConversationSelect,
+  onConversationArchive,
   onWorkspaceSelect,
   onTeamAccess,
   onClose,
   onCollapse,
   onExpand,
+  onUpgrade,
   onOpenSettings,
   onLogout,
 }: {
@@ -149,18 +187,27 @@ export function Sidebar({
   workspaces: Workspace[];
   activeWorkspace: Workspace;
   workspaceBusy: boolean;
+  subscription: Subscription | null;
+  conversations: ConversationSummary[];
+  activeConversationId: string | null;
   view: AppView;
   open: boolean;
   collapsed: boolean;
   onView: (view: AppView) => void;
+  onNewConversation: () => void;
+  onConversationSelect: (conversation: ConversationSummary) => void;
+  onConversationArchive: (conversation: ConversationSummary) => void;
   onWorkspaceSelect: (workspace: Workspace) => void;
   onTeamAccess: (mode: TeamAccessMode) => void;
   onClose: () => void;
   onCollapse: () => void;
   onExpand: () => void;
+  onUpgrade: () => void;
   onOpenSettings: () => void;
   onLogout: () => void;
 }) {
+  const collaborative = isCollaborativeWorkspace(activeWorkspace);
+
   return (
     <>
       <button
@@ -173,14 +220,51 @@ export function Sidebar({
         className={`app-sidebar ${open ? "is-open" : ""} ${collapsed ? "is-collapsed" : ""}`}
         aria-label="Memora 导航"
       >
-        <div className="sidebar-collapsed-content">
+        <div className="sidebar-collapsed-content" hidden={!collapsed}>
           <Logo />
           <button type="button" aria-label="展开侧边栏" title="展开侧边栏" onClick={onExpand}>
             <PanelLeftOpen aria-hidden="true" size={18} strokeWidth={1.7} />
           </button>
+          <nav aria-label="快捷功能">
+            {navItems.map((item) => (
+              <button
+                type="button"
+                className={view === item.view ? "is-active" : ""}
+                aria-label={
+                  item.view === "INSIGHTS" ? (collaborative ? "团队智能" : "我的洞察") : item.label
+                }
+                title={
+                  item.view === "INSIGHTS" ? (collaborative ? "团队智能" : "我的洞察") : item.label
+                }
+                key={item.view}
+                onClick={() => (item.view === "CAPTURE" ? onNewConversation() : onView(item.view))}
+              >
+                {item.icon}
+              </button>
+            ))}
+            {collaborative ? (
+              <button
+                type="button"
+                className={view === "TEAM" ? "is-active" : ""}
+                aria-label={activeWorkspace.kind === "FAMILY" ? "家庭成员" : "团队"}
+                title={activeWorkspace.kind === "FAMILY" ? "家庭成员" : "团队"}
+                onClick={() => onView("TEAM")}
+              >
+                <Users size={18} strokeWidth={1.75} />
+              </button>
+            ) : null}
+          </nav>
+          <button
+            className="collapsed-avatar-button"
+            type="button"
+            aria-label="个人设置"
+            onClick={onOpenSettings}
+          >
+            <UserAvatar user={user} />
+          </button>
         </div>
 
-        <div className="sidebar-expanded-content">
+        <div className="sidebar-expanded-content" hidden={collapsed}>
           <div className="sidebar-brand">
             <Logo />
             <span>Memora</span>
@@ -207,70 +291,117 @@ export function Sidebar({
           />
 
           <nav className="primary-nav" aria-label="主要功能">
-            <button
-              className={view === "CAPTURE" ? "is-active" : ""}
-              type="button"
-              onClick={() => onView("CAPTURE")}
-            >
-              <CaptureIcon />
-              <span>记录想法</span>
-            </button>
-            <button
-              className={view === "LIBRARY" ? "is-active" : ""}
-              type="button"
-              onClick={() => onView("LIBRARY")}
-            >
-              <LibraryIcon />
-              <span>记忆库</span>
-            </button>
-            {activeWorkspace.kind === "TEAM" ? (
+            {navItems.map((item) => (
+              <button
+                className={view === item.view ? "is-active" : ""}
+                type="button"
+                key={item.view}
+                onClick={() => (item.view === "CAPTURE" ? onNewConversation() : onView(item.view))}
+              >
+                {item.view === "CAPTURE" ? (
+                  <CaptureIcon />
+                ) : item.view === "LIBRARY" ? (
+                  <LibraryIcon />
+                ) : (
+                  item.icon
+                )}
+                <span>
+                  {item.view === "INSIGHTS"
+                    ? collaborative
+                      ? "团队智能"
+                      : "我的洞察"
+                    : item.label}
+                </span>
+              </button>
+            ))}
+            {collaborative ? (
               <button
                 className={view === "TEAM" ? "is-active" : ""}
                 type="button"
+                aria-label={activeWorkspace.kind === "FAMILY" ? "家庭成员" : "团队"}
                 onClick={() => onView("TEAM")}
               >
-                <Users aria-hidden="true" size={18} strokeWidth={1.8} />
-                <span>团队</span>
+                {activeWorkspace.kind === "FAMILY" ? <House size={18} /> : <Users size={18} />}
+                <span>{activeWorkspace.kind === "FAMILY" ? "家庭成员" : "团队"}</span>
               </button>
             ) : null}
           </nav>
 
-          <div className="sidebar-note">
-            <span className="privacy-dot" />
-            <div>
-              <strong>{activeWorkspace.kind === "TEAM" ? activeWorkspace.name : "个人空间"}</strong>
-              <small>
-                {activeWorkspace.kind === "TEAM"
-                  ? "保存时选择仅自己或团队共享"
-                  : "所有新记忆仅你可见"}
-              </small>
-            </div>
-          </div>
-
-          <div className="sidebar-account">
-            <button
-              className="account-profile-button"
-              type="button"
-              aria-label="打开个人设置"
-              title="个人设置"
-              onClick={onOpenSettings}
-            >
-              <UserAvatar user={user} />
-              <span className="account-copy">
-                <strong>{user.display_name}</strong>
-                <small>{user.email}</small>
+          <section className="sidebar-history" aria-labelledby="sidebar-history-title">
+            <header>
+              <span id="sidebar-history-title">
+                <History aria-hidden="true" size={14} />
+                历史对话
               </span>
-              <ChevronRight aria-hidden="true" size={15} strokeWidth={1.8} />
+              <button
+                type="button"
+                aria-label="新建对话"
+                title="新建对话"
+                onClick={onNewConversation}
+              >
+                <Plus aria-hidden="true" size={14} />
+              </button>
+            </header>
+            <div>
+              {conversations.slice(0, 8).map((conversation) => (
+                <div
+                  className={conversation.id === activeConversationId ? "is-active" : ""}
+                  key={conversation.id}
+                >
+                  <button type="button" onClick={() => onConversationSelect(conversation)}>
+                    <span>{conversation.title}</span>
+                    <small>{conversation.message_count}</small>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`归档对话 ${conversation.title}`}
+                    title="归档"
+                    onClick={() => onConversationArchive(conversation)}
+                  >
+                    <Archive aria-hidden="true" size={12} />
+                  </button>
+                </div>
+              ))}
+              {!conversations.length ? <small>还没有历史对话</small> : null}
+            </div>
+          </section>
+
+          <div className="sidebar-account-stack">
+            <button className="sidebar-credits" type="button" onClick={onUpgrade}>
+              <Coins aria-hidden="true" size={16} strokeWidth={1.7} />
+              <span>
+                <strong>
+                  {subscription?.credits_remaining.toLocaleString("zh-CN") ?? "—"} credits
+                </strong>
+                <small>{subscription?.plan_name ?? "Plus"}</small>
+              </span>
+              <ChevronRight aria-hidden="true" size={14} />
             </button>
-            <button
-              className="account-logout-button"
-              type="button"
-              aria-label="退出登录"
-              title="退出登录"
-              onClick={onLogout}
-            >
-              <LogOut aria-hidden="true" size={16} strokeWidth={1.8} />
-            </button>
+            <div className="sidebar-account">
+              <button
+                className="account-profile-button"
+                type="button"
+                aria-label="打开个人设置"
+                title="个人设置"
+                onClick={onOpenSettings}
+              >
+                <UserAvatar user={user} />
+                <span className="account-copy">
+                  <strong>{user.display_name}</strong>
+                  <small>{user.email}</small>
+                </span>
+                <ChevronRight aria-hidden="true" size={15} strokeWidth={1.8} />
+              </button>
+              <button
+                className="account-logout-button"
+                type="button"
+                aria-label="退出登录"
+                title="退出登录"
+                onClick={onLogout}
+              >
+                <LogOut aria-hidden="true" size={16} strokeWidth={1.8} />
+              </button>
+            </div>
           </div>
         </div>
       </aside>
