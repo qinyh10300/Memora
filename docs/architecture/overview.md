@@ -41,6 +41,9 @@ flowchart LR
   `FAMILY` 记录只作历史兼容，不提供新的 Web 创建入口。桌面侧栏宽度和
   主工作区 split 比例是仅存于浏览器 localStorage 的可选布局偏好；pane 接近最小宽度时
   吸附隐藏，侧栏最小态仍保留品牌窄栏。移动端保持完整抽屉；未保存草稿会阻止切换。
+- 新 capture 对话在客户端以居中输入态启动，首条消息后切换为底部 composer。右侧 pane
+  默认关闭，并由本地 `rightPanelOpen` / `rightPanelView` 状态在 Markdown 草稿与云知识库
+  之间切换；这些状态不持久化正文，也不是新的授权边界。
 - `TEAM` workspace 使用唯一可空的 12 位 `join_code`。`POST /workspaces/join` 在限流和
   代码校验后写入独立的 pending 申请，不创建 membership，也不激活团队；代码只在请求正文
   传输。
@@ -63,6 +66,8 @@ flowchart LR
   用户显式选择时才接受 `WORKSPACE`；个人空间在服务端拒绝共享可见性。
 - 记忆库调用统一授权列表：成员可见本人在当前空间的记录，以及同一团队内所有作者的
   `WORKSPACE` 记录。前端显示作者与可见性，但不承担授权职责。
+- 聊天右侧停靠的云知识库复用同一批服务端授权后的 memory 响应；结果卡只根据草稿变更或
+  保存回执提供导航，不重新召回数据，也不允许客户端扩大 workspace 范围。
 - memory 的 `title` 是从正文首个非空 Markdown 行派生的 nullable 检索投影。记忆库通过
   `POST /search` 组合纯关键词、标题、时间和作者条件，所有条件都位于授权候选查询之后。
 - Chat 模型菜单从供应商无关注册表读取 GPT、Claude 和 Gemini 配置，选中的 registry ID
