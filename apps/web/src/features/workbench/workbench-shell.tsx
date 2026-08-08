@@ -782,6 +782,7 @@ export function WorkbenchShell() {
   const [saveVisibility, setSaveVisibility] = useState<MemoryVisibility>("PRIVATE");
   const [savedVisibility, setSavedVisibility] = useState<MemoryVisibility | null>(null);
   const [draftDocumentCitations, setDraftDocumentCitations] = useState<DraftDocumentCitation[]>([]);
+  const [captureRightPanelOpen, setCaptureRightPanelOpen] = useState(false);
   const [messages, setMessages] = useState<DraftMessage[]>([initialMessage]);
   const [draftAgent, dispatchDraftAgent] = useReducer(
     captureAgentReducer,
@@ -1766,6 +1767,7 @@ export function WorkbenchShell() {
     setSaveVisibility("PRIVATE");
     setSavedVisibility(null);
     setDraftDocumentCitations([]);
+    setCaptureRightPanelOpen(false);
     setMessages([initialMessage]);
     setActiveConversationId(null);
   }
@@ -2101,6 +2103,7 @@ export function WorkbenchShell() {
               modelOptions={modelOptions}
               selectedModelId={selectedModelId}
               subscriptionPlan={subscription?.plan_code}
+              rightPanelOpen={captureRightPanelOpen}
               agentPhase={draftAgent.phase}
               documentCitations={draftDocumentCitations}
               canRetry={Boolean(
@@ -2113,6 +2116,7 @@ export function WorkbenchShell() {
               onSaveVisibilityChange={setSaveVisibility}
               onReset={resetDraft}
               onModelChange={setSelectedModelId}
+              onRightPanelOpenChange={setCaptureRightPanelOpen}
               onUpgrade={() => setSubscriptionOpen(true)}
               onOpenCitation={openCitation}
               onCancel={cancelDraftRun}

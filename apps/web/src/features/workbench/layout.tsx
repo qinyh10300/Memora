@@ -35,6 +35,8 @@ export function ResizableSplit({
   defaultLeftPercent,
   minLeftPx,
   minRightPx,
+  rightCollapsed,
+  onRightCollapsedChange,
   left,
   right,
 }: {
@@ -44,11 +46,13 @@ export function ResizableSplit({
   defaultLeftPercent: number;
   minLeftPx: number;
   minRightPx: number;
+  rightCollapsed?: boolean;
+  onRightCollapsedChange?: (collapsed: boolean) => void;
   left: ReactNode;
   right: ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [leftPercent, setLeftPercent] = useState(defaultLeftPercent);
+  const [leftPercent, setLeftPercent] = useState(rightCollapsed ? 100 : defaultLeftPercent);
   const leftPercentRef = useRef(leftPercent);
   const lastVisiblePercentRef = useRef(defaultLeftPercent);
   const suppressClickRef = useRef(false);
@@ -74,18 +78,28 @@ export function ResizableSplit({
       if (nextValue > 0 && nextValue < 100) lastVisiblePercentRef.current = nextValue;
       setLeftPercent(nextValue);
       if (storageKey) storeNumber(storageKey, Number(nextValue.toFixed(2)));
+      onRightCollapsedChange?.(nextValue >= 100);
     },
-    [normalizeSplitPercent, storageKey],
+    [normalizeSplitPercent, onRightCollapsedChange, storageKey],
   );
 
   useEffect(() => {
-    if (!storageKey) return undefined;
+    if (!storageKey || rightCollapsed) return undefined;
     const timer = window.setTimeout(() => {
       const stored = readStoredNumber(storageKey);
       if (stored !== null && stored >= 0 && stored <= 100) setAndPersistSplit(stored);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [setAndPersistSplit, storageKey]);
+  }, [rightCollapsed, setAndPersistSplit, storageKey]);
+
+  useEffect(() => {
+    if (rightCollapsed === undefined) return;
+    if (rightCollapsed && leftPercentRef.current < 100) {
+      setAndPersistSplit(100);
+    } else if (!rightCollapsed && leftPercentRef.current >= 100) {
+      setAndPersistSplit(lastVisiblePercentRef.current);
+    }
+  }, [rightCollapsed, setAndPersistSplit]);
 
   useEffect(() => {
     const clampAfterResize = () => setAndPersistSplit(leftPercentRef.current);
@@ -182,7 +196,7 @@ export function ResizableSplit({
   }
 
   const leftCollapsed = leftPercent <= 0;
-  const rightCollapsed = leftPercent >= 100;
+  const rightIsCollapsed = leftPercent >= 100;
   const splitStyle = {
     "--split-left": `${leftPercent.toFixed(2)}%`,
     "--split-left-min": `${minLeftPx}px`,
@@ -193,7 +207,7 @@ export function ResizableSplit({
   return (
     <div
       ref={containerRef}
-      className={`${className} resizable-split ${dragging ? "is-dragging" : ""} ${leftCollapsed ? "is-left-collapsed" : ""} ${rightCollapsed ? "is-right-collapsed" : ""}`}
+      className={`${className} resizable-split ${dragging ? "is-dragging" : ""} ${leftCollapsed ? "is-left-collapsed" : ""} ${rightIsCollapsed ? "is-right-collapsed" : ""}`}
       style={splitStyle}
     >
       {left}
@@ -208,20 +222,20 @@ export function ResizableSplit({
         aria-valuetext={
           leftCollapsed
             ? "左侧已隐藏"
-            : rightCollapsed
+            : rightIsCollapsed
               ? "右侧已隐藏"
               : `左侧占 ${Math.round(leftPercent)}%`
         }
         tabIndex={0}
         title={
-          leftCollapsed || rightCollapsed
+          leftCollapsed || rightIsCollapsed
             ? "点击或按 Enter 恢复面板"
             : "拖动调整宽度，拖到边缘隐藏，双击恢复默认"
         }
         onPointerDown={startResize}
         onClick={() => {
           if (suppressClickRef.current) return;
-          if (leftCollapsed || rightCollapsed) restoreSplit();
+          if (leftCollapsed || rightIsCollapsed) restoreSplit();
         }}
         onDoubleClick={() => restoreSplit(true)}
         onKeyDown={resizeWithKeyboard}
@@ -229,7 +243,7 @@ export function ResizableSplit({
         <span className="split-handle-indicator" aria-hidden="true">
           {leftCollapsed ? (
             <ChevronRight size={13} strokeWidth={2} />
-          ) : rightCollapsed ? (
+          ) : rightIsCollapsed ? (
             <ChevronLeft size={13} strokeWidth={2} />
           ) : null}
         </span>

@@ -297,6 +297,11 @@
     overflow-y: auto;
   }
 
+  .capture-workspace.is-right-collapsed {
+    grid-template-rows: minmax(0, 1fr) 0;
+    overflow: hidden;
+  }
+
   .capture-workspace .split-handle {
     display: none;
   }
@@ -321,6 +326,19 @@
 
   .conversation-intro h2 {
     font-size: 1.65rem;
+  }
+
+  .conversation-panel.is-empty-conversation .conversation-intro {
+    top: calc(50% - 132px);
+  }
+
+  .conversation-panel.is-empty-conversation .conversation-intro h2 {
+    font-size: 1.9rem;
+  }
+
+  .composer-wrap.is-centered {
+    top: calc(50% - 6px);
+    width: min(calc(100% - 24px), 680px);
   }
 
   .message-list {

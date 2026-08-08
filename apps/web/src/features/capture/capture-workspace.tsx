@@ -82,6 +82,7 @@ export function CaptureWorkspace({
   modelOptions,
   selectedModelId,
   subscriptionPlan,
+  rightPanelOpen,
   agentPhase,
   canRetry,
   documentCitations,
@@ -91,6 +92,7 @@ export function CaptureWorkspace({
   onSaveVisibilityChange,
   onReset,
   onModelChange,
+  onRightPanelOpenChange,
   onUpgrade,
   onOpenCitation,
   onCancel,
@@ -109,6 +111,7 @@ export function CaptureWorkspace({
   modelOptions: DraftModel[];
   selectedModelId: string | null;
   subscriptionPlan?: "PLUS" | "PRO" | "ULTRA";
+  rightPanelOpen: boolean;
   agentPhase: CaptureAgentPhase;
   canRetry: boolean;
   documentCitations: DraftDocumentCitation[];
@@ -124,6 +127,7 @@ export function CaptureWorkspace({
   onSaveVisibilityChange: (visibility: MemoryVisibility) => void;
   onReset: () => void;
   onModelChange: (modelId: string | null) => void;
+  onRightPanelOpenChange: (open: boolean) => void;
   onUpgrade: () => void;
   onOpenCitation: (memoryId: string) => Promise<void>;
   onCancel: () => Promise<void>;
@@ -143,6 +147,14 @@ export function CaptureWorkspace({
   const messageEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const dragDepthRef = useRef(0);
+  const visibleMessages = messages.filter((message) => message.id !== "welcome");
+  const emptyConversation =
+    visibleMessages.length === 0 &&
+    !draft.trim() &&
+    !refining &&
+    attachments.length === 0 &&
+    documents.length === 0 &&
+    uploadingDocuments === 0;
   const normalizedDraft = draft.trim();
   const isSaved = Boolean(
     normalizedDraft && normalizedDraft === savedBody && saveVisibility === savedVisibility,
@@ -217,6 +229,13 @@ export function CaptureWorkspace({
   useEffect(() => {
     if (!refining) composerRef.current?.focus?.();
   }, [refining]);
+
+  const handleRightPanelCollapsedChange = useCallback(
+    (collapsed: boolean) => {
+      onRightPanelOpenChange(!collapsed);
+    },
+    [onRightPanelOpenChange],
+  );
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -415,9 +434,11 @@ export function CaptureWorkspace({
       defaultLeftPercent={54}
       minLeftPx={360}
       minRightPx={340}
+      rightCollapsed={!rightPanelOpen}
+      onRightCollapsedChange={handleRightPanelCollapsedChange}
       left={
         <section
-          className={`conversation-panel ${draggingFiles ? "is-file-dragging" : ""}`}
+          className={`conversation-panel ${emptyConversation ? "is-empty-conversation" : ""} ${draggingFiles ? "is-file-dragging" : ""}`}
           aria-label="草稿对话"
           style={{ "--composer-height": `${composerHeight}px` } as CSSProperties}
           onDragEnter={dragFilesEnter}
@@ -456,14 +477,16 @@ export function CaptureWorkspace({
           </header>
 
           <div className="conversation-scroll">
-            <div className="conversation-intro">
-              <span className="intro-mark">
-                <Logo />
-              </span>
-              <h2>{researchMode ? "今天想深入研究什么？" : "今天在想什么？"}</h2>
-            </div>
+            {emptyConversation ? (
+              <div className="conversation-intro">
+                <span className="intro-mark">
+                  <Logo />
+                </span>
+                <h2>{researchMode ? "今天想深入研究什么？" : "有什么可以帮你的？"}</h2>
+              </div>
+            ) : null}
             <div className="message-list" aria-live="polite">
-              {messages.map((message) => (
+              {visibleMessages.map((message) => (
                 <article
                   className={`chat-message is-${message.role.toLowerCase()}`}
                   key={message.id}
@@ -591,8 +614,10 @@ export function CaptureWorkspace({
             </div>
           ) : null}
 
-          <ComposerResizeHandle height={composerHeight} onHeightChange={changeComposerHeight} />
-          <div className="composer-wrap">
+          {!emptyConversation ? (
+            <ComposerResizeHandle height={composerHeight} onHeightChange={changeComposerHeight} />
+          ) : null}
+          <div className={`composer-wrap ${emptyConversation ? "is-centered" : "is-docked"}`}>
             <form className="composer" onSubmit={submit}>
               {attachments.length || documents.length || uploadingDocuments ? (
                 <div className="pending-images" aria-label="待发送附件">
@@ -773,7 +798,7 @@ export function CaptureWorkspace({
                       ? "描述研究问题、范围和期望输出…"
                       : draft
                         ? "继续说，或告诉我怎样修改草稿…"
-                        : "输入想法或上传图片…"
+                        : "发送消息，输入 ‘/’ 以调用指令"
                   }
                   rows={1}
                   value={instruction}

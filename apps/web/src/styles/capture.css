@@ -346,6 +346,28 @@ body.is-settings-open {
   animation: rise-in var(--t-slow) var(--ease-out) 60ms both;
 }
 
+.conversation-panel.is-empty-conversation .conversation-scroll {
+  overflow: hidden;
+}
+
+.conversation-panel.is-empty-conversation .conversation-intro {
+  position: absolute;
+  z-index: 3;
+  top: calc(50% - 150px);
+  right: 24px;
+  left: 24px;
+  padding: 0;
+}
+
+.conversation-panel.is-empty-conversation .conversation-intro h2 {
+  font-size: 2.2rem;
+  line-height: 1.18;
+}
+
+.conversation-panel.is-empty-conversation .message-list {
+  display: none;
+}
+
 .message-list {
   width: min(100% - 48px, 720px);
   margin: 0 auto;
@@ -1047,6 +1069,51 @@ body.is-resizing-composer * {
   padding: 14px 22px 18px;
   background: rgba(7, 7, 7, 0.98);
   transition: height var(--t-base) var(--ease-out);
+}
+
+.composer-wrap.is-centered {
+  position: absolute;
+  z-index: 5;
+  top: calc(50% - 12px);
+  left: 50%;
+  width: min(calc(100% - 64px), 760px);
+  height: 128px;
+  min-height: 128px;
+  max-height: 128px;
+  padding: 0;
+  background: transparent;
+  transform: translateX(-50%);
+  animation: centered-composer-in var(--t-slow) var(--ease-out) both;
+}
+
+.composer-wrap.is-centered .composer {
+  width: 100%;
+}
+
+.composer-wrap.is-docked {
+  animation: docked-composer-in var(--t-slow) var(--ease-out) both;
+}
+
+@keyframes centered-composer-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes docked-composer-in {
+  from {
+    opacity: 0.72;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 body.is-resizing-composer .composer-wrap {

@@ -747,7 +747,7 @@ describe("Memora personal Markdown MVP", () => {
       });
     });
     expect(await screen.findByLabelText("Memora 导航")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "今天在想什么？" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "有什么可以帮你的？" })).toBeInTheDocument();
   });
 
   it("注册弹窗不会在用户开始填写后抢回输入焦点", async () => {
@@ -818,11 +818,45 @@ describe("Memora personal Markdown MVP", () => {
     expect(screen.getByRole("button", { name: "记忆库" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "首页" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Balanced" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "今天在想什么？" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "有什么可以帮你的？" })).toBeInTheDocument();
     expect(screen.getByLabelText("Markdown 草稿")).toBeInTheDocument();
     expect(screen.getByText("默认私有")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "团队" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "分析" })).not.toBeInTheDocument();
+  });
+
+  it("新对话居中显示输入框，首条消息后切换到底部并保持右栏关闭", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+
+    const composer = await screen.findByLabelText("告诉 Memora 你的想法");
+    const conversationPanel = composer.closest(".conversation-panel");
+    const composerWrap = composer.closest(".composer-wrap");
+    const panelSeparator = screen.getByRole("separator", { name: "调整记录和草稿宽度" });
+
+    expect(conversationPanel).toHaveClass("is-empty-conversation");
+    expect(composerWrap).toHaveClass("is-centered");
+    expect(composer).toHaveAttribute("placeholder", "发送消息，输入 ‘/’ 以调用指令");
+    expect(
+      screen.queryByText("告诉我一个想法，或者让我整理、补充右侧草稿。"),
+    ).not.toBeInTheDocument();
+    expect(panelSeparator.parentElement).toHaveClass("is-right-collapsed");
+    expect(screen.queryByRole("separator", { name: "调整输入区高度" })).not.toBeInTheDocument();
+
+    fireEvent.click(panelSeparator);
+    expect(panelSeparator.parentElement).not.toHaveClass("is-right-collapsed");
+    fireEvent.click(screen.getByRole("button", { name: "新对话" }));
+    expect(panelSeparator.parentElement).toHaveClass("is-right-collapsed");
+
+    fireEvent.change(composer, { target: { value: "帮我整理第一条想法" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("帮我整理第一条想法")).toBeInTheDocument();
+    expect(conversationPanel).not.toHaveClass("is-empty-conversation");
+    expect(composerWrap).toHaveClass("is-docked");
+    expect(await screen.findByRole("separator", { name: "调整输入区高度" })).toBeInTheDocument();
+    expect(panelSeparator.parentElement).toHaveClass("is-right-collapsed");
   });
 
   it("刷新后保留团队空间，并显示团队号、组织成员和邀请入口", async () => {
@@ -1021,7 +1055,7 @@ describe("Memora personal Markdown MVP", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "进入工作台" })[0]);
 
     expect(await screen.findByLabelText("Memora 导航")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "今天在想什么？" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
     expect(apiMocks.POST).not.toHaveBeenCalledWith("/auth/logout");
   });
 
@@ -1335,6 +1369,9 @@ describe("Memora personal Markdown MVP", () => {
 
     const separator = await screen.findByRole("separator", { name: "调整记录和草稿宽度" });
     const split = separator.parentElement as HTMLElement;
+    expect(split).toHaveClass("is-right-collapsed");
+    fireEvent.click(separator);
+    expect(split).not.toHaveClass("is-right-collapsed");
     vi.spyOn(split, "getBoundingClientRect").mockReturnValue({
       bottom: 720,
       height: 720,
@@ -1396,6 +1433,11 @@ describe("Memora personal Markdown MVP", () => {
 
     render(<HomePage />);
     await openCaptureView();
+
+    const composer = await screen.findByLabelText("告诉 Memora 你的想法");
+    fireEvent.change(composer, { target: { value: "进入聊天工作态" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("进入聊天工作态")).toBeInTheDocument();
 
     const separator = await screen.findByRole("separator", { name: "调整输入区高度" });
     const panel = separator.parentElement as HTMLElement;
