@@ -302,6 +302,11 @@
     overflow: hidden;
   }
 
+  .capture-workspace .knowledge-workspace.is-docked {
+    height: 100%;
+    border-top: 1px solid var(--line);
+  }
+
   .capture-workspace .split-handle {
     display: none;
   }
@@ -347,6 +352,10 @@
 
   .composer-wrap {
     padding: 10px 12px 13px;
+  }
+
+  .assistant-result-actions button {
+    flex: 1 1 auto;
   }
 
   .agent-retry-bar {

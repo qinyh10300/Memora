@@ -1,6 +1,17 @@
 "use client";
 
-import { LockKeyhole, RefreshCw, Square, Upload, Users } from "lucide-react";
+import {
+  ArrowUpRight,
+  BookOpenText,
+  FilePenLine,
+  LockKeyhole,
+  PanelRightClose,
+  PanelRightOpen,
+  RefreshCw,
+  Square,
+  Upload,
+  Users,
+} from "lucide-react";
 import Image from "next/image";
 import type {
   ChangeEvent,
@@ -20,6 +31,7 @@ import type {
   DraftMessage,
   DraftModel,
   DraftTrace,
+  Memory,
   MemoryVisibility,
   WebSearchMode,
   Workspace,
@@ -40,6 +52,7 @@ import {
   storeNumber,
 } from "@/features/shared/utils";
 import { planAllows, RichModelPicker } from "@/features/shared/model-picker";
+import { KnowledgeBaseWorkspace } from "@/features/knowledge/knowledge-base-workspace";
 import {
   clampComposerHeight,
   COMPOSER_DEFAULT_HEIGHT,
@@ -83,6 +96,9 @@ export function CaptureWorkspace({
   selectedModelId,
   subscriptionPlan,
   rightPanelOpen,
+  rightPanelView,
+  memories,
+  loadingMemories,
   agentPhase,
   canRetry,
   documentCitations,
@@ -93,6 +109,9 @@ export function CaptureWorkspace({
   onReset,
   onModelChange,
   onRightPanelOpenChange,
+  onRightPanelViewChange,
+  onOpenKnowledge,
+  onOpenKnowledgeMemory,
   onUpgrade,
   onOpenCitation,
   onCancel,
@@ -112,6 +131,9 @@ export function CaptureWorkspace({
   selectedModelId: string | null;
   subscriptionPlan?: "PLUS" | "PRO" | "ULTRA";
   rightPanelOpen: boolean;
+  rightPanelView: "DRAFT" | "KNOWLEDGE";
+  memories: Memory[];
+  loadingMemories: boolean;
   agentPhase: CaptureAgentPhase;
   canRetry: boolean;
   documentCitations: DraftDocumentCitation[];
@@ -128,6 +150,9 @@ export function CaptureWorkspace({
   onReset: () => void;
   onModelChange: (modelId: string | null) => void;
   onRightPanelOpenChange: (open: boolean) => void;
+  onRightPanelViewChange: (view: "DRAFT" | "KNOWLEDGE") => void;
+  onOpenKnowledge: () => void;
+  onOpenKnowledgeMemory: (memory: Memory) => void;
   onUpgrade: () => void;
   onOpenCitation: (memoryId: string) => Promise<void>;
   onCancel: () => Promise<void>;
@@ -236,6 +261,11 @@ export function CaptureWorkspace({
     },
     [onRightPanelOpenChange],
   );
+
+  function openRightPanel(view: "DRAFT" | "KNOWLEDGE") {
+    onRightPanelViewChange(view);
+    onRightPanelOpenChange(true);
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -578,6 +608,46 @@ export function CaptureWorkspace({
                         ))}
                       </div>
                     ) : null}
+                    {message.resultTarget ? (
+                      <div
+                        className={`assistant-result-card is-${message.resultTarget.toLowerCase()}`}
+                        role="status"
+                      >
+                        <div className="assistant-result-copy">
+                          <BookOpenText aria-hidden="true" size={17} strokeWidth={1.8} />
+                          <span>
+                            <strong>
+                              {message.resultTarget === "MEMORY" ? "已写入云知识库" : "草稿已更新"}
+                            </strong>
+                            <small>
+                              {message.resultTarget === "MEMORY"
+                                ? "可以继续在当前对话工作，也可以打开知识库查看。"
+                                : "仍是私有草稿，确认保存后才会进入云知识库。"}
+                            </small>
+                          </span>
+                        </div>
+                        <div className="assistant-result-actions">
+                          {message.resultTarget === "DRAFT" ? (
+                            <button type="button" onClick={() => openRightPanel("DRAFT")}>
+                              <FilePenLine aria-hidden="true" size={14} strokeWidth={1.8} />
+                              查看草稿
+                            </button>
+                          ) : null}
+                          <button type="button" onClick={onOpenKnowledge}>
+                            <ArrowUpRight aria-hidden="true" size={14} strokeWidth={1.8} />
+                            前往云知识库
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="在右侧打开云知识库"
+                            onClick={() => openRightPanel("KNOWLEDGE")}
+                          >
+                            <PanelRightOpen aria-hidden="true" size={14} strokeWidth={1.8} />
+                            在右侧打开
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </article>
               ))}
@@ -831,92 +901,124 @@ export function CaptureWorkspace({
         </section>
       }
       right={
-        <section className="markdown-panel" aria-label="Markdown 草稿编辑器">
-          <header className="markdown-header">
-            <div>
-              <p className="eyebrow">草稿</p>
-              <h2>草稿</h2>
-            </div>
-            <div className="draft-header-actions">
-              <PreviewToggle
-                visible={draftPreviewVisible}
-                onToggle={() => setDraftPreviewVisible((visible) => !visible)}
-              />
-              {draft ? (
-                <button className="text-button" type="button" onClick={onReset}>
-                  新想法
-                </button>
-              ) : null}
-              <span className={isSaved ? "save-state is-saved" : "save-state"}>
-                {isSaved ? "已保存" : "未保存"}
-              </span>
-            </div>
-          </header>
-          {documentCitations.length ? (
-            <div className="draft-document-sources" aria-label="草稿文档来源">
-              <span>文档来源</span>
-              {documentCitations.map((citation) => (
-                <a
-                  href={citation.content_url}
-                  key={citation.chunk_id}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {citation.asset_name} · 第 {citation.page_number} 页
-                </a>
-              ))}
-            </div>
-          ) : null}
-          <MarkdownWorkspace
-            value={draft}
-            onChange={onDraftChange}
-            ariaLabel="Markdown 草稿"
-            placeholder={"# 想法标题\n\n你的 Markdown 草稿会出现在这里。"}
-            previewVisible={draftPreviewVisible}
+        rightPanelView === "KNOWLEDGE" ? (
+          <KnowledgeBaseWorkspace
+            embedded
+            workspace={workspace}
+            memories={memories}
+            loading={loadingMemories}
+            onOpenMemory={onOpenKnowledgeMemory}
+            onCapture={() => openRightPanel("DRAFT")}
+            onOpenDraft={() => openRightPanel("DRAFT")}
+            onOpenFull={onOpenKnowledge}
+            onClose={() => onRightPanelOpenChange(false)}
           />
-          <footer className="draft-footer">
-            <div>
-              <span>{draft.length.toLocaleString("zh-CN")} 字符</span>
-              <small>{draftPreviewVisible ? "Markdown · 实时预览" : "Markdown · 专注编辑"}</small>
-            </div>
-            {isCollaborativeWorkspace(workspace) ? (
-              <div className="memory-visibility-control" role="group" aria-label="保存可见范围">
+        ) : (
+          <section className="markdown-panel" aria-label="Markdown 草稿编辑器">
+            <header className="markdown-header">
+              <div>
+                <p className="eyebrow">草稿</p>
+                <h2>草稿</h2>
+              </div>
+              <div className="draft-header-actions">
+                <PreviewToggle
+                  visible={draftPreviewVisible}
+                  onToggle={() => setDraftPreviewVisible((visible) => !visible)}
+                />
                 <button
+                  className="icon-button"
                   type="button"
-                  className={saveVisibility === "PRIVATE" ? "is-active" : ""}
-                  aria-pressed={saveVisibility === "PRIVATE"}
-                  onClick={() => onSaveVisibilityChange("PRIVATE")}
+                  aria-label="切换到右侧云知识库"
+                  title="云知识库"
+                  onClick={() => openRightPanel("KNOWLEDGE")}
                 >
-                  <LockKeyhole aria-hidden="true" size={14} strokeWidth={1.8} />
-                  仅自己
+                  <BookOpenText aria-hidden="true" size={16} strokeWidth={1.8} />
                 </button>
                 <button
+                  className="icon-button"
                   type="button"
-                  className={saveVisibility === "WORKSPACE" ? "is-active" : ""}
-                  aria-pressed={saveVisibility === "WORKSPACE"}
-                  onClick={() => onSaveVisibilityChange("WORKSPACE")}
+                  aria-label="关闭右侧草稿"
+                  title="关闭"
+                  onClick={() => onRightPanelOpenChange(false)}
                 >
-                  <Users aria-hidden="true" size={14} strokeWidth={1.8} />
-                  空间共享
+                  <PanelRightClose aria-hidden="true" size={16} strokeWidth={1.8} />
                 </button>
+                {draft ? (
+                  <button className="text-button" type="button" onClick={onReset}>
+                    新想法
+                  </button>
+                ) : null}
+                <span className={isSaved ? "save-state is-saved" : "save-state"}>
+                  {isSaved ? "已保存" : "未保存"}
+                </span>
+              </div>
+            </header>
+            {documentCitations.length ? (
+              <div className="draft-document-sources" aria-label="草稿文档来源">
+                <span>文档来源</span>
+                {documentCitations.map((citation) => (
+                  <a
+                    href={citation.content_url}
+                    key={citation.chunk_id}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {citation.asset_name} · 第 {citation.page_number} 页
+                  </a>
+                ))}
               </div>
             ) : null}
-            <button
-              className="primary-action"
-              type="button"
-              disabled={!normalizedDraft || saving || isSaved}
-              onClick={() => void onSave()}
-            >
-              {saving
-                ? "正在保存…"
-                : isSaved
-                  ? "已保存"
-                  : saveVisibility === "WORKSPACE"
-                    ? "保存为空间记忆"
-                    : "保存为我的记忆"}
-            </button>
-          </footer>
-        </section>
+            <MarkdownWorkspace
+              value={draft}
+              onChange={onDraftChange}
+              ariaLabel="Markdown 草稿"
+              placeholder={"# 想法标题\n\n你的 Markdown 草稿会出现在这里。"}
+              previewVisible={draftPreviewVisible}
+            />
+            <footer className="draft-footer">
+              <div>
+                <span>{draft.length.toLocaleString("zh-CN")} 字符</span>
+                <small>{draftPreviewVisible ? "Markdown · 实时预览" : "Markdown · 专注编辑"}</small>
+              </div>
+              {isCollaborativeWorkspace(workspace) ? (
+                <div className="memory-visibility-control" role="group" aria-label="保存可见范围">
+                  <button
+                    type="button"
+                    className={saveVisibility === "PRIVATE" ? "is-active" : ""}
+                    aria-pressed={saveVisibility === "PRIVATE"}
+                    onClick={() => onSaveVisibilityChange("PRIVATE")}
+                  >
+                    <LockKeyhole aria-hidden="true" size={14} strokeWidth={1.8} />
+                    仅自己
+                  </button>
+                  <button
+                    type="button"
+                    className={saveVisibility === "WORKSPACE" ? "is-active" : ""}
+                    aria-pressed={saveVisibility === "WORKSPACE"}
+                    onClick={() => onSaveVisibilityChange("WORKSPACE")}
+                  >
+                    <Users aria-hidden="true" size={14} strokeWidth={1.8} />
+                    空间共享
+                  </button>
+                </div>
+              ) : null}
+              <button
+                className="primary-action"
+                type="button"
+                disabled={!normalizedDraft || saving || isSaved}
+                onClick={() => void onSave()}
+              >
+                {saving
+                  ? "正在保存…"
+                  : isSaved
+                    ? "已保存"
+                    : saveVisibility === "WORKSPACE"
+                      ? "保存为空间记忆"
+                      : "保存为我的记忆"}
+              </button>
+            </footer>
+          </section>
+        )
       }
     />
   );

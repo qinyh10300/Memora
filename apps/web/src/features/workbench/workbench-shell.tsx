@@ -783,6 +783,9 @@ export function WorkbenchShell() {
   const [savedVisibility, setSavedVisibility] = useState<MemoryVisibility | null>(null);
   const [draftDocumentCitations, setDraftDocumentCitations] = useState<DraftDocumentCitation[]>([]);
   const [captureRightPanelOpen, setCaptureRightPanelOpen] = useState(false);
+  const [captureRightPanelView, setCaptureRightPanelView] = useState<"DRAFT" | "KNOWLEDGE">(
+    "DRAFT",
+  );
   const [messages, setMessages] = useState<DraftMessage[]>([initialMessage]);
   const [draftAgent, dispatchDraftAgent] = useReducer(
     captureAgentReducer,
@@ -1536,6 +1539,7 @@ export function WorkbenchShell() {
             requestedWebSearch,
             response: data,
           }),
+          resultTarget: savedMemory ? "MEMORY" : data.draft_changed ? "DRAFT" : undefined,
         },
       ]);
       dispatchDraftAgent({
@@ -1606,6 +1610,7 @@ export function WorkbenchShell() {
                   : "连接中断后已恢复工作过程；完整回复没有返回，右侧草稿保持不变。",
                 meta: execution.saved_memory_id ? "保存回执已确认" : "可以重新发送这轮请求",
                 activity: liveTrace,
+                resultTarget: execution.saved_memory_id ? "MEMORY" : undefined,
               },
             ]);
             return;
@@ -1747,6 +1752,7 @@ export function WorkbenchShell() {
               ? `已共享到 ${activeWorkspace.name} 的空间记忆库。`
               : "已保存为仅自己可见的记忆。",
           meta: formatDateTime(data.created_at),
+          resultTarget: "MEMORY",
         },
       ]);
       showToast(data.visibility === "WORKSPACE" ? "已保存为空间共享记忆" : "已保存为私人记忆");
@@ -1768,6 +1774,7 @@ export function WorkbenchShell() {
     setSavedVisibility(null);
     setDraftDocumentCitations([]);
     setCaptureRightPanelOpen(false);
+    setCaptureRightPanelView("DRAFT");
     setMessages([initialMessage]);
     setActiveConversationId(null);
   }
@@ -2104,6 +2111,9 @@ export function WorkbenchShell() {
               selectedModelId={selectedModelId}
               subscriptionPlan={subscription?.plan_code}
               rightPanelOpen={captureRightPanelOpen}
+              rightPanelView={captureRightPanelView}
+              memories={memories}
+              loadingMemories={loadingMemories}
               agentPhase={draftAgent.phase}
               documentCitations={draftDocumentCitations}
               canRetry={Boolean(
@@ -2117,6 +2127,12 @@ export function WorkbenchShell() {
               onReset={resetDraft}
               onModelChange={setSelectedModelId}
               onRightPanelOpenChange={setCaptureRightPanelOpen}
+              onRightPanelViewChange={setCaptureRightPanelView}
+              onOpenKnowledge={() => navigateTo("KNOWLEDGE")}
+              onOpenKnowledgeMemory={(memory) => {
+                navigateTo("LIBRARY");
+                void selectMemory(memory);
+              }}
               onUpgrade={() => setSubscriptionOpen(true)}
               onOpenCitation={openCitation}
               onCancel={cancelDraftRun}

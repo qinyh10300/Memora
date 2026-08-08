@@ -859,6 +859,35 @@ describe("Memora personal Markdown MVP", () => {
     expect(panelSeparator.parentElement).toHaveClass("is-right-collapsed");
   });
 
+  it("助手修改草稿后可以跳转或在右侧停靠云知识库", async () => {
+    mockAuthenticatedSession([memory]);
+
+    render(<HomePage />);
+
+    const composer = await screen.findByLabelText("告诉 Memora 你的想法");
+    fireEvent.change(composer, { target: { value: "整理并更新这条想法" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("草稿已更新")).toBeInTheDocument();
+    expect(screen.getByText("仍是私有草稿，确认保存后才会进入云知识库。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看草稿" })).toBeInTheDocument();
+
+    const panelSeparator = screen.getByRole("separator", { name: "调整记录和草稿宽度" });
+    fireEvent.click(screen.getByRole("button", { name: "在右侧打开云知识库" }));
+
+    expect(panelSeparator.parentElement).not.toHaveClass("is-right-collapsed");
+    expect(await screen.findByRole("heading", { name: "云知识库" })).toBeInTheDocument();
+    expect(screen.getByText(memory.title!)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开右侧草稿" }));
+    expect(await screen.findByLabelText("Markdown 草稿")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "关闭右侧草稿" }));
+    expect(panelSeparator.parentElement).toHaveClass("is-right-collapsed");
+
+    fireEvent.click(screen.getByRole("button", { name: "前往云知识库" }));
+    expect(await screen.findByRole("heading", { name: "云知识库" })).toBeVisible();
+  });
+
   it("刷新后保留团队空间，并显示团队号、组织成员和邀请入口", async () => {
     mockAuthenticatedSession([], teamWorkspace.id);
 
@@ -1651,6 +1680,7 @@ describe("Memora personal Markdown MVP", () => {
 
     expect(await screen.findByText("已保存到我的记忆。")).toBeInTheDocument();
     expect(screen.getByText("已自动保存为我的记忆")).toBeInTheDocument();
+    expect(screen.getByText("已写入云知识库")).toBeInTheDocument();
     expect(screen.getByText("保存到个人记忆")).toBeInTheDocument();
     expect(screen.getByText("已保存为个人私有记忆。")).toBeInTheDocument();
     expect(apiMocks.POST).not.toHaveBeenCalledWith("/memories", expect.anything());

@@ -1,6 +1,15 @@
 "use client";
 
-import { BookOpenText, FileText, Search, Upload, Users } from "lucide-react";
+import {
+  ArrowUpRight,
+  BookOpenText,
+  FilePenLine,
+  FileText,
+  PanelRightClose,
+  Search,
+  Upload,
+  Users,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type { Memory, Workspace } from "@/features/shared/contracts";
@@ -11,14 +20,22 @@ export function KnowledgeBaseWorkspace({
   workspace,
   memories,
   loading,
+  embedded = false,
   onOpenMemory,
   onCapture,
+  onClose,
+  onOpenDraft,
+  onOpenFull,
 }: {
   workspace: Workspace;
   memories: Memory[];
   loading: boolean;
+  embedded?: boolean;
   onOpenMemory: (memory: Memory) => void;
   onCapture: () => void;
+  onClose?: () => void;
+  onOpenDraft?: () => void;
+  onOpenFull?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
@@ -58,17 +75,39 @@ export function KnowledgeBaseWorkspace({
   const authorCount = new Set(memories.map((memory) => memory.author.id)).size;
 
   return (
-    <section className="knowledge-workspace" aria-labelledby="knowledge-title">
+    <section
+      className={`knowledge-workspace ${embedded ? "is-docked" : ""}`}
+      aria-labelledby={embedded ? "docked-knowledge-title" : "knowledge-title"}
+    >
       <header className="feature-workspace-header">
         <div>
           <p className="eyebrow">CLOUD KNOWLEDGE BASE</p>
-          <h1 id="knowledge-title">云知识库</h1>
+          <h1 id={embedded ? "docked-knowledge-title" : "knowledge-title"}>云知识库</h1>
           <span>{workspace.name}</span>
         </div>
-        <button type="button" className="primary-action" onClick={onCapture}>
-          <Upload aria-hidden="true" size={15} strokeWidth={1.8} />
-          导入资料
-        </button>
+        {embedded ? (
+          <div className="knowledge-dock-actions">
+            <button type="button" aria-label="打开右侧草稿" title="打开草稿" onClick={onOpenDraft}>
+              <FilePenLine aria-hidden="true" size={16} strokeWidth={1.8} />
+            </button>
+            <button
+              type="button"
+              aria-label="前往完整云知识库"
+              title="前往完整云知识库"
+              onClick={onOpenFull}
+            >
+              <ArrowUpRight aria-hidden="true" size={16} strokeWidth={1.8} />
+            </button>
+            <button type="button" aria-label="关闭右侧云知识库" title="关闭" onClick={onClose}>
+              <PanelRightClose aria-hidden="true" size={16} strokeWidth={1.8} />
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="primary-action" onClick={onCapture}>
+            <Upload aria-hidden="true" size={15} strokeWidth={1.8} />
+            导入资料
+          </button>
+        )}
       </header>
 
       <div className="knowledge-summary-band">

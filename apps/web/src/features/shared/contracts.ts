@@ -93,6 +93,7 @@ export type DraftMessage = {
   images?: DraftImagePreview[];
   attachments?: DraftDocumentPreview[];
   activity?: DraftTrace;
+  resultTarget?: "DRAFT" | "MEMORY";
 };
 
 export const EMPTY_MEMORY_SEARCH: MemorySearchFilters = {
