@@ -65,8 +65,8 @@
 
 .split-handle::before {
   position: absolute;
-  top: 12px;
-  bottom: 12px;
+  top: 0;
+  bottom: 0;
   left: 50%;
   width: 1px;
   border-radius: var(--r-pill);
@@ -155,7 +155,7 @@
 .resizable-split.is-dragging > .markdown-panel,
 .resizable-split.is-dragging > .timeline-panel,
 .resizable-split.is-dragging > .memory-detail {
-  border-color: rgba(153, 208, 255, 0.15);
+  border-color: rgba(200, 200, 200, 0.15);
 }
 
 .split-handle:focus-visible {
@@ -185,14 +185,14 @@ body.is-settings-open {
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--panel-radius);
-  box-shadow: var(--shadow-lg);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .conversation-panel {
   position: relative;
-  background: linear-gradient(180deg, #08090f 0%, var(--bg) 44%, #030407 100%);
+  background: var(--tone-07);
 }
 
 .conversation-panel > :not(.file-drop-overlay) {
@@ -214,9 +214,9 @@ body.is-settings-open {
   place-content: center;
   justify-items: center;
   gap: 9px;
-  border: 1px dashed rgba(151, 211, 255, 0.5);
+  border: 1px dashed rgba(201, 201, 201, 0.5);
   border-radius: var(--r-md);
-  background: rgba(4, 7, 14, 0.84);
+  background: rgba(7, 7, 7, 0.84);
   color: var(--accent-light);
   font-size: var(--fs-sm);
   box-shadow: 0 0 0 3px var(--accent-glow) inset;
@@ -253,6 +253,8 @@ body.is-settings-open {
 .markdown-header,
 .library-list-header,
 .detail-header {
+  position: relative;
+  z-index: 12;
   display: flex;
   min-height: 68px;
   align-items: center;
@@ -260,8 +262,8 @@ body.is-settings-open {
   gap: 20px;
   padding: 15px 22px;
   border-bottom: 1px solid var(--line);
-  background: rgba(8, 9, 12, 0.62);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.018) inset;
+  background: rgba(9, 9, 9, 0.62);
+  box-shadow: 0 1px 0 rgba(var(--mono-rgb), 0.018) inset;
 }
 
 .panel-header h1,
@@ -275,44 +277,19 @@ body.is-settings-open {
 }
 
 .chat-model-title {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 10px;
-}
-
-.chat-model-title > span {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 1px solid rgba(130, 185, 255, 0.22);
-  border-radius: var(--r-sm);
-  background: rgba(44, 99, 255, 0.11);
-  color: var(--accent-light);
-}
-
-.chat-model-title > span svg {
-  width: 17px;
-  height: 17px;
-}
-
-.chat-model-title > div {
-  min-width: 0;
-}
-
-.chat-model-title h1 {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-model-title small {
+  position: relative;
   display: block;
-  margin-top: 2px;
-  color: var(--faint);
-  font-size: var(--fs-3xs);
+  min-width: 0;
+}
+
+.chat-model-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .private-status {
@@ -320,9 +297,9 @@ body.is-settings-open {
   align-items: center;
   gap: 8px;
   padding: 5px 9px;
-  border: 1px solid rgba(141, 199, 255, 0.16);
+  border: 1px solid rgba(191, 191, 191, 0.16);
   border-radius: var(--r-pill);
-  background: rgba(79, 140, 255, 0.055);
+  background: rgba(135, 135, 135, 0.055);
   color: var(--muted);
   font-size: var(--fs-2xs);
 }
@@ -331,7 +308,7 @@ body.is-settings-open {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
-  scrollbar-color: #262b35 transparent;
+  scrollbar-color: #2b2b2b transparent;
   scroll-behavior: smooth;
 }
 
@@ -344,31 +321,26 @@ body.is-settings-open {
 
 .intro-mark {
   display: grid;
-  width: 46px;
-  height: 46px;
+  width: 32px;
+  height: 32px;
   place-items: center;
-  margin-bottom: 20px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-lg);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015)), var(--surface);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.07) inset,
-    var(--shadow-md);
+  margin-bottom: 18px;
   animation: rise-in var(--t-slow) var(--ease-spring) both;
 }
 
 .intro-mark .logo-mark {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--r-sm);
-  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.22);
+  box-shadow: none;
 }
 
 .conversation-intro h2 {
   margin: 0;
-  font-size: 1.62rem;
-  font-weight: var(--fw-normal);
+  color: #f1f1f1;
+  font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+  font-size: 1.72rem;
+  font-weight: 500;
   letter-spacing: 0;
   line-height: 1.16;
   animation: rise-in var(--t-slow) var(--ease-out) 60ms both;
@@ -466,7 +438,7 @@ body.is-settings-open {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: linear-gradient(145deg, var(--accent-soft), rgba(255, 255, 255, 0.02));
+  background: linear-gradient(145deg, var(--accent-soft), rgba(var(--mono-rgb), 0.02));
   color: var(--muted);
   text-decoration: none;
   transition:
@@ -518,7 +490,7 @@ body.is-settings-open {
   padding: 7px 9px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(var(--mono-rgb), 0.025);
   color: var(--muted);
   text-align: left;
   transition:
@@ -530,7 +502,7 @@ body.is-settings-open {
 
 .chat-citations button:hover {
   border-color: var(--line-strong);
-  background: rgba(255, 255, 255, 0.055);
+  background: rgba(var(--mono-rgb), 0.055);
   box-shadow: var(--shadow-sm);
   transform: translateY(-2px);
 }
@@ -560,10 +532,10 @@ body.is-settings-open {
 .chat-message.is-user > div {
   max-width: 78%;
   padding: 11px 15px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(var(--mono-rgb), 0.05);
   border-radius: var(--r-xl) var(--r-xl) 5px var(--r-xl);
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.04), transparent), var(--surface-raised);
+    linear-gradient(145deg, rgba(var(--mono-rgb), 0.04), transparent), var(--surface-raised);
   box-shadow: var(--shadow-md);
   transition:
     border-color var(--t-base) var(--ease),
@@ -574,7 +546,7 @@ body.is-settings-open {
 .chat-message.is-user > div:hover {
   border-color: var(--line);
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.055), transparent), var(--surface-raised);
+    linear-gradient(145deg, rgba(var(--mono-rgb), 0.055), transparent), var(--surface-raised);
   transform: translateY(-1px);
 }
 
@@ -614,7 +586,7 @@ body.is-settings-open {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: rgba(255, 255, 255, 0.035);
+  background: rgba(var(--mono-rgb), 0.035);
   color: var(--muted);
   font-size: var(--fs-2xs);
   text-overflow: ellipsis;
@@ -683,9 +655,9 @@ body.is-settings-open {
 
 .trace-summary-state {
   padding: 2px 6px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(var(--mono-rgb), 0.06);
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(var(--mono-rgb), 0.025);
 }
 
 .trace-chevron {
@@ -725,7 +697,7 @@ body.is-settings-open {
 .trace-body {
   margin: 5px 0 0 11px;
   padding: 0 0 2px 20px;
-  border-left: 1px solid rgba(129, 177, 255, 0.15);
+  border-left: 1px solid rgba(172, 172, 172, 0.15);
   animation: trace-open var(--t-base) var(--ease-out) both;
 }
 
@@ -770,7 +742,7 @@ body.is-settings-open {
   bottom: 1px;
   left: 13px;
   width: 1px;
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(var(--mono-rgb), 0.07);
   content: "";
 }
 
@@ -781,9 +753,9 @@ body.is-settings-open {
   width: 27px;
   height: 27px;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--mono-rgb), 0.08);
   border-radius: 50%;
-  background: #090b11;
+  background: var(--tone-0b);
   color: var(--faint);
 }
 
@@ -793,28 +765,28 @@ body.is-settings-open {
 }
 
 .is-completed > .trace-node {
-  border-color: rgba(100, 168, 255, 0.25);
+  border-color: rgba(160, 160, 160, 0.25);
   color: var(--accent-light);
 }
 
 .is-running > .trace-node {
-  border-color: rgba(106, 174, 255, 0.45);
-  color: #a8d8ff;
-  box-shadow: 0 0 0 4px rgba(52, 113, 255, 0.08);
+  border-color: rgba(165, 165, 165, 0.45);
+  color: #d1d1d1;
+  box-shadow: 0 0 0 4px rgba(110, 110, 110, 0.08);
   animation: trace-node-running 1.2s var(--ease) infinite;
 }
 
 @keyframes trace-node-running {
   50% {
-    box-shadow: 0 0 0 7px rgba(52, 113, 255, 0.035);
+    box-shadow: 0 0 0 7px rgba(110, 110, 110, 0.035);
   }
 }
 
 .is-degraded > .trace-node,
 .is-rejected > .trace-node,
 .is-skipped > .trace-node {
-  border-color: rgba(231, 189, 110, 0.2);
-  color: #d5b372;
+  border-color: rgba(192, 192, 192, 0.2);
+  color: #b6b6b6;
 }
 
 .is-failed > .trace-node {
@@ -890,7 +862,7 @@ body.is-settings-open {
 
 .trace-web-results a:hover,
 .trace-memory-results button:hover {
-  background: rgba(71, 128, 255, 0.07);
+  background: rgba(125, 125, 125, 0.07);
   color: var(--text);
 }
 
@@ -982,7 +954,7 @@ body.is-settings-open {
   gap: 12px;
   padding: 7px 22px;
   border-top: 1px solid var(--line);
-  background: rgba(10, 12, 17, 0.96);
+  background: rgba(12, 12, 12, 0.96);
   color: var(--muted);
   font-size: var(--fs-2xs);
   animation: rise-in var(--t-base) var(--ease-out) both;
@@ -1002,7 +974,7 @@ body.is-settings-open {
   flex: 0 0 10px;
   place-items: center;
   border: 0;
-  background: linear-gradient(180deg, transparent, rgba(5, 6, 10, 0.92));
+  background: linear-gradient(180deg, transparent, rgba(6, 6, 6, 0.92));
   cursor: row-resize;
   touch-action: none;
 }
@@ -1064,6 +1036,8 @@ body.is-resizing-composer * {
 }
 
 .composer-wrap {
+  position: relative;
+  z-index: 4;
   display: flex;
   height: var(--composer-height, 184px);
   min-height: 156px;
@@ -1071,7 +1045,7 @@ body.is-resizing-composer * {
   flex: 0 0 auto;
   flex-direction: column;
   padding: 14px 22px 18px;
-  background: rgba(5, 6, 10, 0.98);
+  background: rgba(7, 7, 7, 0.98);
   transition: height var(--t-base) var(--ease-out);
 }
 
@@ -1088,11 +1062,11 @@ body.is-resizing-composer .composer-wrap {
   gap: 9px;
   margin: 0 auto;
   padding: 9px 10px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.145);
+  overflow: visible;
+  border: 1px solid rgba(var(--mono-rgb), 0.145);
   border-radius: var(--r-2xl);
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.035), transparent 44%), rgba(13, 14, 18, 0.98);
+    linear-gradient(145deg, rgba(var(--mono-rgb), 0.035), transparent 44%), rgba(23, 23, 23, 0.98);
   box-shadow: var(--inset-hi), var(--shadow-xl);
   backdrop-filter: blur(18px);
   transition:
@@ -1145,7 +1119,7 @@ body.is-resizing-composer .composer-wrap {
   padding: 4px 8px 4px 6px;
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.022);
+  background: rgba(var(--mono-rgb), 0.022);
   cursor: pointer;
   color: var(--muted);
   transition:
@@ -1159,7 +1133,7 @@ body.is-resizing-composer .composer-wrap {
 .search-mode-control:focus-within,
 .search-mode-control:hover {
   border-color: var(--line-strong);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(var(--mono-rgb), 0.05);
   color: var(--text);
 }
 
@@ -1227,7 +1201,7 @@ body.is-resizing-composer .composer-wrap {
 }
 
 .composer .attach-button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(var(--mono-rgb), 0.07);
   color: var(--text);
 }
 
@@ -1249,7 +1223,7 @@ body.is-resizing-composer .composer-wrap {
   color: var(--text);
   font-size: var(--fs-base);
   line-height: 1.55;
-  scrollbar-color: #262b35 transparent;
+  scrollbar-color: #2b2b2b transparent;
 }
 
 .composer textarea::placeholder {
@@ -1264,10 +1238,10 @@ body.is-resizing-composer .composer-wrap {
   place-items: center;
   border: 0;
   border-radius: 50%;
-  background: linear-gradient(145deg, #d8efff, #78aaff 58%, #2c63ff);
-  color: #041024;
+  background: linear-gradient(145deg, #ffffff, #d8d8d8 58%, #a8a8a8);
+  color: #080808;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 1px 0 rgba(var(--mono-rgb), 0.8) inset,
     0 6px 15px rgba(0, 0, 0, 0.24);
   transition:
     transform var(--t-base) var(--ease-spring),
@@ -1277,7 +1251,7 @@ body.is-resizing-composer .composer-wrap {
 
 .composer .send-button:hover:not(:disabled) {
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 1px 0 rgba(var(--mono-rgb), 0.85) inset,
     0 9px 20px rgba(0, 0, 0, 0.3);
   transform: translateY(-2px) scale(1.05);
 }
@@ -1330,7 +1304,7 @@ body.is-resizing-composer .composer-wrap {
   padding: 10px 54px 10px 10px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: rgba(255, 255, 255, 0.028);
+  background: rgba(var(--mono-rgb), 0.028);
 }
 
 .pending-document > svg {
@@ -1344,8 +1318,8 @@ body.is-resizing-composer .composer-wrap {
 .pending-document.is-ocr,
 .pending-document.is-cancel_requested,
 .pending-document.is-uploading {
-  border-color: rgba(109, 170, 255, 0.24);
-  background: rgba(79, 140, 255, 0.045);
+  border-color: rgba(163, 163, 163, 0.24);
+  background: rgba(135, 135, 135, 0.045);
 }
 
 .pending-document.is-failed,
@@ -1370,7 +1344,7 @@ body.is-resizing-composer .composer-wrap {
   width: 22px;
   height: 22px;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(var(--mono-rgb), 0.22);
   border-radius: 50%;
   background: rgba(10, 10, 10, 0.82);
   color: var(--text);
@@ -1382,7 +1356,7 @@ body.is-resizing-composer .composer-wrap {
 
 .pending-images > div > button:not(.document-status-action):hover {
   border-color: var(--danger-line);
-  background: rgba(52, 20, 20, 0.9);
+  background: rgba(27, 27, 27, 0.9);
   color: var(--danger);
 }
 
@@ -1466,7 +1440,7 @@ body.is-resizing-composer .composer-wrap {
   padding: 9px 11px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.018);
+  background: rgba(var(--mono-rgb), 0.018);
   color: inherit;
   text-decoration: none;
   transition:
@@ -1503,7 +1477,7 @@ body.is-resizing-composer .composer-wrap {
   overflow-x: auto;
   padding: 8px 20px;
   border-bottom: 1px solid var(--line);
-  background: rgba(79, 140, 255, 0.025);
+  background: rgba(135, 135, 135, 0.025);
 }
 
 .draft-document-sources > span {
@@ -1560,7 +1534,7 @@ body.is-resizing-composer .composer-wrap {
   padding: 0 9px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.018);
+  background: rgba(var(--mono-rgb), 0.018);
   color: var(--faint);
   font-size: var(--fs-xs);
   transition:
@@ -1581,7 +1555,7 @@ body.is-resizing-composer .composer-wrap {
   border-color: var(--preview-line);
   background: var(--preview-soft);
   color: var(--preview-accent);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035) inset;
+  box-shadow: 0 1px 0 rgba(var(--mono-rgb), 0.035) inset;
 }
 
 .preview-toggle svg {
@@ -1603,7 +1577,7 @@ body.is-resizing-composer .composer-wrap {
 
 .text-button:hover {
   border-color: var(--line);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(var(--mono-rgb), 0.04);
   color: var(--text);
 }
 
@@ -1614,7 +1588,7 @@ body.is-resizing-composer .composer-wrap {
   padding: 5px 10px;
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.018);
+  background: rgba(var(--mono-rgb), 0.018);
   color: var(--faint);
   font-size: var(--fs-3xs);
   transition:
@@ -1652,25 +1626,25 @@ body.is-resizing-composer .composer-wrap {
   resize: none;
   border: 0;
   outline: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.009), transparent 15rem);
+  background: linear-gradient(180deg, rgba(var(--mono-rgb), 0.009), transparent 15rem);
   color: var(--text-soft);
   caret-color: var(--accent-light);
   font-family: "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: var(--fs-md);
   line-height: 1.9;
   tab-size: 2;
-  scrollbar-color: #262b35 transparent;
+  scrollbar-color: #2b2b2b transparent;
   transition: background var(--t-slow) var(--ease);
 }
 
 .markdown-editor:focus {
   background:
-    linear-gradient(180deg, rgba(79, 140, 255, 0.022), transparent 15rem),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.009), transparent 15rem);
+    linear-gradient(180deg, rgba(135, 135, 135, 0.022), transparent 15rem),
+    linear-gradient(180deg, rgba(var(--mono-rgb), 0.009), transparent 15rem);
 }
 
 .markdown-editor::placeholder {
-  color: #515865;
+  color: #575757;
 }
 
 .markdown-editor-grid {
@@ -1719,7 +1693,7 @@ body.is-resizing-composer .composer-wrap {
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  background: #0b0c10;
+  background: var(--tone-0c);
 }
 
 .markdown-preview-toolbar {
@@ -1730,7 +1704,7 @@ body.is-resizing-composer .composer-wrap {
   justify-content: space-between;
   padding: 0 15px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.018);
+  background: rgba(var(--mono-rgb), 0.018);
   color: var(--muted);
   font-size: var(--fs-xs);
 }
@@ -1757,7 +1731,7 @@ body.is-resizing-composer .composer-wrap {
   color: var(--text-soft);
   font-size: var(--fs-sm);
   line-height: 1.75;
-  scrollbar-color: #262b35 transparent;
+  scrollbar-color: #2b2b2b transparent;
 }
 
 .markdown-preview > * {
@@ -1851,8 +1825,8 @@ body.is-resizing-composer .composer-wrap {
   padding: 2px 5px;
   border: 1px solid var(--line);
   border-radius: 5px;
-  background: rgba(255, 255, 255, 0.045);
-  color: #d7e7ff;
+  background: rgba(var(--mono-rgb), 0.045);
+  color: #e5e5e5;
   font-family: "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 0.88em;
 }
@@ -1862,7 +1836,7 @@ body.is-resizing-composer .composer-wrap {
   overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: #07090f;
+  background: var(--tone-09);
 }
 
 .markdown-preview pre code {
@@ -1892,7 +1866,7 @@ body.is-resizing-composer .composer-wrap {
 }
 
 .markdown-preview th {
-  background: rgba(159, 199, 255, 0.025);
+  background: rgba(195, 195, 195, 0.025);
   color: var(--text);
   font-weight: var(--fw-semi);
 }
@@ -1941,7 +1915,7 @@ body.is-resizing-composer .composer-wrap {
   gap: 18px;
   padding: 13px 15px 13px 20px;
   border-top: 1px solid var(--line);
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.012), transparent), #06070c;
+  background: linear-gradient(90deg, rgba(var(--mono-rgb), 0.012), transparent), var(--tone-07);
 }
 
 .draft-footer > div:first-child {
@@ -1967,7 +1941,7 @@ body.is-resizing-composer .composer-wrap {
   padding: 2px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: #05060a;
+  background: var(--tone-06);
 }
 
 .memory-visibility-control button {
@@ -2016,11 +1990,11 @@ body.is-resizing-composer .composer-wrap {
 }
 
 .primary-action {
-  border: 1px solid rgba(168, 216, 255, 0.7);
-  background: linear-gradient(145deg, #d8efff, #78aaff 58%, #2c63ff);
-  color: #041024;
+  border: 1px solid rgba(209, 209, 209, 0.7);
+  background: linear-gradient(145deg, #ebebeb, #a6a6a6 58%, #636363);
+  color: #0f0f0f;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.75) inset,
+    0 1px 0 rgba(var(--mono-rgb), 0.75) inset,
     0 7px 18px rgba(0, 0, 0, 0.2);
 }
 
@@ -2030,9 +2004,9 @@ body.is-resizing-composer .composer-wrap {
 }
 
 .primary-action:hover:not(:disabled) {
-  background: linear-gradient(145deg, #eef8ff, #8fbcff 58%, #3c72ff);
+  background: linear-gradient(145deg, #f6f6f6, #b7b7b7 58%, #717171);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 1px 0 rgba(var(--mono-rgb), 0.8) inset,
     0 10px 24px rgba(0, 0, 0, 0.27);
 }
 

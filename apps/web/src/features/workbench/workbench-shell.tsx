@@ -14,7 +14,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import type { CSSProperties, FormEvent } from "react";
+import type { FormEvent } from "react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import {
@@ -52,6 +52,7 @@ import type {
   MemoryVisibility,
   PublicAuthMode,
   RevisionMode,
+  SettingsView,
   Subscription,
   TeamAccessMode,
   WebSearchMode,
@@ -71,25 +72,11 @@ import {
   MenuIcon,
   UserAvatar,
 } from "@/features/shared/icons";
-import {
-  clampNumber,
-  formatDateTime,
-  nextId,
-  readStoredBoolean,
-  readStoredNumber,
-  storeBoolean,
-  storeNumber,
-} from "@/features/shared/utils";
+import { applyInterfaceTheme, readInterfaceTheme } from "@/features/shared/interface-theme";
+import { formatDateTime, nextId, readStoredBoolean, storeBoolean } from "@/features/shared/utils";
 import { TeamAccessDialog, TeamWorkspace } from "@/features/team/team";
 import { VisualWorkspace } from "@/features/visuals/visual-workspace";
-import {
-  ResizableSplit,
-  SIDEBAR_COLLAPSED_WIDTH,
-  SIDEBAR_DEFAULT_WIDTH,
-  SIDEBAR_MAX_WIDTH,
-  SIDEBAR_MIN_EXPANDED_WIDTH,
-  SidebarResizeHandle,
-} from "@/features/workbench/layout";
+import { ResizableSplit } from "@/features/workbench/layout";
 import { Sidebar } from "@/features/workspaces/sidebar";
 import {
   api,
@@ -342,12 +329,28 @@ function AuthDialog({
   );
 }
 
-function PublicLanding({ onAuthenticated }: { onAuthenticated: (user: CurrentUser) => void }) {
+function PublicLanding({
+  authenticated = false,
+  onAuthenticated,
+  onEnterWorkbench,
+}: {
+  authenticated?: boolean;
+  onAuthenticated: (user: CurrentUser) => void;
+  onEnterWorkbench?: () => void;
+}) {
   const [authMode, setAuthMode] = useState<PublicAuthMode | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const openAuth = (mode: PublicAuthMode) => {
     setMenuOpen(false);
     setAuthMode(mode);
+  };
+  const start = () => {
+    if (authenticated) {
+      setMenuOpen(false);
+      onEnterWorkbench?.();
+      return;
+    }
+    openAuth("REGISTER");
   };
 
   return (
@@ -372,15 +375,17 @@ function PublicLanding({ onAuthenticated }: { onAuthenticated: (user: CurrentUse
           </a>
         </nav>
         <div className="landing-nav-actions">
-          <button className="landing-login-button" type="button" onClick={() => openAuth("LOGIN")}>
-            登录
-          </button>
-          <button
-            className="landing-start-button"
-            type="button"
-            onClick={() => openAuth("REGISTER")}
-          >
-            快速开始
+          {!authenticated ? (
+            <button
+              className="landing-login-button"
+              type="button"
+              onClick={() => openAuth("LOGIN")}
+            >
+              登录
+            </button>
+          ) : null}
+          <button className="landing-start-button" type="button" onClick={start}>
+            {authenticated ? "进入工作台" : "快速开始"}
           </button>
           <button
             className="landing-menu-button"
@@ -396,11 +401,7 @@ function PublicLanding({ onAuthenticated }: { onAuthenticated: (user: CurrentUse
 
       <section className="landing-hero" aria-labelledby="landing-title">
         <div className="landing-hero-copy">
-          <button
-            className="landing-announcement"
-            type="button"
-            onClick={() => openAuth("REGISTER")}
-          >
+          <button className="landing-announcement" type="button" onClick={start}>
             Memora 个人记忆工作台现已开放
             <ArrowRight aria-hidden="true" size={13} />
           </button>
@@ -413,8 +414,8 @@ function PublicLanding({ onAuthenticated }: { onAuthenticated: (user: CurrentUse
             处理重复整理工作，最终保存权始终在你手里。
           </p>
           <div className="landing-hero-actions">
-            <button type="button" onClick={() => openAuth("REGISTER")}>
-              快速开始
+            <button type="button" onClick={start}>
+              {authenticated ? "进入工作台" : "快速开始"}
             </button>
             <a href="#landing-features">了解更多</a>
           </div>
@@ -712,8 +713,8 @@ function PublicLanding({ onAuthenticated }: { onAuthenticated: (user: CurrentUse
           <Logo />
           <p>YOUR MEMORY, IN MOTION</p>
           <h2>让每一次思考，都成为下一次判断的起点</h2>
-          <button type="button" onClick={() => openAuth("REGISTER")}>
-            开始使用 Memora
+          <button type="button" onClick={start}>
+            {authenticated ? "进入工作台" : "开始使用 Memora"}
             <ArrowRight aria-hidden="true" size={17} />
           </button>
         </div>
@@ -725,12 +726,12 @@ function PublicLanding({ onAuthenticated }: { onAuthenticated: (user: CurrentUse
           <span>Memora</span>
         </a>
         <p>Personal Markdown Memory Workspace</p>
-        <button type="button" onClick={() => openAuth("LOGIN")}>
-          登录
+        <button type="button" onClick={authenticated ? start : () => openAuth("LOGIN")}>
+          {authenticated ? "进入工作台" : "登录"}
         </button>
       </footer>
 
-      {authMode ? (
+      {authMode && !authenticated ? (
         <AuthDialog
           key={authMode}
           mode={authMode}
@@ -752,10 +753,9 @@ export function WorkbenchShell() {
   const [viewMotion, setViewMotion] = useState<"forward" | "back">("forward");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
-  const [sidebarResizing, setSidebarResizing] = useState(false);
-  const lastExpandedSidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
+  const [showLanding, setShowLanding] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialView, setSettingsInitialView] = useState<SettingsView>("PROFILE");
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -822,36 +822,19 @@ export function WorkbenchShell() {
       }, 3400),
     );
   }, []);
-  const openSettings = useCallback(() => setSettingsOpen(true), []);
-  const closeSettings = useCallback(() => setSettingsOpen(false), []);
-  const applySidebarLayout = useCallback((width: number, collapsed: boolean, persist = false) => {
-    const nextWidth = collapsed
-      ? SIDEBAR_COLLAPSED_WIDTH
-      : clampNumber(width, SIDEBAR_MIN_EXPANDED_WIDTH, SIDEBAR_MAX_WIDTH);
-    if (!collapsed) lastExpandedSidebarWidthRef.current = nextWidth;
-    setSidebarWidth(nextWidth);
-    setSidebarCollapsed(collapsed);
-    if (persist) {
-      storeNumber("memora.sidebar.width", nextWidth);
-      storeBoolean("memora.sidebar.collapsed", collapsed);
-    }
+  const openSettings = useCallback((nextView: SettingsView = "PROFILE") => {
+    setSettingsInitialView(nextView);
+    setSettingsOpen(true);
   }, []);
-
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   function collapseSidebar() {
-    applySidebarLayout(SIDEBAR_COLLAPSED_WIDTH, true, true);
+    setSidebarCollapsed(true);
+    storeBoolean("memora.sidebar.collapsed", true);
   }
 
   function expandSidebar() {
-    applySidebarLayout(lastExpandedSidebarWidthRef.current, false, true);
-  }
-
-  function toggleSidebar() {
-    if (sidebarCollapsed) expandSidebar();
-    else collapseSidebar();
-  }
-
-  function resetSidebarWidth() {
-    applySidebarLayout(SIDEBAR_DEFAULT_WIDTH, false, true);
+    setSidebarCollapsed(false);
+    storeBoolean("memora.sidebar.collapsed", false);
   }
 
   function navigateTo(nextView: AppView) {
@@ -886,11 +869,18 @@ export function WorkbenchShell() {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       const stored = readStoredBoolean("memora.sidebar.collapsed");
-      const storedWidth = readStoredNumber("memora.sidebar.width");
-      applySidebarLayout(storedWidth ?? SIDEBAR_DEFAULT_WIDTH, stored === true, false);
+      setSidebarCollapsed(stored === true);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [applySidebarLayout]);
+  }, []);
+
+  useEffect(() => {
+    const compact = readStoredBoolean("memora.interface.compact") === true;
+    const reduceMotion = readStoredBoolean("memora.interface.reduceMotion") === true;
+    applyInterfaceTheme(readInterfaceTheme());
+    document.documentElement.classList.toggle("memora-compact", compact);
+    document.documentElement.classList.toggle("memora-reduce-motion", reduceMotion);
+  }, []);
 
   const loadMemories = useCallback(
     async (userId: string, workspace: Workspace) => {
@@ -2004,9 +1994,11 @@ export function WorkbenchShell() {
     );
   }
 
-  if (!user) {
+  if (!user || showLanding) {
     return (
       <PublicLanding
+        authenticated={Boolean(user)}
+        onEnterWorkbench={() => setShowLanding(false)}
         onAuthenticated={(authenticatedUser) => void enterPersonalSpace(authenticatedUser, true)}
       />
     );
@@ -2032,10 +2024,7 @@ export function WorkbenchShell() {
   };
 
   return (
-    <main
-      className={`app-shell ${sidebarCollapsed ? "is-sidebar-collapsed" : ""} ${sidebarResizing ? "is-sidebar-resizing" : ""}`}
-      style={{ "--sidebar-current-width": `${sidebarWidth}px` } as CSSProperties}
-    >
+    <main className={`app-shell ${sidebarCollapsed ? "is-sidebar-collapsed" : ""}`}>
       <Sidebar
         user={user}
         workspaces={workspaces}
@@ -2054,23 +2043,19 @@ export function WorkbenchShell() {
         onWorkspaceSelect={(workspace) => void switchWorkspace(workspace)}
         onTeamAccess={openTeamAccess}
         onClose={() => setSidebarOpen(false)}
+        onHome={() => {
+          setSidebarOpen(false);
+          setSettingsOpen(false);
+          setShowLanding(true);
+        }}
         onCollapse={collapseSidebar}
         onExpand={expandSidebar}
         onUpgrade={() => setSubscriptionOpen(true)}
-        onOpenSettings={() => {
+        onOpenSettings={(settingsView) => {
           setSidebarOpen(false);
-          openSettings();
+          openSettings(settingsView);
         }}
         onLogout={() => void logout()}
-      />
-      <SidebarResizeHandle
-        width={sidebarWidth}
-        collapsed={sidebarCollapsed}
-        onResize={(width, collapsed) => applySidebarLayout(width, collapsed)}
-        onCommit={(width, collapsed) => applySidebarLayout(width, collapsed, true)}
-        onToggle={toggleSidebar}
-        onReset={resetSidebarWidth}
-        onDraggingChange={setSidebarResizing}
       />
       <section className="app-main">
         <header className="mobile-header">
@@ -2085,7 +2070,7 @@ export function WorkbenchShell() {
             className="mobile-account-button"
             type="button"
             aria-label="打开移动端个人设置"
-            onClick={openSettings}
+            onClick={() => openSettings("PROFILE")}
           >
             <UserAvatar user={user} />
           </button>
@@ -2252,6 +2237,7 @@ export function WorkbenchShell() {
       </section>
       {settingsOpen ? (
         <AccountSettingsDialog
+          initialView={settingsInitialView}
           user={user}
           onClose={closeSettings}
           onUserChange={updateCurrentUser}

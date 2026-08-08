@@ -25,6 +25,17 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://memora:change-me@localhost:5432/memora"
     session_secret: str = DEFAULT_SESSION_SECRET
     session_ttl_seconds: int = 60 * 60 * 24 * 14
+    email_verification_enabled: bool = False
+    email_verification_code_ttl_seconds: int = Field(default=600, ge=120, le=1800)
+    email_verification_max_attempts: int = Field(default=5, ge=1, le=10)
+    email_smtp_host: str = ""
+    email_smtp_port: int = Field(default=587, ge=1, le=65535)
+    email_smtp_username: str = ""
+    email_smtp_password: SecretStr = SecretStr("")
+    email_smtp_from_email: str = ""
+    email_smtp_starttls: bool = True
+    email_smtp_use_ssl: bool = False
+    email_smtp_timeout_seconds: float = Field(default=10, gt=0, le=30)
     log_level: str = "INFO"
     metrics_enabled: bool = False
     metrics_token: SecretStr = SecretStr("")
@@ -100,6 +111,22 @@ class Settings(BaseSettings):
     def validate_document_chunk_limits(self) -> Self:
         if self.document_chunk_overlap_chars >= self.document_chunk_max_chars:
             raise ValueError("document chunk overlap must be smaller than chunk size")
+        return self
+
+    @model_validator(mode="after")
+    def validate_email_verification_transport(self) -> Self:
+        if not self.email_verification_enabled:
+            return self
+        if not self.email_smtp_host or not self.email_smtp_from_email:
+            raise ValueError(
+                "enabled email verification requires EMAIL_SMTP_HOST and EMAIL_SMTP_FROM_EMAIL"
+            )
+        if self.email_smtp_starttls and self.email_smtp_use_ssl:
+            raise ValueError("email SMTP cannot enable STARTTLS and implicit SSL together")
+        has_username = bool(self.email_smtp_username)
+        has_password = bool(self.email_smtp_password.get_secret_value())
+        if has_username != has_password:
+            raise ValueError("email SMTP username and password must be configured together")
         return self
 
 

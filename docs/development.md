@@ -4,15 +4,15 @@
 
 ## Required tools
 
-| Tool | Baseline | Purpose |
-|---|---:|---|
-| Node.js | 22 | Next.js 构建与运行 |
-| pnpm | 11.9.0 | JavaScript workspace 与锁文件 |
-| Python | 3.13 | FastAPI 与 worker |
-| uv | 0.11+ | Python 环境、锁文件与命令 |
+| Tool           |                        Baseline | Purpose                        |
+| -------------- | ------------------------------: | ------------------------------ |
+| Node.js        |                              22 | Next.js 构建与运行             |
+| pnpm           |                          11.9.0 | JavaScript workspace 与锁文件  |
+| Python         |                            3.13 | FastAPI 与 worker              |
+| uv             |                           0.11+ | Python 环境、锁文件与命令      |
 | Docker Compose | current `docker compose` plugin | PostgreSQL、完整环境与容器验证 |
-| make | 3.81+ | 稳定的仓库级命令入口 |
-| curl | current | smoke test 与健康检查 |
+| make           |                           3.81+ | 稳定的仓库级命令入口           |
+| curl           |                         current | smoke test 与健康检查          |
 
 Node 版本记录在 `.nvmrc`，Python 版本记录在 `.python-version`。pnpm 和 Python 依赖分别由 `pnpm-lock.yaml` 与 `apps/api/uv.lock` 固定。
 
@@ -102,14 +102,19 @@ make down
 
 首次启动会幂等创建以下本地测试账号：
 
-| 显示名 | 邮箱 | 本地初始密码 |
-|---|---|---|
-| Alex | `alex@memora.local` | `memora-local-alex` |
-| Blair | `blair@memora.local` | `memora-local-blair` |
-| Casey | `casey@memora.local` | `memora-local-casey` |
-| Devon | `devon@memora.local` | `memora-local-devon` |
+| 显示名 | 邮箱                 | 本地初始密码         |
+| ------ | -------------------- | -------------------- |
+| Alex   | `alex@memora.local`  | `memora-local-alex`  |
+| Blair  | `blair@memora.local` | `memora-local-blair` |
+| Casey  | `casey@memora.local` | `memora-local-casey` |
+| Devon  | `devon@memora.local` | `memora-local-devon` |
 
 这些是提交到仓库的非生产开发凭据，只能用于本机。公网部署前必须通过 `SEED_USER_1_*` 到 `SEED_USER_4_*` 环境变量覆盖邮箱、显示名和每个账号的独立初始密码；生产 seed 会拒绝上述 `memora-local-*` 密码。seed 是幂等的，不会在每次启动时覆盖已有账号密码。
+
+邮箱验证码认证默认关闭，四个本地账号仍可直接使用上表密码。需要启用真实验证码邮件时，
+在 `.env` 配置 `EMAIL_VERIFICATION_ENABLED=true`、`EMAIL_SMTP_HOST`、
+`EMAIL_SMTP_FROM_EMAIL`，并按邮件服务商要求设置端口、STARTTLS 或 SSL、用户名和密码。
+验证码只有注册和登录两种用途，默认 10 分钟失效；API 与普通日志都不会返回明文验证码。
 
 本地与单台 Linux 服务器使用同一份 `compose.yaml` 和镜像构建方式，环境差异只通过 `.env` 注入。服务器部署时必须替换数据库密码、会话密钥、AI 配置和 `CADDY_SITE_ADDRESS`，并在 M7 完成 HTTPS、备份恢复和部署 smoke test 后才视为可公开测试。
 部署代理只把 `CADDY_SITE_ADDRESS` 配置的主机名或 IP 作为有效站点；其他 Host 会返回 404，避免同一实例意外暴露在多个访问名下。
@@ -133,19 +138,19 @@ Web 通过同源 `/api` 和由 OpenAPI 生成的类型化客户端调用后端�
 
 ## Quality commands
 
-| Command | Checks |
-|---|---|
-| `make format` | 使用 Prettier 和 Ruff 写入统一格式 |
-| `make format-check` | 只读检查前后端格式 |
-| `make lint` | ESLint 与 Ruff |
-| `make typecheck` | TypeScript 与严格 MyPy |
-| `make test` | Vitest 与 Pytest |
-| `make contract` | 从 FastAPI 重新生成 OpenAPI JSON |
-| `make contract-check` | 在临时文件生成契约并检测漂移 |
-| `make build` | Next.js 生产构建 |
-| `make check` | 格式、lint、类型、测试、契约与构建总检查 |
-| `make compose-check` | Docker Compose 语义配置检查 |
-| `make e2e` | 对已运行环境执行登录、默认私有、授权搜索/Chat/报告、分享、取消共享、worker 降级和删除的可清理 smoke test |
+| Command               | Checks                                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| `make format`         | 使用 Prettier 和 Ruff 写入统一格式                                                                       |
+| `make format-check`   | 只读检查前后端格式                                                                                       |
+| `make lint`           | ESLint 与 Ruff                                                                                           |
+| `make typecheck`      | TypeScript 与严格 MyPy                                                                                   |
+| `make test`           | Vitest 与 Pytest                                                                                         |
+| `make contract`       | 从 FastAPI 重新生成 OpenAPI JSON                                                                         |
+| `make contract-check` | 在临时文件生成契约并检测漂移                                                                             |
+| `make build`          | Next.js 生产构建                                                                                         |
+| `make check`          | 格式、lint、类型、测试、契约与构建总检查                                                                 |
+| `make compose-check`  | Docker Compose 语义配置检查                                                                              |
+| `make e2e`            | 对已运行环境执行登录、默认私有、授权搜索/Chat/报告、分享、取消共享、worker 降级和删除的可清理 smoke test |
 
 `make check` 不需要真实 AI Key，也不会调用外部模型。真实供应商契约测试单独标记，不能混入默认离线 CI。
 
@@ -209,12 +214,12 @@ macOS/Colima 环境没有给容器提供上游 DNS 的问题；服务器或企�
 
 处理状态含义如下：
 
-| Status | Meaning | Operator action |
-|---|---|---|
-| `PENDING` | 等待 worker 领取或重试 | 通常无需操作 |
-| `WAITING_CONFIGURATION` | 未配置 embedding Key 或模型 | 写入 `.env` 并在页面重试，或继续使用关键词检索 |
-| `COMPLETED` | 向量已经可用于同模型、同维度的语义召回 | 无 |
-| `FAILED` | 已达到重试上限或遇到不可重试供应商错误 | 检查脱敏错误码和配置后在页面重试 |
+| Status                  | Meaning                                | Operator action                                |
+| ----------------------- | -------------------------------------- | ---------------------------------------------- |
+| `PENDING`               | 等待 worker 领取或重试                 | 通常无需操作                                   |
+| `WAITING_CONFIGURATION` | 未配置 embedding Key 或模型            | 写入 `.env` 并在页面重试，或继续使用关键词检索 |
+| `COMPLETED`             | 向量已经可用于同模型、同维度的语义召回 | 无                                             |
+| `FAILED`                | 已达到重试上限或遇到不可重试供应商错误 | 检查脱敏错误码和配置后在页面重试               |
 
 需要启用语义检索时，在本地 `.env` 设置 `AI_EMBEDDING_BASE_URL`、`AI_EMBEDDING_API_KEY` 和 `AI_EMBEDDING_MODEL`，然后重建或重启 API 与 worker：
 
@@ -269,6 +274,7 @@ OpenAPI 差异应与 API 实现一起审查。`make contract` 会同时更新 JS
 
 - `POSTGRES_PASSWORD`
 - `SESSION_SECRET`
+- `EMAIL_SMTP_HOST`、`EMAIL_SMTP_FROM_EMAIL` 和 SMTP 凭据（启用验证码时）
 - `CADDY_SITE_ADDRESS`
 - `HTTP_PORT` 和 `HTTPS_PORT`
 - `AI_CHAT_API_KEY`、`AI_CHAT_MODEL`

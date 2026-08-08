@@ -6,7 +6,9 @@ import {
   Eye,
   EyeOff,
   LockKeyhole,
+  Mail,
   Settings as SettingsIcon,
+  SlidersHorizontal,
   Trash2,
   Upload,
   UserRound,
@@ -16,6 +18,11 @@ import type { ChangeEvent, FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 
 import { ACCEPTED_DRAFT_IMAGE_TYPES } from "@/features/capture/attachments";
+import {
+  readInterfaceTheme,
+  storeInterfaceTheme,
+  type InterfaceTheme,
+} from "@/features/shared/interface-theme";
 import type {
   AvatarMediaType,
   CurrentUser,
@@ -23,23 +30,30 @@ import type {
   SettingsView,
 } from "@/features/shared/contracts";
 import { UserAvatar } from "@/features/shared/icons";
-import { apiErrorMessage, readFileAsDataUrl } from "@/features/shared/utils";
+import {
+  apiErrorMessage,
+  readFileAsDataUrl,
+  readStoredBoolean,
+  storeBoolean,
+} from "@/features/shared/utils";
 import { api } from "@/lib/api";
 
 const MAX_AVATAR_BYTES = 8 * 1024 * 1024;
 
 export function AccountSettingsDialog({
+  initialView = "PROFILE",
   user,
   onClose,
   onUserChange,
   onNotify,
 }: {
+  initialView?: SettingsView;
   user: CurrentUser;
   onClose: () => void;
   onUserChange: (user: CurrentUser) => void;
   onNotify: (message: string) => void;
 }) {
-  const [settingsView, setSettingsView] = useState<SettingsView>("PROFILE");
+  const [settingsView, setSettingsView] = useState<SettingsView>(initialView);
   const [displayName, setDisplayName] = useState(user.display_name);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user.avatar_url);
   const [avatarUpdate, setAvatarUpdate] = useState<{
@@ -58,6 +72,13 @@ export function AccountSettingsDialog({
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordStatus, setPasswordStatus] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [compactInterface, setCompactInterface] = useState(
+    () => readStoredBoolean("memora.interface.compact") === true,
+  );
+  const [reduceMotion, setReduceMotion] = useState(
+    () => readStoredBoolean("memora.interface.reduceMotion") === true,
+  );
+  const [interfaceTheme, setInterfaceTheme] = useState<InterfaceTheme>(readInterfaceTheme);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
@@ -220,6 +241,23 @@ export function AccountSettingsDialog({
     setPasswordError("");
   }
 
+  function updateInterfacePreference(preference: "compact" | "reduceMotion", enabled: boolean) {
+    if (preference === "compact") {
+      setCompactInterface(enabled);
+      storeBoolean("memora.interface.compact", enabled);
+      document.documentElement.classList.toggle("memora-compact", enabled);
+    } else {
+      setReduceMotion(enabled);
+      storeBoolean("memora.interface.reduceMotion", enabled);
+      document.documentElement.classList.toggle("memora-reduce-motion", enabled);
+    }
+  }
+
+  function updateTheme(theme: InterfaceTheme) {
+    setInterfaceTheme(theme);
+    storeInterfaceTheme(theme);
+  }
+
   return (
     <div
       className="settings-backdrop"
@@ -267,6 +305,16 @@ export function AccountSettingsDialog({
               <button
                 type="button"
                 role="tab"
+                aria-selected={settingsView === "INVITATIONS"}
+                className={settingsView === "INVITATIONS" ? "is-active" : ""}
+                onClick={() => openSettingsView("INVITATIONS")}
+              >
+                <Mail aria-hidden="true" size={17} strokeWidth={1.8} />
+                我的邀请
+              </button>
+              <button
+                type="button"
+                role="tab"
                 aria-selected={settingsView === "PROFILE"}
                 className={settingsView === "PROFILE" ? "is-active" : ""}
                 onClick={() => openSettingsView("PROFILE")}
@@ -283,6 +331,16 @@ export function AccountSettingsDialog({
               >
                 <LockKeyhole aria-hidden="true" size={17} strokeWidth={1.8} />
                 账号安全
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={settingsView === "GENERAL"}
+                className={settingsView === "GENERAL" ? "is-active" : ""}
+                onClick={() => openSettingsView("GENERAL")}
+              >
+                <SlidersHorizontal aria-hidden="true" size={17} strokeWidth={1.8} />
+                通用设置
               </button>
             </div>
           </aside>
@@ -386,7 +444,7 @@ export function AccountSettingsDialog({
                   </button>
                 </div>
               </form>
-            ) : (
+            ) : settingsView === "SECURITY" ? (
               <form
                 className="settings-form"
                 role="tabpanel"
@@ -470,6 +528,107 @@ export function AccountSettingsDialog({
                   </button>
                 </div>
               </form>
+            ) : settingsView === "INVITATIONS" ? (
+              <section className="settings-form" role="tabpanel" aria-label="我的邀请">
+                <div className="settings-section-heading">
+                  <h3>我的邀请</h3>
+                  <p>团队邀请和加入申请会集中显示在这里。</p>
+                </div>
+                <div className="settings-empty-state">
+                  <span>
+                    <Mail aria-hidden="true" size={22} strokeWidth={1.6} />
+                  </span>
+                  <strong>暂无待处理邀请</strong>
+                  <p>收到团队邀请后，你可以在这里查看组织信息并决定是否加入。</p>
+                </div>
+                <div className="settings-info-list" aria-label="邀请说明">
+                  <div>
+                    <span>使用团队号</span>
+                    <small>也可以在空间菜单中提交加入申请</small>
+                  </div>
+                  <div>
+                    <span>隐私边界</span>
+                    <small>加入团队不会自动公开你的个人记忆</small>
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <section className="settings-form" role="tabpanel" aria-label="通用设置">
+                <div className="settings-section-heading">
+                  <h3>通用设置</h3>
+                  <p>这些偏好只保存在当前浏览器，不会改变团队中的其他成员。</p>
+                </div>
+                <fieldset className="settings-theme-fieldset">
+                  <legend>外观主题</legend>
+                  <div className="settings-theme-picker" role="radiogroup" aria-label="外观主题">
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={interfaceTheme === "dark"}
+                      className={interfaceTheme === "dark" ? "is-selected" : ""}
+                      onClick={() => updateTheme("dark")}
+                    >
+                      <span className="settings-theme-swatch is-dark" aria-hidden="true" />
+                      <span>
+                        <strong>黑色</strong>
+                        <small>深色背景</small>
+                      </span>
+                      {interfaceTheme === "dark" ? (
+                        <Check aria-hidden="true" size={14} strokeWidth={2} />
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={interfaceTheme === "light"}
+                      className={interfaceTheme === "light" ? "is-selected" : ""}
+                      onClick={() => updateTheme("light")}
+                    >
+                      <span className="settings-theme-swatch is-light" aria-hidden="true" />
+                      <span>
+                        <strong>白色</strong>
+                        <small>浅色背景</small>
+                      </span>
+                      {interfaceTheme === "light" ? (
+                        <Check aria-hidden="true" size={14} strokeWidth={2} />
+                      ) : null}
+                    </button>
+                  </div>
+                </fieldset>
+                <div className="settings-toggle-list">
+                  <label>
+                    <span>
+                      <strong>紧凑界面</strong>
+                      <small>减少侧栏和工具区的留白，显示更多内容</small>
+                    </span>
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      aria-label="紧凑界面"
+                      checked={compactInterface}
+                      onChange={(event) =>
+                        updateInterfacePreference("compact", event.target.checked)
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>
+                      <strong>减少动态效果</strong>
+                      <small>关闭非必要的位移、缩放和淡入动画</small>
+                    </span>
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      aria-label="减少动态效果"
+                      checked={reduceMotion}
+                      onChange={(event) =>
+                        updateInterfacePreference("reduceMotion", event.target.checked)
+                      }
+                    />
+                  </label>
+                </div>
+                <p className="settings-local-note">更改会立即生效，并在下次打开 Memora 时恢复。</p>
+              </section>
             )}
           </div>
         </div>

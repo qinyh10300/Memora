@@ -22,6 +22,7 @@ from memora.api.visuals import job_router as visual_jobs_router
 from memora.api.visuals import router as visuals_router
 from memora.api.workspaces import router as workspaces_router
 from memora.database import build_engine, build_session_factory
+from memora.identity.email_verification import build_verification_code_sender
 from memora.identity.rate_limit import LoginRateLimiter
 from memora.logging import configure_logging
 from memora.model_registry import load_all_models
@@ -42,6 +43,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = build_engine(resolved_settings.database_url)
         app.state.session_factory = build_session_factory(app.state.engine)
         app.state.login_rate_limiter = LoginRateLimiter()
+        app.state.email_verification_rate_limiter = LoginRateLimiter(
+            maximum_attempts=3,
+            window_seconds=600,
+        )
+        app.state.email_verification_sender = build_verification_code_sender(resolved_settings)
         app.state.ai_rate_limiter = LoginRateLimiter(
             maximum_attempts=30,
             window_seconds=60,

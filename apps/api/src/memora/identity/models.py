@@ -3,7 +3,17 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, Uuid, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    Uuid,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from memora.database import Base
@@ -46,3 +56,32 @@ class UserSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EmailVerificationChallenge(Base):
+    __tablename__ = "email_verification_challenges"
+    __table_args__ = (
+        CheckConstraint(
+            "purpose IN ('REGISTER', 'LOGIN')",
+            name="ck_email_verification_challenges_purpose",
+        ),
+        CheckConstraint(
+            "attempts_remaining >= 0",
+            name="ck_email_verification_challenges_attempts_remaining",
+        ),
+        Index(
+            "ix_email_verification_challenges_email_purpose_created",
+            "email",
+            "purpose",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    purpose: Mapped[str] = mapped_column(String(20))
+    code_digest: Mapped[str] = mapped_column(String(64))
+    attempts_remaining: Mapped[int] = mapped_column(Integer)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)

@@ -13,6 +13,7 @@ import "@xyflow/react/dist/style.css";
 import "../styles/features.css";
 import "../styles/insights.css";
 import "../styles/responsive.css";
+import "../styles/theme-light.css";
 
 export const metadata: Metadata = {
   title: "Memora",

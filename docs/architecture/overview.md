@@ -37,7 +37,8 @@ flowchart LR
 
 - 注册或新登录后，Web 优先进入用户的 `PERSONAL` 空间；已有 session 启动时恢复数据库会话
   中最近活动的空间。所有业务接口仍从服务端 session 解析活动空间。
-- 侧栏列出当前用户具有 membership 的空间，并通过受保护的激活接口切换。桌面侧栏宽度和
+- 侧栏只列出当前用户具有 membership 的个人与团队空间，并通过受保护的激活接口切换；
+  `FAMILY` 记录只作历史兼容，不提供新的 Web 创建入口。桌面侧栏宽度和
   主工作区 split 比例是仅存于浏览器 localStorage 的可选布局偏好；pane 接近最小宽度时
   吸附隐藏，侧栏最小态仍保留品牌窄栏。移动端保持完整抽屉；未保存草稿会阻止切换。
 - `TEAM` workspace 使用唯一可空的 12 位 `join_code`。`POST /workspaces/join` 在限流和
@@ -66,6 +67,9 @@ flowchart LR
   `POST /search` 组合纯关键词、标题、时间和作者条件，所有条件都位于授权候选查询之后。
 - Chat 模型菜单从供应商无关注册表读取 GPT、Claude 和 Gemini 配置，选中的 registry ID
   解析为 provider model 后仍通过同一 `ChatModelPort` 调用。
+- 身份模块同时提供密码和邮箱验证码认证。验证码挑战按规范化邮箱与 `REGISTER` / `LOGIN`
+  用途绑定，只保存 HMAC 摘要、有效期、剩余次数和消费时间；SMTP 未显式配置时该能力关闭，
+  不影响四个 seed 账号和现有密码接口。
 
 ### Immutable revisions
 
@@ -172,29 +176,30 @@ apps/api/
 
 ## Core data model
 
-| Entity                  | Purpose                              | Important fields                                                                                                             |
-| ----------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `users`                 | 测试账号和身份                       | id, email, password_hash, display_name, avatar_asset_id, status                                                              |
-| `workspaces`            | 个人、团队或家庭隔离边界             | id, name, kind, join_code                                                                                                    |
-| `workspace_memberships` | 用户与工作区关系                     | workspace_id, user_id, role, created_at                                                                                      |
-| `workspace_join_requests` | 不构成权限的团队加入申请           | workspace_id, user_id, status, requested_at, reviewed_at, reviewed_by_user_id                                               |
-| `memories`              | 不可原地改写的想法与修订             | id, author_id, workspace_id, title, body, visibility, supersedes_id, timeline_entry_id, timeline_visible, revision_kind, created_at |
-| `memory_embeddings`     | 可重建的检索投影                     | memory_id, model, dimensions, embedding, status                                                                              |
-| `conversations`         | 用户私有 Chatbot 会话及默认范围      | id, user_id, workspace_id, title, scope, updated_at, archived_at                                                             |
-| `messages`              | 问题、回答、capture 关联和生成元数据 | conversation_id, role, content, memory_id, model, usage                                                                      |
-| `message_citations`     | 回答到原记录的可审计引用             | message_id, memory_id, excerpt                                                                                               |
-| `assets`                | 受保护 Markdown 图片和文档来源       | id, workspace_id, owner_id, kind, content_type, size_bytes, sha256, content, deleted_at                                      |
-| `document_parse_jobs`   | PDF 解析、OCR、取消和重试状态         | asset_id, workspace_id, owner_id, status, attempts, page_count, processed_pages, error_code                                  |
-| `document_pages`        | 授权资产的页级抽取结果                | asset_id, page_number, extraction_method, text, quality_score                                                               |
-| `document_chunks`       | 可独立重建向量的页级检索投影          | asset_id, page_number, heading, text, char_start, char_end, embedding_status, embedding                                      |
-| `memory_document_citations` | 记忆到文档页的可审计引用快照      | memory_id, asset_id, chunk_id, page_number, heading, excerpt, ordinal                                                       |
-| `agent_executions`      | 可取消和恢复的公开 Agent 执行         | id, workspace_id, actor_id, status, model_id, saved_memory_id, next_event_sequence, error_code, created_at, started_at, completed_at |
-| `agent_events`          | 有序且不含隐藏推理的执行事件          | execution_id, sequence, step_id, kind, status, execution_status, title, detail, elapsed_ms, duration_ms, item_count, created_at |
-| `subscriptions`        | 用户当前套餐、周期和 credits 余额     | user_id, plan_code, status, period_started_at, period_ends_at, credits_granted, credits_used, version                         |
-| `credit_ledger_entries` | 不含正文的 credits 变更账本          | id, user_id, delta, balance_after, reason, idempotency_key, reference_type, reference_id, created_at                          |
-| `diagrams`             | workspace 内私有或共享知识框图        | id, workspace_id, owner_id, title, kind, visibility, nodes, edges, created_at, updated_at                                    |
-| `jobs`                  | embedding 等异步任务                 | type, payload_ref, status, attempts, next_run_at                                                                             |
-| `audit_events`          | 权限事件及不含正文的 AI 用量元数据   | actor_id, action, resource_id, model, input_tokens, output_tokens, created_at                                                |
+| Entity                          | Purpose                              | Important fields                                                                                                                     |
+| ------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `users`                         | 测试账号和身份                       | id, email, password_hash, display_name, avatar_asset_id, status                                                                      |
+| `email_verification_challenges` | 短时单次邮箱验证码挑战               | id, email, purpose, code_digest, attempts_remaining, expires_at, consumed_at, created_at                                             |
+| `workspaces`                    | 个人、团队或家庭隔离边界             | id, name, kind, join_code                                                                                                            |
+| `workspace_memberships`         | 用户与工作区关系                     | workspace_id, user_id, role, created_at                                                                                              |
+| `workspace_join_requests`       | 不构成权限的团队加入申请             | workspace_id, user_id, status, requested_at, reviewed_at, reviewed_by_user_id                                                        |
+| `memories`                      | 不可原地改写的想法与修订             | id, author_id, workspace_id, title, body, visibility, supersedes_id, timeline_entry_id, timeline_visible, revision_kind, created_at  |
+| `memory_embeddings`             | 可重建的检索投影                     | memory_id, model, dimensions, embedding, status                                                                                      |
+| `conversations`                 | 用户私有 Chatbot 会话及默认范围      | id, user_id, workspace_id, title, scope, updated_at, archived_at                                                                     |
+| `messages`                      | 问题、回答、capture 关联和生成元数据 | conversation_id, role, content, memory_id, model, usage                                                                              |
+| `message_citations`             | 回答到原记录的可审计引用             | message_id, memory_id, excerpt                                                                                                       |
+| `assets`                        | 受保护 Markdown 图片和文档来源       | id, workspace_id, owner_id, kind, content_type, size_bytes, sha256, content, deleted_at                                              |
+| `document_parse_jobs`           | PDF 解析、OCR、取消和重试状态        | asset_id, workspace_id, owner_id, status, attempts, page_count, processed_pages, error_code                                          |
+| `document_pages`                | 授权资产的页级抽取结果               | asset_id, page_number, extraction_method, text, quality_score                                                                        |
+| `document_chunks`               | 可独立重建向量的页级检索投影         | asset_id, page_number, heading, text, char_start, char_end, embedding_status, embedding                                              |
+| `memory_document_citations`     | 记忆到文档页的可审计引用快照         | memory_id, asset_id, chunk_id, page_number, heading, excerpt, ordinal                                                                |
+| `agent_executions`              | 可取消和恢复的公开 Agent 执行        | id, workspace_id, actor_id, status, model_id, saved_memory_id, next_event_sequence, error_code, created_at, started_at, completed_at |
+| `agent_events`                  | 有序且不含隐藏推理的执行事件         | execution_id, sequence, step_id, kind, status, execution_status, title, detail, elapsed_ms, duration_ms, item_count, created_at      |
+| `subscriptions`                 | 用户当前套餐、周期和 credits 余额    | user_id, plan_code, status, period_started_at, period_ends_at, credits_granted, credits_used, version                                |
+| `credit_ledger_entries`         | 不含正文的 credits 变更账本          | id, user_id, delta, balance_after, reason, idempotency_key, reference_type, reference_id, created_at                                 |
+| `diagrams`                      | workspace 内私有或共享知识框图       | id, workspace_id, owner_id, title, kind, visibility, nodes, edges, created_at, updated_at                                            |
+| `jobs`                          | embedding 等异步任务                 | type, payload_ref, status, attempts, next_run_at                                                                                     |
+| `audit_events`                  | 权限事件及不含正文的 AI 用量元数据   | actor_id, action, resource_id, model, input_tokens, output_tokens, created_at                                                        |
 
 `memories.visibility` v0.1 只有 `PRIVATE` 和 `WORKSPACE`。未来如果引入群组或点对点分享，必须通过新的 ADR 扩展，不能复用含义模糊的布尔字段。
 
@@ -324,6 +329,12 @@ v0.1 报告不长期保存，也不导出文件，只写入不含正文的 `REPO
 
 - 匿名用户可通过 `POST /auth/register` 使用邮箱和密码注册。注册事务原子创建用户、
   `PERSONAL` 空间、OWNER 成员关系和会话；失败时整体回滚。
+- 匿名用户可通过 `POST /auth/email-codes` 请求注册或登录验证码，并分别提交到
+  `POST /auth/email-code/register` 或 `POST /auth/email-code/login`。请求未知登录邮箱或已注册
+  的注册邮箱返回相同的接受响应，但不发送邮件或创建可验证挑战，避免直接暴露账号状态。
+- 验证码由安全随机数生成，只在发送调用期间以明文存在；数据库保存与 challenge ID、邮箱、
+  用途和服务端密钥绑定的 HMAC 摘要。新验证码使同用途旧挑战失效，验证码还受发送限流、
+  校验限流、有效期、错误次数和单次消费约束。
 - 注册邮箱规范化后全局唯一，密码为 10–128 个字符并使用现有 Argon2 哈希。重复邮箱
   返回冲突，不创建第二个用户或孤立空间。
 - seed 命令创建的四个账号和测试工作区继续用于开发验收；公开注册用户不会自动加入
@@ -334,7 +345,7 @@ v0.1 报告不长期保存，也不导出文件，只写入不含正文的 `REPO
 - 修改密码必须重新验证当前密码、重新生成 Argon2 哈希并撤销该用户除当前 session 外的
   其他活动 session。审计只记录动作和用户 ID，不记录密码、哈希或头像正文。
 - 浏览器使用 Secure、HttpOnly、SameSite Cookie 会话；公网环境强制 HTTPS。
-- 注册、登录、AI 调用和敏感接口设置基础速率限制。
+- 注册、密码登录、验证码发送与校验、AI 调用和敏感接口设置基础速率限制。
 - 作者才可以分享或删除自己的记录。
 - 用户只能查询自己的私有记录和工作区共享记录。
 - 所有权限规则必须有正向和反向集成测试，尤其验证用户 B 无法通过 ID、搜索、Chatbot、引用 URL 或报告看到用户 A 的私有记录。

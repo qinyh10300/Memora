@@ -1,0 +1,248 @@
+/* The light theme mirrors the monochrome hierarchy instead of introducing a new palette. */
+
+html.memora-theme-light {
+  color-scheme: light;
+  --bg: #f8f8f8;
+  --bg-deep: #ffffff;
+  --sidebar: #f4f4f4;
+  --surface: #eeeeee;
+  --surface-raised: #e8e8e8;
+  --surface-hover: #dfdfdf;
+  --surface-active: #d7d7d7;
+  --editor: #f6f6f6;
+  --tone-03: #fcfcfc;
+  --tone-04: #fbfbfb;
+  --tone-05: #fafafa;
+  --tone-06: #f9f9f9;
+  --tone-07: #f8f8f8;
+  --tone-08: #f7f7f7;
+  --tone-09: #f6f6f6;
+  --tone-0a: #f5f5f5;
+  --tone-0b: #f4f4f4;
+  --tone-0c: #f3f3f3;
+  --tone-0d: #f2f2f2;
+  --tone-0e: #f1f1f1;
+  --tone-0f: #f0f0f0;
+  --tone-10: #efefef;
+  --tone-11: #eeeeee;
+  --tone-12: #ededed;
+  --tone-13: #ececec;
+  --tone-14: #ebebeb;
+  --tone-15: #eaeaea;
+  --tone-17: #e8e8e8;
+  --tone-18: #e7e7e7;
+  --tone-19: #e6e6e6;
+  --tone-1a: #e5e5e5;
+  --tone-1b: #e4e4e4;
+  --tone-20: #dfdfdf;
+  --tone-22: #dddddd;
+  --tone-25: #dadada;
+  --tone-28: #d7d7d7;
+  --tone-29: #d6d6d6;
+  --mono-rgb: 0, 0, 0;
+  --text: #0b0b0b;
+  --text-soft: #292929;
+  --muted: #5d5d5d;
+  --faint: #777777;
+  --faintest: #a0a0a0;
+  --line: rgba(var(--mono-rgb), 0.09);
+  --line-strong: rgba(var(--mono-rgb), 0.15);
+  --line-hover: rgba(var(--mono-rgb), 0.26);
+  --accent: #292929;
+  --accent-light: #000000;
+  --accent-strong: #434343;
+  --accent-soft: rgba(var(--mono-rgb), 0.07);
+  --accent-line: rgba(var(--mono-rgb), 0.3);
+  --accent-glow: rgba(var(--mono-rgb), 0.07);
+  --preview-accent: #151515;
+  --preview-soft: rgba(var(--mono-rgb), 0.055);
+  --preview-line: rgba(var(--mono-rgb), 0.16);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.09);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.11);
+  --shadow-lg: 0 18px 55px rgba(0, 0, 0, 0.13);
+  --shadow-xl: 0 28px 90px rgba(0, 0, 0, 0.18);
+  --inset-hi: 0 1px 0 rgba(255, 255, 255, 0.72) inset;
+}
+
+html.memora-theme-light body,
+html.memora-theme-light .app-shell,
+html.memora-theme-light .landing-page {
+  background: var(--bg-deep);
+}
+
+html.memora-theme-light .app-sidebar {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.72), transparent 38%), var(--sidebar);
+}
+
+html.memora-theme-light .workspace-menu,
+html.memora-theme-light .sidebar-account-menu {
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.16);
+}
+
+html.memora-theme-light .file-drop-overlay {
+  background: rgba(248, 248, 248, 0.88);
+}
+
+html.memora-theme-light .panel-header,
+html.memora-theme-light .markdown-header,
+html.memora-theme-light .library-list-header,
+html.memora-theme-light .detail-header {
+  background: rgba(246, 246, 246, 0.86);
+}
+
+html.memora-theme-light .agent-retry-bar,
+html.memora-theme-light .visual-workspace-header,
+html.memora-theme-light .diagram-toolbar {
+  background: rgba(246, 246, 246, 0.96);
+}
+
+html.memora-theme-light .composer-wrap {
+  background: rgba(248, 248, 248, 0.98);
+}
+
+html.memora-theme-light .composer {
+  background:
+    linear-gradient(145deg, rgba(var(--mono-rgb), 0.035), transparent 44%),
+    rgba(246, 246, 246, 0.98);
+}
+
+html.memora-theme-light .composer-resize-handle {
+  background: linear-gradient(180deg, transparent, rgba(246, 246, 246, 0.96));
+}
+
+html.memora-theme-light .pending-images > div > button:not(.document-status-action) {
+  background: rgba(255, 255, 255, 0.88);
+}
+
+html.memora-theme-light .pending-images > div > button:not(.document-status-action):hover {
+  background: rgba(238, 238, 238, 0.96);
+}
+
+html.memora-theme-light .conversation-intro h2,
+html.memora-theme-light .markdown-preview code,
+html.memora-theme-light .primary-nav button.is-active,
+html.memora-theme-light .sidebar-account-menu-items button:hover,
+html.memora-theme-light .model-provider-mark,
+html.memora-theme-light .visual-template-preview.is-scientific {
+  color: var(--text);
+}
+
+html.memora-theme-light .settings-save,
+html.memora-theme-light .primary-action,
+html.memora-theme-light .library-search-popover > footer .primary-action,
+html.memora-theme-light .composer .send-button,
+html.memora-theme-light .landing-start-button,
+html.memora-theme-light .landing-hero-actions button,
+html.memora-theme-light .landing-final-cta button,
+html.memora-theme-light .auth-submit {
+  border-color: #111111;
+  background: #111111;
+  color: #ffffff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.13);
+}
+
+html.memora-theme-light .settings-save:hover:not(:disabled),
+html.memora-theme-light .primary-action:hover:not(:disabled),
+html.memora-theme-light .composer .send-button:hover:not(:disabled),
+html.memora-theme-light .landing-start-button:hover,
+html.memora-theme-light .landing-hero-actions button:hover,
+html.memora-theme-light .landing-final-cta button:hover,
+html.memora-theme-light .auth-submit:hover:not(:disabled) {
+  border-color: #000000;
+  background: #000000;
+  color: #ffffff;
+}
+
+html.memora-theme-light .account-upgrade-button:hover {
+  border-color: #111111;
+  background: #111111;
+  color: #ffffff;
+}
+
+html.memora-theme-light .settings-toggle-list input:checked {
+  border-color: #171717;
+  background: #171717;
+}
+
+html.memora-theme-light .settings-toggle-list input:checked::before {
+  background: #ffffff;
+}
+
+html.memora-theme-light .settings-theme-swatch.is-dark {
+  background: #090909;
+}
+
+html.memora-theme-light .settings-theme-swatch.is-light {
+  background: #f5f5f5;
+}
+
+html.memora-theme-light .landing-nav {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+html.memora-theme-light .landing-stage-card,
+html.memora-theme-light .landing-agent-visual span,
+html.memora-theme-light .preview-draft,
+html.memora-theme-light .preview-composer {
+  background: rgba(248, 248, 248, 0.96);
+}
+
+html.memora-theme-light .landing-page :where(h1, h2, h3, strong, summary, code),
+html.memora-theme-light .landing-brand,
+html.memora-theme-light .landing-nav nav a:hover,
+html.memora-theme-light .landing-login-button:hover,
+html.memora-theme-light .landing-footer button:hover,
+html.memora-theme-light .landing-announcement:hover,
+html.memora-theme-light .landing-stage-body aside strong,
+html.memora-theme-light .landing-stage-body aside span.is-active,
+html.memora-theme-light .landing-stage-editor header,
+html.memora-theme-light .landing-stage-editor code,
+html.memora-theme-light .auth-dialog-brand,
+html.memora-theme-light .auth-dialog-header > button:hover,
+html.memora-theme-light .auth-dialog-copy h2,
+html.memora-theme-light .auth-mode-tabs button.is-active,
+html.memora-theme-light .auth-form input {
+  color: var(--text);
+}
+
+html.memora-theme-light .landing-nav nav a,
+html.memora-theme-light .landing-login-button,
+html.memora-theme-light .landing-footer button,
+html.memora-theme-light .landing-announcement,
+html.memora-theme-light .landing-hero-copy > p,
+html.memora-theme-light .landing-hero-actions a,
+html.memora-theme-light .landing-stage-chat p,
+html.memora-theme-light .landing-stage-chat blockquote,
+html.memora-theme-light .landing-stage-chat > div,
+html.memora-theme-light .landing-stage-editor,
+html.memora-theme-light .landing-stage-card,
+html.memora-theme-light .landing-foundation span,
+html.memora-theme-light .landing-section-heading > span,
+html.memora-theme-light .landing-workflow-copy > span,
+html.memora-theme-light .landing-feature-showcase p,
+html.memora-theme-light .landing-capability-grid p,
+html.memora-theme-light .landing-workflow-track p,
+html.memora-theme-light .landing-stat-grid p,
+html.memora-theme-light .auth-dialog-copy > span,
+html.memora-theme-light .auth-form > label > span:first-child {
+  color: var(--muted);
+}
+
+html.memora-theme-light .landing-menu-button,
+html.memora-theme-light .auth-dialog-header > button,
+html.memora-theme-light .auth-form input {
+  background: var(--tone-0f);
+}
+
+html.memora-theme-light .landing-menu-button {
+  color: var(--text);
+}
+
+html.memora-theme-light .landing-product-stage,
+html.memora-theme-light .landing-feature-showcase,
+html.memora-theme-light .visual-image-grid img,
+html.memora-theme-light img,
+html.memora-theme-light video,
+html.memora-theme-light canvas {
+  color-scheme: light;
+}

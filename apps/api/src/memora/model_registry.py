@@ -18,7 +18,7 @@ from memora.documents.models import (
     DocumentParseJob,
     MemoryDocumentCitation,
 )
-from memora.identity.models import User, UserSession
+from memora.identity.models import EmailVerificationChallenge, User, UserSession
 from memora.jobs.models import Job
 from memora.memories.models import Memory
 from memora.reports.models import GeneratedReport, ReportSource, ReportSubscription
@@ -48,6 +48,7 @@ MODEL_TYPES = (
     MemoryDocumentCitation,
     User,
     UserSession,
+    EmailVerificationChallenge,
     Job,
     Memory,
     MemoryEmbedding,

@@ -46,3 +46,34 @@ def test_enabled_metrics_require_a_dedicated_token() -> None:
         metrics_token=SecretStr("metrics-test-token-with-at-least-32-characters"),
     )
     assert settings.metrics_enabled is True
+
+
+def test_email_verification_requires_a_complete_smtp_transport() -> None:
+    with pytest.raises(ValidationError, match="EMAIL_SMTP_HOST"):
+        Settings(email_verification_enabled=True)
+
+    with pytest.raises(ValidationError, match="STARTTLS and implicit SSL"):
+        Settings(
+            email_verification_enabled=True,
+            email_smtp_host="smtp.example.com",
+            email_smtp_from_email="noreply@example.com",
+            email_smtp_starttls=True,
+            email_smtp_use_ssl=True,
+        )
+
+    with pytest.raises(ValidationError, match="configured together"):
+        Settings(
+            email_verification_enabled=True,
+            email_smtp_host="smtp.example.com",
+            email_smtp_from_email="noreply@example.com",
+            email_smtp_username="memora",
+        )
+
+    settings = Settings(
+        email_verification_enabled=True,
+        email_smtp_host="smtp.example.com",
+        email_smtp_from_email="noreply@example.com",
+        email_smtp_username="memora",
+        email_smtp_password=SecretStr("smtp-test-password"),
+    )
+    assert settings.email_verification_enabled is True

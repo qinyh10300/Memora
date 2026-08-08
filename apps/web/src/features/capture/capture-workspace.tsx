@@ -32,7 +32,6 @@ import {
   LibraryIcon,
   Logo,
   SendIcon,
-  SparkleIcon,
 } from "@/features/shared/icons";
 import {
   formatDateTime,
@@ -150,6 +149,14 @@ export function CaptureWorkspace({
   );
   const selectedModel = modelOptions.find((model) => model.id === selectedModelId);
   const selectedModelLabel = selectedDraftModelLabel(modelOptions, selectedModelId);
+  const pickerOptions = modelOptions.map((model) => ({
+    id: model.id,
+    label: model.label,
+    description: model.description,
+    minPlan: model.min_plan,
+    badges: model.badges,
+    locked: !planAllows(subscriptionPlan, model.min_plan),
+  }));
   const canUseImages = modelSupports(selectedModel, "vision");
   const canUseWeb = modelSupports(selectedModel, "web_search");
   const documentProcessing = documents.some((document) =>
@@ -426,15 +433,21 @@ export function CaptureWorkspace({
           ) : null}
           <header className="panel-header">
             <div className="chat-model-title">
-              <span>
-                <SparkleIcon />
-              </span>
-              <div>
-                <h1>{selectedModelLabel}</h1>
-                <small>
-                  {researchMode ? "Memora Deep Research Agent" : "Memora Markdown Agent"}
-                </small>
-              </div>
+              {modelOptions.length ? (
+                <RichModelPicker
+                  header
+                  label="切换顶部聊天模型"
+                  options={pickerOptions}
+                  selectedId={selectedModelId}
+                  subtitle={researchMode ? "Memora Deep Research Agent" : "Memora Markdown Agent"}
+                  disabled={refining}
+                  onChange={changeModel}
+                  onUpgrade={onUpgrade}
+                />
+              ) : (
+                <span className="model-unavailable">AI 未配置</span>
+              )}
+              <h1 className="chat-model-heading">{selectedModelLabel}</h1>
             </div>
             <span className="private-status">
               <span className="privacy-dot" />
@@ -676,14 +689,7 @@ export function CaptureWorkspace({
                   <RichModelPicker
                     compact
                     label="选择聊天模型"
-                    options={modelOptions.map((model) => ({
-                      id: model.id,
-                      label: model.label,
-                      description: model.description,
-                      minPlan: model.min_plan,
-                      badges: model.badges,
-                      locked: !planAllows(subscriptionPlan, model.min_plan),
-                    }))}
+                    options={pickerOptions}
                     selectedId={selectedModelId}
                     disabled={refining}
                     onChange={changeModel}

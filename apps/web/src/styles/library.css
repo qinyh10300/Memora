@@ -5,7 +5,7 @@
 }
 
 .timeline-panel {
-  background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 48%, #030407 100%);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 48%, var(--tone-04) 100%);
 }
 
 .library-list-header h1 {
@@ -27,7 +27,7 @@
   place-items: center;
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(var(--mono-rgb), 0.02);
   color: var(--muted);
   font-size: var(--fs-2xs);
   font-variant-numeric: tabular-nums;
@@ -41,7 +41,7 @@
   padding: 0;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(var(--mono-rgb), 0.02);
   color: var(--muted);
   transition:
     border-color var(--t-base) var(--ease),
@@ -69,7 +69,7 @@
   padding: 14px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
-  background: #0a0b0f;
+  background: var(--tone-0b);
   box-shadow: 0 22px 55px rgba(0, 0, 0, 0.5);
   animation: menu-reveal var(--t-base) var(--ease-out) both;
 }
@@ -99,7 +99,7 @@
 }
 
 .library-search-popover > header button:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(var(--mono-rgb), 0.05);
   color: var(--text);
 }
 
@@ -123,7 +123,7 @@
   padding: 0 10px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
-  background: #07080b;
+  background: var(--tone-08);
   color: var(--faint);
 }
 
@@ -136,7 +136,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   outline: 0;
-  background: #07080b;
+  background: var(--tone-08);
   color: var(--text-soft);
   color-scheme: dark;
   font: inherit;
@@ -153,8 +153,8 @@
 .library-search-popover input:focus,
 .library-search-popover select:focus,
 .library-search-query > span:last-child:focus-within {
-  border-color: rgba(168, 216, 255, 0.42);
-  box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.07);
+  border-color: rgba(209, 209, 209, 0.42);
+  box-shadow: 0 0 0 3px rgba(135, 135, 135, 0.07);
 }
 
 .library-search-segment {
@@ -163,7 +163,7 @@
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: #07080b;
+  background: var(--tone-08);
 }
 
 .library-search-segment button {
@@ -202,9 +202,9 @@
 }
 
 .library-search-popover > footer .primary-action {
-  border-color: rgba(168, 216, 255, 0.7);
-  background: linear-gradient(145deg, #d8efff, #78aaff 58%, #2c63ff);
-  color: #041024;
+  border-color: rgba(209, 209, 209, 0.7);
+  background: linear-gradient(145deg, #ebebeb, #a6a6a6 58%, #636363);
+  color: #0f0f0f;
 }
 
 .timeline-scroll {
@@ -212,7 +212,7 @@
   flex: 1;
   overflow-y: auto;
   padding: 13px 12px 32px;
-  scrollbar-color: #262b35 transparent;
+  scrollbar-color: #2b2b2b transparent;
 }
 
 .timeline-group {
@@ -272,14 +272,14 @@
 }
 
 .memory-card:hover {
-  background: rgba(255, 255, 255, 0.035);
+  background: rgba(var(--mono-rgb), 0.035);
   transform: translateX(2px);
 }
 
 .memory-card.is-selected {
-  border-color: rgba(255, 255, 255, 0.07);
+  border-color: rgba(var(--mono-rgb), 0.07);
   background:
-    linear-gradient(100deg, rgba(79, 140, 255, 0.065), rgba(255, 255, 255, 0.03)),
+    linear-gradient(100deg, rgba(135, 135, 135, 0.065), rgba(var(--mono-rgb), 0.03)),
     var(--surface-raised);
   box-shadow: var(--inset-hi), var(--shadow-sm);
   transform: translateX(0);
@@ -382,8 +382,8 @@
 }
 
 .memory-card-meta > span.is-workspace {
-  border-color: rgba(168, 216, 255, 0.15);
-  background: rgba(79, 140, 255, 0.055);
+  border-color: rgba(209, 209, 209, 0.15);
+  background: rgba(135, 135, 135, 0.055);
   color: var(--accent-light);
 }
 
@@ -436,9 +436,9 @@
   border-radius: var(--r-pill);
   background: linear-gradient(
       100deg,
-      rgba(255, 255, 255, 0.035) 30%,
-      rgba(255, 255, 255, 0.09) 50%,
-      rgba(255, 255, 255, 0.035) 70%
+      rgba(var(--mono-rgb), 0.035) 30%,
+      rgba(var(--mono-rgb), 0.09) 50%,
+      rgba(var(--mono-rgb), 0.035) 70%
     )
     0 0 / 300% 100%;
   animation: shimmer 1.4s linear infinite;
@@ -454,7 +454,7 @@
   height: 7px;
   margin-top: 2px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(var(--mono-rgb), 0.09);
 }
 
 .skeleton-copy {
@@ -553,7 +553,7 @@
   gap: 10px;
   padding: 9px 20px;
   border-bottom: 1px solid var(--line);
-  background: rgba(79, 140, 255, 0.025);
+  background: rgba(135, 135, 135, 0.025);
   animation: text-soft-in var(--t-base) var(--ease-out) both;
 }
 
@@ -579,7 +579,7 @@
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.018);
+  background: rgba(var(--mono-rgb), 0.018);
   color: inherit;
   text-decoration: none;
   transition:
@@ -625,7 +625,7 @@
 }
 
 .delete-button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(var(--mono-rgb), 0.04);
   color: var(--danger);
 }
 
@@ -644,7 +644,7 @@
   padding: 6px 9px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: rgba(79, 140, 255, 0.04);
+  background: rgba(135, 135, 135, 0.04);
   color: var(--muted);
   font-size: var(--fs-xs);
   transition:
@@ -655,7 +655,7 @@
 
 .visibility-action:hover:not(:disabled) {
   border-color: var(--line-hover);
-  background: rgba(79, 140, 255, 0.08);
+  background: rgba(135, 135, 135, 0.08);
   color: var(--text-soft);
 }
 
@@ -688,7 +688,7 @@
 
 .detail-editor[readonly] {
   cursor: default;
-  background: rgba(255, 255, 255, 0.008);
+  background: rgba(var(--mono-rgb), 0.008);
   color: var(--muted);
 }
 
@@ -697,7 +697,7 @@
   gap: 10px;
   padding: 14px 20px 17px;
   border-top: 1px solid var(--line);
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.012), transparent), #06070c;
+  background: linear-gradient(90deg, rgba(var(--mono-rgb), 0.012), transparent), var(--tone-07);
 }
 
 .shared-memory-readonly {
@@ -706,7 +706,7 @@
   gap: 11px;
   padding: 16px 20px;
   border-top: 1px solid var(--line);
-  background: #06070c;
+  background: var(--tone-07);
 }
 
 .shared-memory-readonly > svg {
@@ -742,7 +742,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.03), transparent 44%), var(--surface-raised);
+    linear-gradient(145deg, rgba(var(--mono-rgb), 0.03), transparent 44%), var(--surface-raised);
   transition:
     border-color var(--t-base) var(--ease),
     box-shadow var(--t-base) var(--ease);
@@ -843,8 +843,8 @@
 }
 
 .revision-actions.is-dirty strong::before {
-  background: #f0c674;
-  box-shadow: 0 0 0 3px rgba(240, 198, 116, 0.14);
+  background: #c9c9c9;
+  box-shadow: 0 0 0 3px rgba(201, 201, 201, 0.14);
 }
 
 .revision-actions small {
@@ -902,7 +902,7 @@
 
 .revision-history li:hover {
   border-color: var(--line-strong);
-  background: rgba(255, 255, 255, 0.022);
+  background: rgba(var(--mono-rgb), 0.022);
 }
 
 .revision-history li span {
@@ -932,7 +932,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.045), transparent 50%), rgba(21, 27, 41, 0.97);
+    linear-gradient(145deg, rgba(var(--mono-rgb), 0.045), transparent 50%), rgba(27, 27, 27, 0.97);
   color: var(--text);
   font-size: var(--fs-sm);
   box-shadow: var(--inset-hi), var(--shadow-xl);

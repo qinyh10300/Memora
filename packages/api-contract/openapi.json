@@ -2769,6 +2769,82 @@
         "title": "DraftTraceStepResponse",
         "type": "object"
       },
+      "EmailCodeLoginRequest": {
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "code": {
+            "format": "password",
+            "maxLength": 6,
+            "minLength": 6,
+            "title": "Code",
+            "type": "string",
+            "writeOnly": true
+          },
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "email",
+          "code"
+        ],
+        "title": "EmailCodeLoginRequest",
+        "type": "object"
+      },
+      "EmailCodeRegisterRequest": {
+        "properties": {
+          "challenge_id": {
+            "format": "uuid",
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "code": {
+            "format": "password",
+            "maxLength": 6,
+            "minLength": 6,
+            "title": "Code",
+            "type": "string",
+            "writeOnly": true
+          },
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 128,
+            "minLength": 10,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "display_name",
+          "email",
+          "password",
+          "challenge_id",
+          "code"
+        ],
+        "title": "EmailCodeRegisterRequest",
+        "type": "object"
+      },
       "EvidenceAuthorResponse": {
         "properties": {
           "display_name": {
@@ -3814,6 +3890,48 @@
           "updated_at"
         ],
         "title": "ReportSubscriptionResponse",
+        "type": "object"
+      },
+      "RequestEmailCodeRequest": {
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "REGISTER",
+              "LOGIN"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "purpose"
+        ],
+        "title": "RequestEmailCodeRequest",
+        "type": "object"
+      },
+      "RequestEmailCodeResponse": {
+        "properties": {
+          "challenge_id": {
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "expires_in_seconds": {
+            "title": "Expires In Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "expires_in_seconds"
+        ],
+        "title": "RequestEmailCodeResponse",
         "type": "object"
       },
       "SaveReportMemoryRequest": {
@@ -5595,6 +5713,147 @@
           }
         },
         "summary": "Get Avatar",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/auth/email-code/login": {
+      "post": {
+        "operationId": "login_with_email_code_auth_email_code_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailCodeLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "验证码无效或已过期"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "尝试过多"
+          }
+        },
+        "summary": "Login With Email Code",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/auth/email-code/register": {
+      "post": {
+        "operationId": "register_with_email_code_auth_email_code_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailCodeRegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "验证码无效或已过期"
+          },
+          "409": {
+            "description": "账号已存在"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register With Email Code",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/auth/email-codes": {
+      "post": {
+        "operationId": "request_email_code_auth_email_codes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestEmailCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestEmailCodeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "发送过于频繁"
+          },
+          "503": {
+            "description": "邮件服务不可用"
+          }
+        },
+        "summary": "Request Email Code",
         "tags": [
           "identity"
         ]

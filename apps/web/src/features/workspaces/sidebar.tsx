@@ -6,28 +6,30 @@ import {
   BrainCircuit,
   Check,
   ChevronDown,
-  ChevronRight,
-  Coins,
+  CreditCard,
   Database,
   Hash,
   History,
   House,
   LogOut,
+  Mail,
   MessageSquarePlus,
   Microscope,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Settings,
   UserRound,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type {
   AppView,
   ConversationSummary,
   CurrentUser,
+  SettingsView,
   Subscription,
   TeamAccessMode,
   Workspace,
@@ -59,7 +61,6 @@ function WorkspaceSwitcher({
   const groups = [
     { label: "个人", kind: "PERSONAL" as const, empty: "没有个人空间" },
     { label: "团队", kind: "TEAM" as const, empty: "还没有加入团队" },
-    { label: "家庭", kind: "FAMILY" as const, empty: "还没有家庭空间" },
   ];
 
   function selectWorkspace(workspace: Workspace) {
@@ -131,10 +132,6 @@ function WorkspaceSwitcher({
               <Plus aria-hidden="true" size={15} strokeWidth={1.8} />
               创建团队
             </button>
-            <button type="button" onClick={() => openAccess("CREATE_FAMILY")}>
-              <House aria-hidden="true" size={15} strokeWidth={1.8} />
-              创建家庭
-            </button>
             <button type="button" onClick={() => openAccess("JOIN")}>
               <Hash aria-hidden="true" size={15} strokeWidth={1.8} />
               使用团队号加入
@@ -177,6 +174,7 @@ export function Sidebar({
   onWorkspaceSelect,
   onTeamAccess,
   onClose,
+  onHome,
   onCollapse,
   onExpand,
   onUpgrade,
@@ -200,13 +198,50 @@ export function Sidebar({
   onWorkspaceSelect: (workspace: Workspace) => void;
   onTeamAccess: (mode: TeamAccessMode) => void;
   onClose: () => void;
+  onHome: () => void;
   onCollapse: () => void;
   onExpand: () => void;
   onUpgrade: () => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (view: SettingsView) => void;
   onLogout: () => void;
 }) {
   const collaborative = isCollaborativeWorkspace(activeWorkspace);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
+  const accountButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const closeOnPointerDown = (event: PointerEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) setAccountMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setAccountMenuOpen(false);
+      accountButtonRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeOnPointerDown);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnPointerDown);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [accountMenuOpen]);
+
+  function openSettings(view: SettingsView) {
+    setAccountMenuOpen(false);
+    onOpenSettings(view);
+  }
+
+  function openSubscription() {
+    setAccountMenuOpen(false);
+    onUpgrade();
+  }
+
+  function logout() {
+    setAccountMenuOpen(false);
+    onLogout();
+  }
 
   return (
     <>
@@ -221,7 +256,15 @@ export function Sidebar({
         aria-label="Memora 导航"
       >
         <div className="sidebar-collapsed-content" hidden={!collapsed}>
-          <Logo />
+          <button
+            className="sidebar-collapsed-home"
+            type="button"
+            aria-label="返回 Memora 首页"
+            title="返回首页"
+            onClick={onHome}
+          >
+            <Logo />
+          </button>
           <button type="button" aria-label="展开侧边栏" title="展开侧边栏" onClick={onExpand}>
             <PanelLeftOpen aria-hidden="true" size={18} strokeWidth={1.7} />
           </button>
@@ -258,7 +301,7 @@ export function Sidebar({
             className="collapsed-avatar-button"
             type="button"
             aria-label="个人设置"
-            onClick={onOpenSettings}
+            onClick={() => onOpenSettings("PROFILE")}
           >
             <UserAvatar user={user} />
           </button>
@@ -266,8 +309,16 @@ export function Sidebar({
 
         <div className="sidebar-expanded-content" hidden={collapsed}>
           <div className="sidebar-brand">
-            <Logo />
-            <span>Memora</span>
+            <button
+              className="sidebar-brand-home"
+              type="button"
+              aria-label="返回 Memora 首页"
+              title="返回首页"
+              onClick={onHome}
+            >
+              <Logo />
+              <span>Memora</span>
+            </button>
             <button
               className="sidebar-collapse"
               type="button"
@@ -366,40 +417,76 @@ export function Sidebar({
             </div>
           </section>
 
-          <div className="sidebar-account-stack">
-            <button className="sidebar-credits" type="button" onClick={onUpgrade}>
-              <Coins aria-hidden="true" size={16} strokeWidth={1.7} />
-              <span>
-                <strong>
-                  {subscription?.credits_remaining.toLocaleString("zh-CN") ?? "—"} credits
-                </strong>
-                <small>{subscription?.plan_name ?? "Plus"}</small>
-              </span>
-              <ChevronRight aria-hidden="true" size={14} />
-            </button>
-            <div className="sidebar-account">
+          <div
+            ref={accountMenuRef}
+            className={`sidebar-account-stack ${accountMenuOpen ? "is-menu-open" : ""}`}
+          >
+            {accountMenuOpen ? (
+              <div className="sidebar-account-menu" role="menu" aria-label="账户菜单">
+                <header>
+                  <UserAvatar user={user} />
+                  <span>
+                    <strong>{user.display_name}</strong>
+                    <small>{subscription?.plan_name ?? "Plus"} Plan</small>
+                  </span>
+                </header>
+                <div className="sidebar-account-menu-items">
+                  <button type="button" role="menuitem" onClick={() => openSettings("PROFILE")}>
+                    <UserRound aria-hidden="true" size={18} strokeWidth={1.7} />
+                    个人资料
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => openSettings("INVITATIONS")}>
+                    <Mail aria-hidden="true" size={18} strokeWidth={1.7} />
+                    我的邀请
+                  </button>
+                  <button type="button" role="menuitem" onClick={openSubscription}>
+                    <CreditCard aria-hidden="true" size={18} strokeWidth={1.7} />
+                    <span>
+                      订阅与账单
+                      <small>
+                        {subscription?.credits_remaining.toLocaleString("zh-CN") ?? "—"} credits
+                      </small>
+                    </span>
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => openSettings("GENERAL")}>
+                    <Settings aria-hidden="true" size={18} strokeWidth={1.7} />
+                    通用设置
+                  </button>
+                </div>
+                <button
+                  className="account-menu-logout"
+                  type="button"
+                  role="menuitem"
+                  onClick={logout}
+                >
+                  <LogOut aria-hidden="true" size={18} strokeWidth={1.7} />
+                  退出登录
+                </button>
+              </div>
+            ) : null}
+            <div className="sidebar-account-card">
               <button
+                ref={accountButtonRef}
                 className="account-profile-button"
                 type="button"
-                aria-label="打开个人设置"
-                title="个人设置"
-                onClick={onOpenSettings}
+                aria-label="打开账户菜单"
+                aria-expanded={accountMenuOpen}
+                title="账户菜单"
+                onClick={() => setAccountMenuOpen((current) => !current)}
               >
                 <UserAvatar user={user} />
                 <span className="account-copy">
                   <strong>{user.display_name}</strong>
-                  <small>{user.email}</small>
+                  <small>{subscription?.plan_name ?? "Plus"} Plan</small>
                 </span>
-                <ChevronRight aria-hidden="true" size={15} strokeWidth={1.8} />
               </button>
               <button
-                className="account-logout-button"
+                className="account-upgrade-button"
                 type="button"
-                aria-label="退出登录"
-                title="退出登录"
-                onClick={onLogout}
+                aria-label={`打开订阅与账单，当前 ${subscription?.credits_remaining.toLocaleString("zh-CN") ?? "—"} credits`}
+                onClick={openSubscription}
               >
-                <LogOut aria-hidden="true" size={16} strokeWidth={1.8} />
+                升级
               </button>
             </div>
           </div>

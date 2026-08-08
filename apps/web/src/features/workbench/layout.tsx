@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, PanelLeftOpen } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import type {
   CSSProperties,
   KeyboardEvent,
@@ -16,12 +16,6 @@ const SPLIT_KEY_STEP = 4;
 const SPLIT_KEY_LARGE_STEP = 10;
 const SPLIT_COLLAPSE_RESISTANCE_PX = 56;
 const SPLIT_REOPEN_DRAG_PX = 44;
-export const SIDEBAR_DEFAULT_WIDTH = 216;
-export const SIDEBAR_COLLAPSED_WIDTH = 68;
-export const SIDEBAR_MIN_EXPANDED_WIDTH = 184;
-export const SIDEBAR_MAX_WIDTH = 320;
-const SIDEBAR_COLLAPSE_TRIGGER_PX = 136;
-const SIDEBAR_KEY_STEP = 16;
 export const COMPOSER_DEFAULT_HEIGHT = 184;
 const COMPOSER_MIN_HEIGHT = 156;
 const COMPOSER_MAX_HEIGHT = 360;
@@ -241,124 +235,6 @@ export function ResizableSplit({
         </span>
       </div>
       {right}
-    </div>
-  );
-}
-
-export function SidebarResizeHandle({
-  width,
-  collapsed,
-  onResize,
-  onCommit,
-  onToggle,
-  onReset,
-  onDraggingChange,
-}: {
-  width: number;
-  collapsed: boolean;
-  onResize: (width: number, collapsed: boolean) => void;
-  onCommit: (width: number, collapsed: boolean) => void;
-  onToggle: () => void;
-  onReset: () => void;
-  onDraggingChange: (dragging: boolean) => void;
-}) {
-  const suppressClickRef = useRef(false);
-
-  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    const shell = event.currentTarget.parentElement;
-    if (!shell) return;
-    const shellRect = shell.getBoundingClientRect();
-    const shellStyle = window.getComputedStyle(shell);
-    const contentLeft = shellRect.left + (Number.parseFloat(shellStyle.paddingLeft) || 0);
-    const pointerStartX = event.clientX;
-    let nextWidth = width;
-    let nextCollapsed = collapsed;
-    let moved = false;
-
-    onDraggingChange(true);
-    document.body.classList.add("is-resizing-panels");
-
-    const resize = (moveEvent: globalThis.PointerEvent) => {
-      moveEvent.preventDefault();
-      if (Math.abs(moveEvent.clientX - pointerStartX) > 3) moved = true;
-      const rawWidth = moveEvent.clientX - contentLeft;
-      if (rawWidth <= SIDEBAR_COLLAPSE_TRIGGER_PX) {
-        nextWidth = SIDEBAR_COLLAPSED_WIDTH;
-        nextCollapsed = true;
-      } else {
-        nextWidth = clampNumber(rawWidth, SIDEBAR_MIN_EXPANDED_WIDTH, SIDEBAR_MAX_WIDTH);
-        nextCollapsed = false;
-      }
-      onResize(nextWidth, nextCollapsed);
-    };
-
-    const stopResize = () => {
-      suppressClickRef.current = moved;
-      window.setTimeout(() => {
-        suppressClickRef.current = false;
-      }, 0);
-      onCommit(nextWidth, nextCollapsed);
-      onDraggingChange(false);
-      document.body.classList.remove("is-resizing-panels");
-      window.removeEventListener("pointermove", resize);
-      window.removeEventListener("pointerup", stopResize);
-      window.removeEventListener("pointercancel", stopResize);
-    };
-
-    window.addEventListener("pointermove", resize);
-    window.addEventListener("pointerup", stopResize);
-    window.addEventListener("pointercancel", stopResize);
-  }
-
-  function resizeWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      if (collapsed || width - SIDEBAR_KEY_STEP < SIDEBAR_MIN_EXPANDED_WIDTH) {
-        onCommit(SIDEBAR_COLLAPSED_WIDTH, true);
-      } else {
-        onCommit(width - SIDEBAR_KEY_STEP, false);
-      }
-    } else if (event.key === "ArrowRight") {
-      event.preventDefault();
-      if (collapsed) onToggle();
-      else onCommit(Math.min(SIDEBAR_MAX_WIDTH, width + SIDEBAR_KEY_STEP), false);
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      onCommit(SIDEBAR_COLLAPSED_WIDTH, true);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      onCommit(SIDEBAR_MAX_WIDTH, false);
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      onToggle();
-    }
-  }
-
-  return (
-    <div
-      className={`sidebar-resize-handle ${collapsed ? "is-collapsed" : ""}`}
-      role="separator"
-      aria-label="调整导航宽度"
-      aria-orientation="vertical"
-      aria-valuemin={SIDEBAR_COLLAPSED_WIDTH}
-      aria-valuemax={SIDEBAR_MAX_WIDTH}
-      aria-valuenow={Math.round(width)}
-      aria-valuetext={collapsed ? "导航已收起" : `导航宽度 ${Math.round(width)} 像素`}
-      tabIndex={0}
-      title={collapsed ? "拖动或点击恢复导航" : "拖动调整导航宽度，拖到左侧收起"}
-      onPointerDown={startResize}
-      onClick={() => {
-        if (!suppressClickRef.current && collapsed) onToggle();
-      }}
-      onDoubleClick={onReset}
-      onKeyDown={resizeWithKeyboard}
-    >
-      <span aria-hidden="true">
-        {collapsed ? <PanelLeftOpen size={13} strokeWidth={2} /> : null}
-      </span>
     </div>
   );
 }

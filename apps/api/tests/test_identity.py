@@ -1,5 +1,6 @@
 import base64
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from typing import cast
 from unittest.mock import patch
 from uuid import UUID
@@ -7,13 +8,19 @@ from uuid import UUID
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from memora.audit.models import AuditEvent
 from memora.database import Base
 from memora.identity.dependencies import SESSION_COOKIE_NAME
-from memora.identity.models import User, UserSession
+from memora.identity.email_verification import (
+    InMemoryVerificationCodeSender,
+    SmtpVerificationCodeSender,
+    VerificationCodeDeliveryError,
+)
+from memora.identity.models import EmailVerificationChallenge, User, UserSession
 from memora.identity.rate_limit import LoginRateLimiter
 from memora.identity.seed import main as seed_main
 from memora.identity.seed import seed_database, seed_users_from_settings, validate_seed_users
@@ -184,6 +191,282 @@ def test_register_rejects_invalid_email_and_short_password(
         json={"display_name": "Lin", "email": "lin@example.com", "password": "short"},
     )
     assert short_password.status_code == 422
+
+
+def test_email_code_registration_creates_isolated_account_and_is_single_use(
+    identity_client: tuple[TestClient, Settings],
+) -> None:
+    client, _settings = identity_client
+    app = cast(FastAPI, client.app)
+    sender = cast(InMemoryVerificationCodeSender, app.state.email_verification_sender)
+
+    requested = client.post(
+        "/auth/email-codes",
+        json={"email": " Code.User@Example.com ", "purpose": "REGISTER"},
+    )
+    assert requested.status_code == 202
+    assert requested.headers["cache-control"] == "no-store"
+    challenge_id = requested.json()["challenge_id"]
+    code = sender.latest_code(email="code.user@example.com", purpose="REGISTER")
+    assert code is not None and len(code) == 6 and code.isdigit()
+
+    registered = client.post(
+        "/auth/email-code/register",
+        json={
+            "challenge_id": challenge_id,
+            "code": code,
+            "display_name": "  Code   User  ",
+            "email": "CODE.USER@example.com",
+            "password": "memora-code-account-2026",
+        },
+    )
+    assert registered.status_code == 201
+    assert registered.json()["email"] == "code.user@example.com"
+    assert registered.json()["display_name"] == "Code User"
+    assert registered.json()["workspace_name"] == "Code User 的个人空间"
+    assert client.get("/workspaces").json()[0]["kind"] == "PERSONAL"
+
+    with Session(app.state.engine) as database:
+        challenge = database.get(EmailVerificationChallenge, UUID(challenge_id))
+        assert challenge is not None and challenge.consumed_at is not None
+        assert challenge.code_digest != code
+        assert len(challenge.code_digest) == 64
+
+    assert client.post("/auth/logout").status_code == 204
+    password_login = client.post(
+        "/auth/login",
+        json={"email": "code.user@example.com", "password": "memora-code-account-2026"},
+    )
+    assert password_login.status_code == 200
+    assert client.post("/auth/logout").status_code == 204
+
+    replay = client.post(
+        "/auth/email-code/register",
+        json={
+            "challenge_id": challenge_id,
+            "code": code,
+            "display_name": "Code User",
+            "email": "code.user@example.com",
+            "password": "memora-code-account-2026",
+        },
+    )
+    assert replay.status_code == 401
+    assert replay.json() == {"detail": "验证码无效或已过期"}
+
+
+def test_email_code_login_supports_seed_accounts_without_replacing_password_login(
+    identity_client: tuple[TestClient, Settings],
+) -> None:
+    client, _settings = identity_client
+    app = cast(FastAPI, client.app)
+    sender = cast(InMemoryVerificationCodeSender, app.state.email_verification_sender)
+
+    requested = client.post(
+        "/auth/email-codes",
+        json={"email": " ALEX@memora.local ", "purpose": "LOGIN"},
+    )
+    assert requested.status_code == 202
+    code = sender.latest_code(email="alex@memora.local", purpose="LOGIN")
+    assert code is not None
+
+    logged_in = client.post(
+        "/auth/email-code/login",
+        json={
+            "challenge_id": requested.json()["challenge_id"],
+            "email": "alex@memora.local",
+            "code": code,
+        },
+    )
+    assert logged_in.status_code == 200
+    assert logged_in.json()["display_name"] == "Alex"
+    assert client.post("/auth/logout").status_code == 204
+
+    seed_credentials = (
+        ("alex@memora.local", "memora-local-alex"),
+        ("blair@memora.local", "memora-local-blair"),
+        ("casey@memora.local", "memora-local-casey"),
+        ("devon@memora.local", "memora-local-devon"),
+    )
+    for email, password in seed_credentials:
+        response = client.post("/auth/login", json={"email": email, "password": password})
+        assert response.status_code == 200
+        assert client.post("/auth/logout").status_code == 204
+
+
+def test_email_codes_enforce_purpose_expiry_attempts_and_generic_requests(
+    identity_client: tuple[TestClient, Settings],
+) -> None:
+    client, _settings = identity_client
+    app = cast(FastAPI, client.app)
+    sender = cast(InMemoryVerificationCodeSender, app.state.email_verification_sender)
+
+    unknown_login = client.post(
+        "/auth/email-codes",
+        json={"email": "missing@example.com", "purpose": "LOGIN"},
+    )
+    existing_register = client.post(
+        "/auth/email-codes",
+        json={"email": "alex@memora.local", "purpose": "REGISTER"},
+    )
+    assert unknown_login.status_code == existing_register.status_code == 202
+    assert sender.delivered_count(email="missing@example.com", purpose="LOGIN") == 0
+    assert sender.delivered_count(email="alex@memora.local", purpose="REGISTER") == 0
+
+    limited = client.post(
+        "/auth/email-codes",
+        json={"email": "limited@example.com", "purpose": "REGISTER"},
+    )
+    limited_code = sender.latest_code(email="limited@example.com", purpose="REGISTER")
+    assert limited_code is not None
+    wrong_purpose = client.post(
+        "/auth/email-code/login",
+        json={
+            "challenge_id": limited.json()["challenge_id"],
+            "code": limited_code,
+            "email": "limited@example.com",
+        },
+    )
+    assert wrong_purpose.status_code == 401
+    with Session(app.state.engine) as database:
+        challenge = database.get(
+            EmailVerificationChallenge,
+            UUID(limited.json()["challenge_id"]),
+        )
+        assert challenge is not None
+        challenge.attempts_remaining = 1
+        database.commit()
+
+    wrong = client.post(
+        "/auth/email-code/register",
+        json={
+            "challenge_id": limited.json()["challenge_id"],
+            "code": "999999" if limited_code != "999999" else "000000",
+            "display_name": "Limited",
+            "email": "limited@example.com",
+            "password": "memora-limited-account",
+        },
+    )
+    assert wrong.status_code == 401
+    exhausted = client.post(
+        "/auth/email-code/register",
+        json={
+            "challenge_id": limited.json()["challenge_id"],
+            "code": limited_code,
+            "display_name": "Limited",
+            "email": "limited@example.com",
+            "password": "memora-limited-account",
+        },
+    )
+    assert exhausted.status_code == 401
+
+    expired = client.post(
+        "/auth/email-codes",
+        json={"email": "expired@example.com", "purpose": "REGISTER"},
+    )
+    expired_code = sender.latest_code(email="expired@example.com", purpose="REGISTER")
+    assert expired_code is not None
+    with Session(app.state.engine) as database:
+        challenge = database.get(
+            EmailVerificationChallenge,
+            UUID(expired.json()["challenge_id"]),
+        )
+        assert challenge is not None
+        challenge.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        database.commit()
+    expired_response = client.post(
+        "/auth/email-code/register",
+        json={
+            "challenge_id": expired.json()["challenge_id"],
+            "code": expired_code,
+            "display_name": "Expired",
+            "email": "expired@example.com",
+            "password": "memora-expired-account",
+        },
+    )
+    assert expired_response.status_code == 401
+
+
+def test_email_delivery_failure_rolls_back_challenge(
+    identity_client: tuple[TestClient, Settings],
+) -> None:
+    client, _settings = identity_client
+    app = cast(FastAPI, client.app)
+
+    class FailingSender:
+        available = True
+
+        def send(self, *, email: str, code: str, purpose: str) -> None:
+            del email, code, purpose
+            raise VerificationCodeDeliveryError("test delivery failure")
+
+    app.state.email_verification_sender = FailingSender()
+    failed = client.post(
+        "/auth/email-codes",
+        json={"email": "delivery-failed@example.com", "purpose": "REGISTER"},
+    )
+    assert failed.status_code == 503
+    assert failed.json() == {"detail": "验证码邮件发送失败，请稍后重试"}
+    with Session(app.state.engine) as database:
+        assert (
+            database.scalar(
+                select(EmailVerificationChallenge).where(
+                    EmailVerificationChallenge.email == "delivery-failed@example.com"
+                )
+            )
+            is None
+        )
+
+
+def test_unconfigured_email_code_service_does_not_affect_password_auth() -> None:
+    settings = Settings(
+        app_env="development",
+        database_url="sqlite+pysqlite:///:memory:",
+        session_secret="identity-disabled-email-secret",
+        email_verification_enabled=False,
+    )
+    app = create_app(settings)
+    with TestClient(app) as client:
+        Base.metadata.create_all(app.state.engine)
+        seed_database(app.state.engine, settings)
+        unavailable = client.post(
+            "/auth/email-codes",
+            json={"email": "alex@memora.local", "purpose": "LOGIN"},
+        )
+        assert unavailable.status_code == 503
+        assert unavailable.json() == {"detail": "邮箱验证码服务尚未配置"}
+        password_login = client.post(
+            "/auth/login",
+            json={"email": "alex@memora.local", "password": "memora-local-alex"},
+        )
+        assert password_login.status_code == 200
+
+
+def test_smtp_verification_sender_uses_tls_authentication_and_timeout() -> None:
+    settings = Settings(
+        email_verification_enabled=True,
+        email_verification_code_ttl_seconds=300,
+        email_smtp_host="smtp.example.com",
+        email_smtp_port=587,
+        email_smtp_username="memora",
+        email_smtp_password=SecretStr("smtp-test-password"),
+        email_smtp_from_email="noreply@example.com",
+        email_smtp_timeout_seconds=7,
+    )
+    sender = SmtpVerificationCodeSender(settings)
+
+    with patch("memora.identity.email_verification.smtplib.SMTP") as smtp:
+        client = smtp.return_value.__enter__.return_value
+        sender.send(email="reader@example.com", code="123456", purpose="LOGIN")
+
+    smtp.assert_called_once_with("smtp.example.com", 587, timeout=7)
+    client.starttls.assert_called_once()
+    client.login.assert_called_once_with("memora", "smtp-test-password")
+    message = client.send_message.call_args.args[0]
+    assert message["From"] == "noreply@example.com"
+    assert message["To"] == "reader@example.com"
+    assert message["Subject"] == "Memora 登录验证码"
+    assert "123456" in message.get_content()
+    assert "5 分钟内失效" in message.get_content()
 
 
 def test_profile_name_and_protected_avatar_persist(

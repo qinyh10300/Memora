@@ -2,7 +2,7 @@ import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, SecretStr
@@ -18,13 +18,20 @@ from memora.identity.dependencies import (
     CurrentPrincipal,
     Principal,
 )
-from memora.identity.models import User, UserSession
+from memora.identity.email_verification import (
+    VerificationCodeDeliveryError,
+    VerificationCodePurpose,
+    VerificationCodeSender,
+)
+from memora.identity.models import EmailVerificationChallenge, User, UserSession
 from memora.identity.rate_limit import LoginRateLimiter
 from memora.identity.security import (
     digest_session_token,
+    digest_verification_code,
     hash_password,
     normalize_email,
     verify_password,
+    verify_verification_code,
 )
 from memora.settings import Settings, get_settings
 from memora.workspaces.models import Workspace, WorkspaceMembership
@@ -42,6 +49,27 @@ class RegisterRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
     email: str = Field(min_length=3, max_length=320)
     password: SecretStr = Field(min_length=10, max_length=128)
+
+
+class RequestEmailCodeRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    purpose: VerificationCodePurpose
+
+
+class RequestEmailCodeResponse(BaseModel):
+    challenge_id: str
+    expires_in_seconds: int
+
+
+class EmailCodeRegisterRequest(RegisterRequest):
+    challenge_id: UUID
+    code: SecretStr = Field(min_length=6, max_length=6)
+
+
+class EmailCodeLoginRequest(BaseModel):
+    challenge_id: UUID
+    email: str = Field(min_length=3, max_length=320)
+    code: SecretStr = Field(min_length=6, max_length=6)
 
 
 class CurrentUserResponse(BaseModel):
@@ -88,6 +116,26 @@ def _rate_limit_key(request: Request, email: str) -> str:
     return f"{client_host}:{email}"
 
 
+def _validated_email(value: str) -> str:
+    email = normalize_email(value)
+    if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="请输入有效邮箱",
+        )
+    return email
+
+
+def _validated_display_name(value: str) -> str:
+    display_name = " ".join(value.split())
+    if not display_name:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="昵称不能为空",
+        )
+    return display_name
+
+
 def _start_session(
     *,
     database: DatabaseSession,
@@ -118,6 +166,87 @@ def _start_session(
         samesite="lax",
     )
     response.headers["Cache-Control"] = "no-store"
+
+
+def _create_personal_account(
+    *,
+    database: DatabaseSession,
+    email: str,
+    display_name: str,
+    password: str,
+) -> tuple[User, Workspace, WorkspaceMembership]:
+    user = User(
+        email=email,
+        display_name=display_name,
+        password_hash=hash_password(password),
+    )
+    database.add(user)
+    database.flush()
+
+    workspace = Workspace(
+        slug=f"personal-{user.id.hex}",
+        name=f"{display_name} 的个人空间",
+        kind="PERSONAL",
+    )
+    database.add(workspace)
+    database.flush()
+    membership = WorkspaceMembership(
+        workspace_id=workspace.id,
+        user_id=user.id,
+        role="OWNER",
+    )
+    database.add(membership)
+    database.add(
+        AuditEvent(
+            workspace_id=workspace.id,
+            actor_id=user.id,
+            action="ACCOUNT_REGISTERED",
+            resource_type="USER",
+            resource_id=user.id,
+        )
+    )
+    return user, workspace, membership
+
+
+def _require_verification_challenge(
+    *,
+    database: DatabaseSession,
+    settings: Settings,
+    challenge_id: UUID,
+    email: str,
+    purpose: VerificationCodePurpose,
+    code: str,
+) -> EmailVerificationChallenge:
+    challenge = database.scalar(
+        select(EmailVerificationChallenge)
+        .where(
+            EmailVerificationChallenge.id == challenge_id,
+            EmailVerificationChallenge.email == email,
+            EmailVerificationChallenge.purpose == purpose,
+            EmailVerificationChallenge.expires_at > datetime.now(UTC),
+            EmailVerificationChallenge.attempts_remaining > 0,
+            EmailVerificationChallenge.consumed_at.is_(None),
+        )
+        .with_for_update()
+    )
+    if challenge is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="验证码无效或已过期")
+
+    valid = verify_verification_code(
+        challenge_id=challenge.id,
+        email=email,
+        purpose=purpose,
+        code=code,
+        expected_digest=challenge.code_digest,
+        secret=settings.session_secret,
+    )
+    if not valid:
+        challenge.attempts_remaining = max(0, challenge.attempts_remaining - 1)
+        database.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="验证码无效或已过期")
+
+    challenge.consumed_at = datetime.now(UTC)
+    return challenge
 
 
 def _current_user_context(
@@ -221,18 +350,8 @@ def register(
     database: DatabaseSession,
     settings: SettingsDependency,
 ) -> CurrentUserResponse:
-    email = normalize_email(payload.email)
-    if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="请输入有效邮箱",
-        )
-    display_name = " ".join(payload.display_name.split())
-    if not display_name:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="昵称不能为空",
-        )
+    email = _validated_email(payload.email)
+    display_name = _validated_display_name(payload.display_name)
 
     rate_limit_key = _rate_limit_key(request, f"register:{email}")
     limiter: LoginRateLimiter = request.app.state.login_rate_limiter
@@ -241,40 +360,202 @@ def register(
     if database.scalar(select(User.id).where(User.email == email)) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该邮箱已注册")
 
-    user = User(
-        email=email,
-        display_name=display_name,
-        password_hash=hash_password(payload.password.get_secret_value()),
-    )
-    database.add(user)
     try:
+        user, workspace, membership = _create_personal_account(
+            database=database,
+            email=email,
+            display_name=display_name,
+            password=payload.password.get_secret_value(),
+        )
+    except IntegrityError as error:
+        database.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该邮箱已注册") from error
+    _start_session(
+        database=database,
+        response=response,
+        settings=settings,
+        user=user,
+        workspace=workspace,
+    )
+    limiter.reset(rate_limit_key)
+    return _response_for(user=user, workspace=workspace, membership=membership)
+
+
+@router.post(
+    "/email-codes",
+    response_model=RequestEmailCodeResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={429: {"description": "发送过于频繁"}, 503: {"description": "邮件服务不可用"}},
+)
+def request_email_code(
+    payload: RequestEmailCodeRequest,
+    request: Request,
+    response: Response,
+    database: DatabaseSession,
+    settings: SettingsDependency,
+) -> RequestEmailCodeResponse:
+    email = _validated_email(payload.email)
+    sender: VerificationCodeSender = request.app.state.email_verification_sender
+    if not sender.available:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="邮箱验证码服务尚未配置",
+        )
+
+    limiter: LoginRateLimiter = request.app.state.email_verification_rate_limiter
+    rate_limit_key = _rate_limit_key(request, f"email-code:{payload.purpose}:{email}")
+    if not limiter.consume(rate_limit_key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="验证码发送过于频繁"
+        )
+
+    challenge_id = uuid4()
+    user = database.scalar(select(User).where(User.email == email))
+    eligible = (payload.purpose == "REGISTER" and user is None) or (
+        payload.purpose == "LOGIN" and user is not None and user.status == "ACTIVE"
+    )
+    if eligible:
+        now = datetime.now(UTC)
+        database.execute(
+            update(EmailVerificationChallenge)
+            .where(
+                EmailVerificationChallenge.email == email,
+                EmailVerificationChallenge.purpose == payload.purpose,
+                EmailVerificationChallenge.consumed_at.is_(None),
+            )
+            .values(consumed_at=now)
+        )
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        challenge = EmailVerificationChallenge(
+            id=challenge_id,
+            email=email,
+            purpose=payload.purpose,
+            code_digest=digest_verification_code(
+                challenge_id=challenge_id,
+                email=email,
+                purpose=payload.purpose,
+                code=code,
+                secret=settings.session_secret,
+            ),
+            attempts_remaining=settings.email_verification_max_attempts,
+            expires_at=now + timedelta(seconds=settings.email_verification_code_ttl_seconds),
+        )
+        database.add(challenge)
         database.flush()
+        try:
+            sender.send(email=email, code=code, purpose=payload.purpose)
+        except VerificationCodeDeliveryError as error:
+            database.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="验证码邮件发送失败，请稍后重试",
+            ) from error
+        database.commit()
+
+    response.headers["Cache-Control"] = "no-store"
+    return RequestEmailCodeResponse(
+        challenge_id=str(challenge_id),
+        expires_in_seconds=settings.email_verification_code_ttl_seconds,
+    )
+
+
+@router.post(
+    "/email-code/register",
+    response_model=CurrentUserResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={401: {"description": "验证码无效或已过期"}, 409: {"description": "账号已存在"}},
+)
+def register_with_email_code(
+    payload: EmailCodeRegisterRequest,
+    request: Request,
+    response: Response,
+    database: DatabaseSession,
+    settings: SettingsDependency,
+) -> CurrentUserResponse:
+    email = _validated_email(payload.email)
+    display_name = _validated_display_name(payload.display_name)
+    limiter: LoginRateLimiter = request.app.state.login_rate_limiter
+    rate_limit_key = _rate_limit_key(request, f"verify:REGISTER:{email}")
+    if not limiter.consume(rate_limit_key):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="请稍后再试")
+
+    _require_verification_challenge(
+        database=database,
+        settings=settings,
+        challenge_id=payload.challenge_id,
+        email=email,
+        purpose="REGISTER",
+        code=payload.code.get_secret_value(),
+    )
+    if database.scalar(select(User.id).where(User.email == email)) is not None:
+        database.commit()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该邮箱已注册")
+
+    try:
+        user, workspace, membership = _create_personal_account(
+            database=database,
+            email=email,
+            display_name=display_name,
+            password=payload.password.get_secret_value(),
+        )
+        _start_session(
+            database=database,
+            response=response,
+            settings=settings,
+            user=user,
+            workspace=workspace,
+        )
     except IntegrityError as error:
         database.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该邮箱已注册") from error
 
-    workspace = Workspace(
-        slug=f"personal-{user.id.hex}",
-        name=f"{display_name} 的个人空间",
-        kind="PERSONAL",
+    limiter.reset(rate_limit_key)
+    return _response_for(user=user, workspace=workspace, membership=membership)
+
+
+@router.post(
+    "/email-code/login",
+    response_model=CurrentUserResponse,
+    responses={401: {"description": "验证码无效或已过期"}, 429: {"description": "尝试过多"}},
+)
+def login_with_email_code(
+    payload: EmailCodeLoginRequest,
+    request: Request,
+    response: Response,
+    database: DatabaseSession,
+    settings: SettingsDependency,
+) -> CurrentUserResponse:
+    email = _validated_email(payload.email)
+    limiter: LoginRateLimiter = request.app.state.login_rate_limiter
+    rate_limit_key = _rate_limit_key(request, f"verify:LOGIN:{email}")
+    if not limiter.consume(rate_limit_key):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="请稍后再试")
+
+    _require_verification_challenge(
+        database=database,
+        settings=settings,
+        challenge_id=payload.challenge_id,
+        email=email,
+        purpose="LOGIN",
+        code=payload.code.get_secret_value(),
     )
-    database.add(workspace)
-    database.flush()
-    membership = WorkspaceMembership(
-        workspace_id=workspace.id,
-        user_id=user.id,
-        role="OWNER",
-    )
-    database.add(membership)
-    database.add(
-        AuditEvent(
-            workspace_id=workspace.id,
-            actor_id=user.id,
-            action="ACCOUNT_REGISTERED",
-            resource_type="USER",
-            resource_id=user.id,
-        )
-    )
+    user = database.scalar(select(User).where(User.email == email, User.status == "ACTIVE"))
+    if user is None:
+        database.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="验证码无效或已过期")
+
+    membership_row = database.execute(
+        select(WorkspaceMembership, Workspace)
+        .join(Workspace, Workspace.id == WorkspaceMembership.workspace_id)
+        .where(WorkspaceMembership.user_id == user.id)
+        .order_by(Workspace.created_at, Workspace.slug)
+        .limit(1)
+    ).one_or_none()
+    if membership_row is None:
+        database.commit()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号不属于工作区")
+    membership, workspace = membership_row
+
     _start_session(
         database=database,
         response=response,

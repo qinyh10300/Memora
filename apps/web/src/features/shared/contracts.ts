@@ -43,7 +43,7 @@ export type AvatarMediaType = components["schemas"]["UpdateAvatarRequest"]["medi
 
 export type AppView =
   "CAPTURE" | "RESEARCH" | "KNOWLEDGE" | "DIAGRAMS" | "INSIGHTS" | "LIBRARY" | "TEAM";
-export type SettingsView = "PROFILE" | "SECURITY";
+export type SettingsView = "PROFILE" | "INVITATIONS" | "SECURITY" | "GENERAL";
 export type PublicAuthMode = "LOGIN" | "REGISTER";
 export type TeamAccessMode = "CREATE" | "CREATE_FAMILY" | "JOIN";
 

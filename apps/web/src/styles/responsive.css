@@ -1,8 +1,4 @@
 @media (max-width: 1100px) {
-  :root {
-    --sidebar-width: 200px;
-  }
-
   .login-hero-grid {
     grid-template-columns: 1fr;
   }
@@ -91,10 +87,6 @@
     display: block;
   }
 
-  .sidebar-resize-handle {
-    display: none;
-  }
-
   .app-sidebar {
     position: fixed;
     top: 0;
@@ -115,6 +107,12 @@
   .workspace-menu {
     width: 100%;
     max-width: 100%;
+    overscroll-behavior: contain;
+  }
+
+  .rich-model-menu {
+    width: min(360px, calc(100vw - 24px));
+    max-height: min(240px, calc(100dvh - 120px));
     overscroll-behavior: contain;
   }
 
@@ -187,7 +185,7 @@
   }
 
   .mobile-header > button:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(var(--mono-rgb), 0.05);
     color: var(--text);
   }
 

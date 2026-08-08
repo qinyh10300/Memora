@@ -654,6 +654,11 @@ async function openLibraryView() {
   fireEvent.click(await screen.findByRole("button", { name: "记忆库" }));
 }
 
+async function openAccountSettings(view: "个人资料" | "我的邀请" | "通用设置" = "个人资料") {
+  fireEvent.click(await screen.findByRole("button", { name: "打开账户菜单" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: view }));
+}
+
 describe("Memora personal Markdown MVP", () => {
   beforeEach(() => {
     apiMocks.GET.mockReset();
@@ -674,6 +679,12 @@ describe("Memora personal Markdown MVP", () => {
         setItem: (key: string, value: string) => storedValues.set(key, value),
       },
     });
+    document.documentElement.classList.remove(
+      "memora-compact",
+      "memora-reduce-motion",
+      "memora-theme-light",
+    );
+    delete document.documentElement.dataset.memoraTheme;
   });
 
   it("匿名入口显示 Memora 完整首页且不暴露本地密码", async () => {
@@ -939,27 +950,20 @@ describe("Memora personal Markdown MVP", () => {
     expect(screen.getByText(/团队所有者审核通过后/)).toBeVisible();
   });
 
-  it("可以创建家庭空间并复用成员协作工作台", async () => {
+  it("空间菜单只保留个人与团队入口", async () => {
     mockAuthenticatedSession([]);
 
     render(<HomePage />);
     fireEvent.click(
       await screen.findByRole("button", { name: `切换空间，当前为 ${personalWorkspace.name}` }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "创建家庭" }));
 
-    expect(screen.getByRole("heading", { name: "创建家庭" })).toBeVisible();
-    fireEvent.change(screen.getByLabelText("家庭名称"), { target: { value: "Alex 的家庭" } });
-    fireEvent.click(screen.getByRole("button", { name: "创建并进入" }));
-
-    await waitFor(() => {
-      expect(apiMocks.POST).toHaveBeenCalledWith("/workspaces", {
-        body: { name: "Alex 的家庭", kind: "FAMILY" },
-      });
-    });
-    expect(await screen.findByRole("heading", { name: "Alex 的家庭" })).toBeVisible();
-    expect(screen.getByText("FAMILY SPACE")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "家庭成员" })).toBeInTheDocument();
+    expect(screen.getByText("个人")).toBeInTheDocument();
+    expect(screen.getByText("团队")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建团队" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "使用团队号加入" })).toBeInTheDocument();
+    expect(screen.queryByText("家庭")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "创建家庭" })).not.toBeInTheDocument();
   });
 
   it("有未保存草稿时阻止切换团队空间", async () => {
@@ -996,45 +1000,29 @@ describe("Memora personal Markdown MVP", () => {
     expect(navigation).not.toHaveClass("is-collapsed");
   });
 
-  it("桌面侧边栏可以拖动吸附收起并记住恢复宽度", async () => {
+  it("桌面侧边栏保持固定宽度且不提供拖拽入口", async () => {
     mockAuthenticatedSession([]);
 
     render(<HomePage />);
     const navigation = await screen.findByLabelText("Memora 导航");
-    const separator = screen.getByRole("separator", { name: "调整导航宽度" });
-    const shell = separator.parentElement as HTMLElement;
-    vi.spyOn(shell, "getBoundingClientRect").mockReturnValue({
-      bottom: 720,
-      height: 720,
-      left: 0,
-      right: 1200,
-      top: 0,
-      width: 1200,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    } as DOMRect);
-
-    fireEvent.pointerDown(separator, { button: 0, clientX: 216, pointerId: 1 });
-    fireEvent.pointerMove(window, { clientX: 110, pointerId: 1 });
-    fireEvent.pointerUp(window, { pointerId: 1 });
-
-    expect(navigation).toHaveClass("is-collapsed");
-    expect(separator).toHaveAttribute("aria-valuenow", "68");
-    expect(window.localStorage.getItem("memora.sidebar.collapsed")).toBe("true");
-
-    fireEvent.pointerDown(separator, { button: 0, clientX: 68, pointerId: 2 });
-    fireEvent.pointerMove(window, { clientX: 248, pointerId: 2 });
-    fireEvent.pointerUp(window, { pointerId: 2 });
-
+    expect(screen.queryByRole("separator", { name: "调整导航宽度" })).not.toBeInTheDocument();
     expect(navigation).not.toHaveClass("is-collapsed");
-    expect(separator).toHaveAttribute("aria-valuenow", "248");
-    expect(window.localStorage.getItem("memora.sidebar.width")).toBe("248");
+    expect(window.localStorage.getItem("memora.sidebar.width")).toBeNull();
+  });
 
-    fireEvent.keyDown(separator, { key: "Home" });
-    expect(navigation).toHaveClass("is-collapsed");
-    fireEvent.keyDown(separator, { key: "Enter" });
-    expect(navigation).not.toHaveClass("is-collapsed");
+  it("登录用户点击 Memora Logo 返回首页后可以直接回到工作台", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "返回 Memora 首页" }));
+
+    expect(await screen.findByRole("heading", { name: /Memora.*让思考长期生长/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "登录" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "进入工作台" })[0]);
+
+    expect(await screen.findByLabelText("Memora 导航")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "今天在想什么？" })).toBeVisible();
+    expect(apiMocks.POST).not.toHaveBeenCalledWith("/auth/logout");
   });
 
   it("可以查看 credits、账本并从 Plus 升级到 Pro", async () => {
@@ -1204,7 +1192,8 @@ describe("Memora personal Markdown MVP", () => {
     );
 
     render(<HomePage />);
-    const modelSelect = await screen.findByRole("button", { name: "选择聊天模型" });
+    const modelSelect = await screen.findByRole("button", { name: "切换顶部聊天模型" });
+    expect(modelSelect.querySelector(".model-provider-mark")).toHaveClass("is-openai");
     fireEvent.click(modelSelect);
     expect(screen.getByRole("option", { name: /GPT 5.6/ })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Claude Sonnet 4.6/ })).toBeInTheDocument();
@@ -1212,6 +1201,11 @@ describe("Memora personal Markdown MVP", () => {
 
     fireEvent.click(screen.getByRole("option", { name: /Claude Sonnet 4.6/ }));
     expect(screen.getByRole("heading", { name: "Claude Sonnet 4.6" })).toBeInTheDocument();
+    expect(
+      screen
+        .getByRole("button", { name: "切换顶部聊天模型" })
+        .querySelector(".model-provider-mark"),
+    ).toHaveClass("is-claude");
     fireEvent.change(screen.getByLabelText("告诉 Memora 你的想法"), {
       target: { value: "整理这条想法" },
     });
@@ -1971,7 +1965,7 @@ describe("Memora personal Markdown MVP", () => {
     mockAuthenticatedSession([]);
 
     const { container } = render(<HomePage />);
-    fireEvent.click(await screen.findByRole("button", { name: "打开个人设置" }));
+    await openAccountSettings();
 
     expect(screen.getByRole("dialog", { name: "个人设置" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("昵称"), { target: { value: "Alex Chen" } });
@@ -2012,7 +2006,7 @@ describe("Memora personal Markdown MVP", () => {
     mockAuthenticatedSession([]);
 
     render(<HomePage />);
-    fireEvent.click(await screen.findByRole("button", { name: "打开个人设置" }));
+    await openAccountSettings();
     fireEvent.click(screen.getByRole("tab", { name: "账号安全" }));
 
     fireEvent.change(screen.getByLabelText("当前密码"), {
@@ -2042,6 +2036,59 @@ describe("Memora personal Markdown MVP", () => {
       });
     });
     expect(await screen.findByText("密码已更新，其他设备上的会话已退出")).toBeInTheDocument();
+  });
+
+  it("账户菜单可以进入邀请、账单和持久化通用设置", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "打开账户菜单" }));
+
+    const menu = screen.getByRole("menu", { name: "账户菜单" });
+    expect(menu).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "个人资料" })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "我的邀请" })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: /订阅与账单/ })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "通用设置" })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "通用设置" }));
+    expect(screen.getByRole("dialog", { name: "个人设置" })).toBeVisible();
+    const compactSwitch = screen.getByRole("switch", { name: "紧凑界面" });
+    const motionSwitch = screen.getByRole("switch", { name: "减少动态效果" });
+    fireEvent.click(compactSwitch);
+    fireEvent.click(motionSwitch);
+
+    expect(window.localStorage.getItem("memora.interface.compact")).toBe("true");
+    expect(window.localStorage.getItem("memora.interface.reduceMotion")).toBe("true");
+    expect(document.documentElement).toHaveClass("memora-compact", "memora-reduce-motion");
+  });
+
+  it("通用设置可以切换黑白主题并在刷新初始化时恢复", async () => {
+    mockAuthenticatedSession([]);
+
+    const { unmount } = render(<HomePage />);
+    await openAccountSettings("通用设置");
+
+    const darkTheme = screen.getByRole("radio", { name: /黑色/ });
+    const lightTheme = screen.getByRole("radio", { name: /白色/ });
+    expect(darkTheme).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(lightTheme);
+    expect(window.localStorage.getItem("memora.interface.theme")).toBe("light");
+    expect(document.documentElement).toHaveClass("memora-theme-light");
+    expect(document.documentElement.dataset.memoraTheme).toBe("light");
+
+    fireEvent.click(darkTheme);
+    expect(window.localStorage.getItem("memora.interface.theme")).toBe("dark");
+    expect(document.documentElement).not.toHaveClass("memora-theme-light");
+
+    window.localStorage.setItem("memora.interface.theme", "light");
+    document.documentElement.classList.remove("memora-theme-light");
+    unmount();
+    render(<HomePage />);
+
+    await waitFor(() => expect(document.documentElement).toHaveClass("memora-theme-light"));
   });
 
   it("拖入附件时显示投放反馈并加入当前消息", async () => {
