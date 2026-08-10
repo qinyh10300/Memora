@@ -7,8 +7,11 @@ import {
   LockKeyhole,
   PanelRightClose,
   PanelRightOpen,
+  Paperclip,
+  Plus,
   RefreshCw,
   Square,
+  SquarePen,
   Upload,
   Users,
 } from "lucide-react";
@@ -37,14 +40,7 @@ import type {
   Workspace,
 } from "@/features/shared/contracts";
 import { isCollaborativeWorkspace } from "@/features/shared/contracts";
-import {
-  AttachmentIcon,
-  CloseIcon,
-  GlobeIcon,
-  LibraryIcon,
-  Logo,
-  SendIcon,
-} from "@/features/shared/icons";
+import { CloseIcon, GlobeIcon, LibraryIcon, Logo, SendIcon } from "@/features/shared/icons";
 import {
   formatDateTime,
   readStoredNumber,
@@ -80,6 +76,9 @@ import {
 } from "./attachments";
 import { MarkdownWorkspace, PreviewToggle } from "./markdown-workspace";
 import { modelSupports, selectedDraftModelLabel } from "./trace";
+
+const CENTERED_COMPOSER_HEIGHT = 100;
+const COMPOSER_TEXT_BASE_HEIGHT = 34;
 
 export function CaptureWorkspace({
   mode = "CAPTURE",
@@ -166,11 +165,16 @@ export function CaptureWorkspace({
   const [attachmentError, setAttachmentError] = useState("");
   const [webSearchMode, setWebSearchMode] = useState<WebSearchMode>("AUTO");
   const [composerHeight, setComposerHeight] = useState(COMPOSER_DEFAULT_HEIGHT);
+  const [autoComposerHeight, setAutoComposerHeight] = useState(CENTERED_COMPOSER_HEIGHT);
+  const [renderedComposerHeight, setRenderedComposerHeight] = useState(CENTERED_COMPOSER_HEIGHT);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [draftPreviewVisible, setDraftPreviewVisible] = useState(true);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const composerWrapRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
   const visibleMessages = messages.filter((message) => message.id !== "welcome");
   const emptyConversation =
@@ -186,6 +190,7 @@ export function CaptureWorkspace({
   );
   const selectedModel = modelOptions.find((model) => model.id === selectedModelId);
   const selectedModelLabel = selectedDraftModelLabel(modelOptions, selectedModelId);
+  const introTitle = researchMode ? "今天想深入研究什么？" : "有什么可以帮助您的？";
   const pickerOptions = modelOptions.map((model) => ({
     id: model.id,
     label: model.label,
@@ -199,6 +204,10 @@ export function CaptureWorkspace({
   const documentProcessing = documents.some((document) =>
     ["QUEUED", "PARSING", "OCR", "CANCEL_REQUESTED"].includes(document.document.status),
   );
+  const attachmentUploadDisabled =
+    refining ||
+    uploadingDocuments > 0 ||
+    (attachments.length >= MAX_DRAFT_IMAGES && documents.length >= MAX_DRAFT_DOCUMENTS);
 
   useEffect(() => {
     const pending = documents.filter((document) =>
@@ -236,16 +245,60 @@ export function CaptureWorkspace({
   const changeComposerHeight = useCallback((height: number) => {
     const nextHeight = clampComposerHeight(height);
     setComposerHeight(nextHeight);
-    storeNumber("memora.composer.height", nextHeight);
+    storeNumber("memora.composer.height.fluid", nextHeight);
   }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      const storedHeight = readStoredNumber("memora.composer.height");
+      const storedHeight = readStoredNumber("memora.composer.height.fluid");
       if (storedHeight !== null && storedHeight > 0) changeComposerHeight(storedHeight);
     }, 0);
     return () => window.clearTimeout(timer);
   }, [changeComposerHeight]);
+
+  const syncComposerAutoHeight = useCallback(() => {
+    const composer = composerRef.current;
+    if (!composer) return;
+    const baseHeight = emptyConversation ? CENTERED_COMPOSER_HEIGHT : COMPOSER_DEFAULT_HEIGHT;
+    const viewportLimit = Math.max(baseHeight, Math.floor(window.innerHeight / 3));
+    const previousHeight = composer.style.height;
+    const previousFlex = composer.style.flex;
+    composer.style.height = "0px";
+    composer.style.flex = "none";
+    const contentHeight = Math.max(COMPOSER_TEXT_BASE_HEIGHT, composer.scrollHeight);
+    composer.style.height = previousHeight;
+    composer.style.flex = previousFlex;
+    setAutoComposerHeight(
+      Math.min(viewportLimit, baseHeight + Math.max(0, contentHeight - COMPOSER_TEXT_BASE_HEIGHT)),
+    );
+  }, [emptyConversation]);
+
+  useEffect(() => {
+    syncComposerAutoHeight();
+    window.addEventListener("resize", syncComposerAutoHeight);
+    return () => window.removeEventListener("resize", syncComposerAutoHeight);
+  }, [instruction, syncComposerAutoHeight]);
+
+  useEffect(() => {
+    if (!emptyConversation) return;
+    const composerWrap = composerWrapRef.current;
+    if (!composerWrap) return;
+    const syncRenderedHeight = () => {
+      const nextHeight = Math.round(composerWrap.getBoundingClientRect().height * 2) / 2;
+      if (nextHeight <= 0) return;
+      setRenderedComposerHeight((current) =>
+        Math.abs(current - nextHeight) < 0.5 ? current : nextHeight,
+      );
+    };
+    const observer = new ResizeObserver(syncRenderedHeight);
+    observer.observe(composerWrap);
+    syncRenderedHeight();
+    window.addEventListener("resize", syncRenderedHeight);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncRenderedHeight);
+    };
+  }, [emptyConversation]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
@@ -254,6 +307,25 @@ export function CaptureWorkspace({
   useEffect(() => {
     if (!refining) composerRef.current?.focus?.();
   }, [refining]);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+
+    function closeMenu(event: globalThis.MouseEvent) {
+      if (!addMenuRef.current?.contains(event.target as Node)) setAddMenuOpen(false);
+    }
+
+    function closeMenuOnEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") setAddMenuOpen(false);
+    }
+
+    document.addEventListener("mousedown", closeMenu);
+    window.addEventListener("keydown", closeMenuOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeMenu);
+      window.removeEventListener("keydown", closeMenuOnEscape);
+    };
+  }, [addMenuOpen]);
 
   const handleRightPanelCollapsedChange = useCallback(
     (collapsed: boolean) => {
@@ -265,6 +337,16 @@ export function CaptureWorkspace({
   function openRightPanel(view: "DRAFT" | "KNOWLEDGE") {
     onRightPanelViewChange(view);
     onRightPanelOpenChange(true);
+  }
+
+  function startNewConversation() {
+    setInstruction("");
+    setAttachments([]);
+    setDocuments([]);
+    setAttachmentError("");
+    setAddMenuOpen(false);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+    onReset();
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -286,6 +368,7 @@ export function CaptureWorkspace({
     setAttachments([]);
     setDocuments([]);
     setAttachmentError("");
+    setAddMenuOpen(false);
     if (imageInputRef.current) imageInputRef.current.value = "";
     const selectedWebSearchMode = researchMode ? "REQUIRED" : webSearchMode;
     if (!researchMode && selectedWebSearchMode === "REQUIRED") setWebSearchMode("AUTO");
@@ -470,7 +553,15 @@ export function CaptureWorkspace({
         <section
           className={`conversation-panel ${emptyConversation ? "is-empty-conversation" : ""} ${draggingFiles ? "is-file-dragging" : ""}`}
           aria-label="草稿对话"
-          style={{ "--composer-height": `${composerHeight}px` } as CSSProperties}
+          style={
+            {
+              "--composer-height": `${composerHeight}px`,
+              "--composer-auto-height": `${autoComposerHeight}px`,
+              "--composer-auto-half-height": `${
+                Math.min(renderedComposerHeight, autoComposerHeight) / 2
+              }px`,
+            } as CSSProperties
+          }
           onDragEnter={dragFilesEnter}
           onDragLeave={dragFilesLeave}
           onDragOver={dragFilesOver}
@@ -490,7 +581,6 @@ export function CaptureWorkspace({
                   label="切换顶部聊天模型"
                   options={pickerOptions}
                   selectedId={selectedModelId}
-                  subtitle={researchMode ? "Memora Deep Research Agent" : "Memora Markdown Agent"}
                   disabled={refining}
                   onChange={changeModel}
                   onUpgrade={onUpgrade}
@@ -500,10 +590,15 @@ export function CaptureWorkspace({
               )}
               <h1 className="chat-model-heading">{selectedModelLabel}</h1>
             </div>
-            <span className="private-status">
-              <span className="privacy-dot" />
-              {isCollaborativeWorkspace(workspace) ? "协作空间 · 默认私有" : "默认私有"}
-            </span>
+            <button
+              className="conversation-new-chat"
+              type="button"
+              aria-label="在顶部开始新对话"
+              onClick={startNewConversation}
+            >
+              <SquarePen aria-hidden="true" size={17} strokeWidth={1.8} />
+              <span>新对话</span>
+            </button>
           </header>
 
           <div className="conversation-scroll">
@@ -512,7 +607,17 @@ export function CaptureWorkspace({
                 <span className="intro-mark">
                   <Logo />
                 </span>
-                <h2>{researchMode ? "今天想深入研究什么？" : "有什么可以帮你的？"}</h2>
+                <h2 aria-label={introTitle}>
+                  {Array.from(introTitle).map((character, index) => (
+                    <span
+                      aria-hidden="true"
+                      key={`${character}-${index}`}
+                      style={{ "--character-delay": `${80 + index * 62}ms` } as CSSProperties}
+                    >
+                      {character}
+                    </span>
+                  ))}
+                </h2>
               </div>
             ) : null}
             <div className="message-list" aria-live="polite">
@@ -687,7 +792,10 @@ export function CaptureWorkspace({
           {!emptyConversation ? (
             <ComposerResizeHandle height={composerHeight} onHeightChange={changeComposerHeight} />
           ) : null}
-          <div className={`composer-wrap ${emptyConversation ? "is-centered" : "is-docked"}`}>
+          <div
+            ref={composerWrapRef}
+            className={`composer-wrap ${emptyConversation ? "is-centered" : "is-docked"}`}
+          >
             <form className="composer" onSubmit={submit}>
               {attachments.length || documents.length || uploadingDocuments ? (
                 <div className="pending-images" aria-label="待发送附件">
@@ -779,7 +887,78 @@ export function CaptureWorkspace({
                   ) : null}
                 </div>
               ) : null}
+              <textarea
+                ref={composerRef}
+                aria-label="告诉 Memora 你的想法"
+                placeholder={
+                  researchMode
+                    ? "描述研究问题、范围和期望输出…"
+                    : draft
+                      ? "继续说，或告诉我怎样修改草稿…"
+                      : "发送消息，输入 ‘/’ 以调用指令"
+                }
+                rows={1}
+                value={instruction}
+                onChange={(event) => setInstruction(event.target.value)}
+                onKeyDown={composerKeyDown}
+                onPaste={(event) => void pasteIntoComposer(event)}
+                disabled={refining}
+              />
               <div className="composer-tools">
+                <input
+                  ref={imageInputRef}
+                  className="image-input"
+                  type="file"
+                  accept={Array.from(ACCEPTED_ASSET_TYPES).join(",")}
+                  multiple
+                  aria-label="选择图片或 PDF"
+                  onChange={(event) => void selectImages(event)}
+                  disabled={attachmentUploadDisabled}
+                />
+                <div
+                  className={`composer-add-menu ${addMenuOpen ? "is-open" : ""}`}
+                  ref={addMenuRef}
+                >
+                  <button
+                    className="attach-button composer-add-trigger"
+                    type="button"
+                    aria-label="添加内容"
+                    aria-haspopup="menu"
+                    aria-expanded={addMenuOpen}
+                    title="添加内容"
+                    onClick={() => setAddMenuOpen((open) => !open)}
+                    disabled={refining}
+                  >
+                    <Plus aria-hidden="true" size={20} strokeWidth={1.8} />
+                  </button>
+                  {addMenuOpen ? (
+                    <div className="composer-add-popover" role="menu" aria-label="添加内容">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={attachmentUploadDisabled}
+                        onClick={() => {
+                          setAddMenuOpen(false);
+                          imageInputRef.current?.click();
+                        }}
+                      >
+                        <Paperclip aria-hidden="true" size={17} strokeWidth={1.8} />
+                        <span>上传附件</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setAddMenuOpen(false);
+                          openRightPanel("KNOWLEDGE");
+                        }}
+                      >
+                        <LibraryIcon />
+                        <span>从知识库选择</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
                 {modelOptions.length ? (
                   <RichModelPicker
                     compact
@@ -828,55 +1007,6 @@ export function CaptureWorkspace({
                           ? "发送后恢复自动"
                           : "只使用对话与个人记忆"}
                 </span>
-              </div>
-              <div className="composer-row">
-                <input
-                  ref={imageInputRef}
-                  className="image-input"
-                  type="file"
-                  accept={Array.from(ACCEPTED_ASSET_TYPES).join(",")}
-                  multiple
-                  aria-label="选择图片或 PDF"
-                  onChange={(event) => void selectImages(event)}
-                  disabled={
-                    refining ||
-                    uploadingDocuments > 0 ||
-                    (attachments.length >= MAX_DRAFT_IMAGES &&
-                      documents.length >= MAX_DRAFT_DOCUMENTS)
-                  }
-                />
-                <button
-                  className="attach-button"
-                  type="button"
-                  aria-label="上传图片或 PDF"
-                  title="上传图片或 PDF"
-                  onClick={() => imageInputRef.current?.click()}
-                  disabled={
-                    refining ||
-                    uploadingDocuments > 0 ||
-                    (attachments.length >= MAX_DRAFT_IMAGES &&
-                      documents.length >= MAX_DRAFT_DOCUMENTS)
-                  }
-                >
-                  <AttachmentIcon />
-                </button>
-                <textarea
-                  ref={composerRef}
-                  aria-label="告诉 Memora 你的想法"
-                  placeholder={
-                    researchMode
-                      ? "描述研究问题、范围和期望输出…"
-                      : draft
-                        ? "继续说，或告诉我怎样修改草稿…"
-                        : "发送消息，输入 ‘/’ 以调用指令"
-                  }
-                  rows={1}
-                  value={instruction}
-                  onChange={(event) => setInstruction(event.target.value)}
-                  onKeyDown={composerKeyDown}
-                  onPaste={(event) => void pasteIntoComposer(event)}
-                  disabled={refining}
-                />
                 <button
                   className="send-button"
                   type="submit"

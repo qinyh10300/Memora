@@ -747,7 +747,7 @@ describe("Memora personal Markdown MVP", () => {
       });
     });
     expect(await screen.findByLabelText("Memora 导航")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "有什么可以帮你的？" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "有什么可以帮助您的？" })).toBeInTheDocument();
   });
 
   it("注册弹窗不会在用户开始填写后抢回输入焦点", async () => {
@@ -818,9 +818,10 @@ describe("Memora personal Markdown MVP", () => {
     expect(screen.getByRole("button", { name: "记忆库" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "首页" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Balanced" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "有什么可以帮你的？" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "有什么可以帮助您的？" })).toBeInTheDocument();
     expect(screen.getByLabelText("Markdown 草稿")).toBeInTheDocument();
-    expect(screen.getByText("默认私有")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "在顶部开始新对话" })).toHaveTextContent("新对话");
+    expect(screen.queryByText("默认私有")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "团队" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "分析" })).not.toBeInTheDocument();
   });
@@ -834,10 +835,28 @@ describe("Memora personal Markdown MVP", () => {
     const conversationPanel = composer.closest(".conversation-panel");
     const composerWrap = composer.closest(".composer-wrap");
     const panelSeparator = screen.getByRole("separator", { name: "调整记录和草稿宽度" });
+    const introHeading = screen.getByRole("heading", { name: "有什么可以帮助您的？" });
 
     expect(conversationPanel).toHaveClass("is-empty-conversation");
     expect(composerWrap).toHaveClass("is-centered");
+    expect(introHeading.querySelectorAll("span")).toHaveLength(
+      Array.from("有什么可以帮助您的？").length,
+    );
+    expect(
+      (introHeading.querySelector("span") as HTMLElement).style.getPropertyValue(
+        "--character-delay",
+      ),
+    ).toBe("80ms");
     expect(composer).toHaveAttribute("placeholder", "发送消息，输入 ‘/’ 以调用指令");
+    const composerTools = composer.nextElementSibling;
+    expect(composerTools).toHaveClass("composer-tools");
+    expect(composerTools).toContainElement(screen.getByRole("button", { name: "添加内容" }));
+    expect(composerTools).toContainElement(screen.getByRole("button", { name: "选择聊天模型" }));
+    expect(composerTools).toContainElement(screen.getByRole("combobox", { name: "联网模式" }));
+    expect(composerTools).toContainElement(screen.getByRole("button", { name: "发送" }));
+    fireEvent.change(composer, { target: { value: "尚未发送的临时内容" } });
+    fireEvent.click(screen.getByRole("button", { name: "在顶部开始新对话" }));
+    expect(composer).toHaveValue("");
     expect(
       screen.queryByText("告诉我一个想法，或者让我整理、补充右侧草稿。"),
     ).not.toBeInTheDocument();
@@ -845,9 +864,13 @@ describe("Memora personal Markdown MVP", () => {
     expect(screen.queryByRole("separator", { name: "调整输入区高度" })).not.toBeInTheDocument();
 
     fireEvent.click(panelSeparator);
-    expect(panelSeparator.parentElement).not.toHaveClass("is-right-collapsed");
+    await waitFor(() => {
+      expect(panelSeparator.parentElement).not.toHaveClass("is-right-collapsed");
+    });
     fireEvent.click(screen.getByRole("button", { name: "新对话" }));
-    expect(panelSeparator.parentElement).toHaveClass("is-right-collapsed");
+    await waitFor(() => {
+      expect(panelSeparator.parentElement).toHaveClass("is-right-collapsed");
+    });
 
     fireEvent.change(composer, { target: { value: "帮我整理第一条想法" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -857,6 +880,52 @@ describe("Memora personal Markdown MVP", () => {
     expect(composerWrap).toHaveClass("is-docked");
     expect(await screen.findByRole("separator", { name: "调整输入区高度" })).toBeInTheDocument();
     expect(panelSeparator.parentElement).toHaveClass("is-right-collapsed");
+  });
+
+  it("加号菜单可以上传附件或把云知识库打开到右侧", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+
+    const panelSeparator = await screen.findByRole("separator", {
+      name: "调整记录和草稿宽度",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "添加内容" }));
+
+    expect(screen.getByRole("menuitem", { name: "上传附件" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "从知识库选择" }));
+
+    expect(await screen.findByRole("heading", { name: "云知识库" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "关闭右侧云知识库" })).toBeVisible();
+    expect(panelSeparator.parentElement).not.toHaveClass("is-right-collapsed");
+    expect(screen.queryByRole("menuitem", { name: "上传附件" })).not.toBeInTheDocument();
+  });
+
+  it("聊天输入框随多行内容增长，并限制在视口高度的三分之一", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+
+    const composer = await screen.findByLabelText("告诉 Memora 你的想法");
+    const conversationPanel = composer.closest(".conversation-panel") as HTMLElement;
+    Object.defineProperty(composer, "scrollHeight", { configurable: true, value: 900 });
+
+    fireEvent.change(composer, { target: { value: "第一行\n第二行\n第三行\n第四行" } });
+
+    await waitFor(() => {
+      expect(conversationPanel.style.getPropertyValue("--composer-auto-height")).toBe(
+        `${Math.floor(window.innerHeight / 3)}px`,
+      );
+      expect(conversationPanel.style.getPropertyValue("--composer-auto-half-height")).toBe("50px");
+    });
+
+    Object.defineProperty(composer, "scrollHeight", { configurable: true, value: 34 });
+    fireEvent.change(composer, { target: { value: "短句" } });
+
+    await waitFor(() => {
+      expect(conversationPanel.style.getPropertyValue("--composer-auto-height")).toBe("100px");
+      expect(conversationPanel.style.getPropertyValue("--composer-auto-half-height")).toBe("50px");
+    });
   });
 
   it("助手修改草稿后可以跳转或在右侧停靠云知识库", async () => {
@@ -898,7 +967,7 @@ describe("Memora personal Markdown MVP", () => {
       "/workspaces/{workspace_id}/activate",
       expect.anything(),
     );
-    fireEvent.click(screen.getByRole("button", { name: "团队" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开团队设置" }));
 
     expect(await screen.findByRole("heading", { name: teamWorkspace.name })).toBeVisible();
     expect(screen.getByText("ABCD23-EFGH45")).toBeInTheDocument();
@@ -953,7 +1022,7 @@ describe("Memora personal Markdown MVP", () => {
     });
 
     render(<HomePage />);
-    fireEvent.click(await screen.findByRole("button", { name: "团队" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开团队设置" }));
 
     expect(await screen.findByRole("heading", { name: "加入申请" })).toBeVisible();
     expect(screen.getByText("Casey")).toBeInTheDocument();
@@ -984,7 +1053,7 @@ describe("Memora personal Markdown MVP", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: `切换空间，当前为 ${personalWorkspace.name}` }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "创建团队" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建团队" }));
     fireEvent.change(screen.getByLabelText("团队名称"), { target: { value: "社会智能研究组" } });
     fireEvent.click(screen.getByRole("button", { name: "创建并进入" }));
 
@@ -999,7 +1068,8 @@ describe("Memora personal Markdown MVP", () => {
     expect(await screen.findByRole("heading", { name: "社会智能研究组" })).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "切换空间，当前为 社会智能研究组" }));
-    fireEvent.click(screen.getByRole("button", { name: "使用团队号加入" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建团队" }));
+    fireEvent.click(screen.getByRole("tab", { name: "团队号加入" }));
     fireEvent.change(screen.getByLabelText("团队号"), { target: { value: "stuv23-wxyz45" } });
     fireEvent.click(screen.getByRole("button", { name: "提交加入申请" }));
 
@@ -1021,10 +1091,10 @@ describe("Memora personal Markdown MVP", () => {
       await screen.findByRole("button", { name: `切换空间，当前为 ${personalWorkspace.name}` }),
     );
 
-    expect(screen.getByText("个人")).toBeInTheDocument();
-    expect(screen.getByText("团队")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "创建团队" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "使用团队号加入" })).toBeInTheDocument();
+    expect(screen.getByText("个人团队")).toBeInTheDocument();
+    expect(screen.getByText("协作团队")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新建团队" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "团队设置" })).toBeDisabled();
     expect(screen.queryByText("家庭")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "创建家庭" })).not.toBeInTheDocument();
   });
@@ -1084,7 +1154,7 @@ describe("Memora personal Markdown MVP", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "进入工作台" })[0]);
 
     expect(await screen.findByLabelText("Memora 导航")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "有什么可以帮助您的？" })).toBeVisible();
     expect(apiMocks.POST).not.toHaveBeenCalledWith("/auth/logout");
   });
 
@@ -1471,18 +1541,18 @@ describe("Memora personal Markdown MVP", () => {
     const separator = await screen.findByRole("separator", { name: "调整输入区高度" });
     const panel = separator.parentElement as HTMLElement;
 
-    expect(panel.style.getPropertyValue("--composer-height")).toBe("184px");
+    expect(panel.style.getPropertyValue("--composer-height")).toBe("112px");
 
     fireEvent.pointerDown(separator, { button: 0, clientY: 520, pointerId: 1 });
     fireEvent.pointerMove(window, { clientY: 460, pointerId: 1 });
     fireEvent.pointerUp(window, { pointerId: 1 });
 
-    expect(panel.style.getPropertyValue("--composer-height")).toBe("244px");
-    expect(separator).toHaveAttribute("aria-valuenow", "244");
+    expect(panel.style.getPropertyValue("--composer-height")).toBe("172px");
+    expect(separator).toHaveAttribute("aria-valuenow", "172");
 
     fireEvent.keyDown(separator, { key: "ArrowDown" });
-    expect(panel.style.getPropertyValue("--composer-height")).toBe("226px");
-    expect(separator).toHaveAttribute("aria-valuenow", "226");
+    expect(panel.style.getPropertyValue("--composer-height")).toBe("154px");
+    expect(separator).toHaveAttribute("aria-valuenow", "154");
   });
 
   it("Markdown 编译预览可以调宽、隐藏并渲染 GFM", async () => {

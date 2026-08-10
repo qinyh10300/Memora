@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, LockKeyhole } from "lucide-react";
+import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 export type ModelPickerOption = {
@@ -136,7 +136,11 @@ export function RichModelPicker({
           <strong>{selected?.label ?? "暂无可用模型"}</strong>
           {header && subtitle ? <small>{subtitle}</small> : null}
         </span>
-        <ChevronDown aria-hidden="true" size={15} />
+        {header ? (
+          <ChevronRight aria-hidden="true" size={15} />
+        ) : (
+          <ChevronDown aria-hidden="true" size={15} />
+        )}
       </button>
 
       {open ? (
@@ -175,10 +179,7 @@ export function RichModelPicker({
                   <small>{option.description}</small>
                 </span>
                 {locked ? (
-                  <span className="model-upgrade-label">
-                    <LockKeyhole aria-hidden="true" size={12} />
-                    {option.minPlan === "ULTRA" ? "Ultra" : "Pro"}
-                  </span>
+                  <span className="model-upgrade-label">升级</span>
                 ) : active ? (
                   <Check className="model-selected-check" aria-hidden="true" size={18} />
                 ) : null}

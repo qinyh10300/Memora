@@ -9,6 +9,8 @@ html.memora-theme-light {
   --surface-raised: #e8e8e8;
   --surface-hover: #dfdfdf;
   --surface-active: #d7d7d7;
+  --composer-surface: #f6f6f6;
+  --model-menu-surface: #ededed;
   --editor: #f6f6f6;
   --tone-03: #fcfcfc;
   --tone-04: #fbfbfb;
@@ -101,13 +103,11 @@ html.memora-theme-light .composer-wrap {
 }
 
 html.memora-theme-light .composer {
-  background:
-    linear-gradient(145deg, rgba(var(--mono-rgb), 0.035), transparent 44%),
-    rgba(246, 246, 246, 0.98);
+  background: var(--composer-surface);
 }
 
 html.memora-theme-light .composer-resize-handle {
-  background: linear-gradient(180deg, transparent, rgba(246, 246, 246, 0.96));
+  background: transparent;
 }
 
 html.memora-theme-light .pending-images > div > button:not(.document-status-action) {

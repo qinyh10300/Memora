@@ -16,11 +16,13 @@
   /* Surfaces */
   --bg: #070707;
   --bg-deep: #000000;
-  --sidebar: #111111;
+  --sidebar: #18191c;
   --surface: #151515;
   --surface-raised: #1a1a1a;
   --surface-hover: #202020;
   --surface-active: #282828;
+  --composer-surface: #191a1d;
+  --model-menu-surface: #18191c;
   --editor: #090909;
   --tone-03: #030303;
   --tone-04: #040404;

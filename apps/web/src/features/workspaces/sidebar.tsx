@@ -8,7 +8,6 @@ import {
   ChevronDown,
   CreditCard,
   Database,
-  Hash,
   History,
   House,
   LogOut,
@@ -21,6 +20,7 @@ import {
   Plus,
   Settings,
   UserRound,
+  UserRoundPlus,
   Users,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -45,23 +45,49 @@ function workspaceIcon(workspace: Workspace, size = 16) {
 }
 
 function WorkspaceSwitcher({
+  user,
   workspaces,
   activeWorkspace,
   busy,
+  subscription,
   onSelect,
   onTeamAccess,
+  onTeamSettings,
 }: {
+  user: CurrentUser;
   workspaces: Workspace[];
   activeWorkspace: Workspace;
   busy: boolean;
+  subscription: Subscription | null;
   onSelect: (workspace: Workspace) => void;
   onTeamAccess: (mode: TeamAccessMode) => void;
+  onTeamSettings: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const switcherRef = useRef<HTMLElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const groups = [
-    { label: "个人", kind: "PERSONAL" as const, empty: "没有个人空间" },
-    { label: "团队", kind: "TEAM" as const, empty: "还没有加入团队" },
+    { label: "个人团队", kind: "PERSONAL" as const, empty: "没有个人空间" },
+    { label: "协作团队", kind: "TEAM" as const, empty: "还没有加入团队" },
   ];
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnPointerDown = (event: PointerEvent) => {
+      if (!switcherRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeOnPointerDown);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnPointerDown);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
 
   function selectWorkspace(workspace: Workspace) {
     setOpen(false);
@@ -73,32 +99,46 @@ function WorkspaceSwitcher({
     onTeamAccess(mode);
   }
 
-  const activeLabel =
-    activeWorkspace.kind === "FAMILY"
-      ? "家庭空间"
-      : activeWorkspace.kind === "TEAM"
-        ? "团队空间"
-        : "个人空间";
+  function openSettings() {
+    setOpen(false);
+    onTeamSettings();
+  }
+
+  const canOpenTeamSettings = activeWorkspace.kind === "TEAM";
 
   return (
-    <div className={`workspace-switcher ${open ? "is-open" : ""}`}>
+    <section
+      ref={switcherRef}
+      className={`workspace-switcher ${open ? "is-open" : ""}`}
+      aria-label="团队与空间"
+    >
+      <header className="workspace-switcher-heading">
+        <span>团队</span>
+        <button
+          type="button"
+          aria-label="打开团队创建与加入"
+          title="新建或加入团队"
+          onClick={() => openAccess("CREATE")}
+        >
+          <UserRoundPlus aria-hidden="true" size={16} strokeWidth={1.7} />
+        </button>
+      </header>
       <button
+        ref={triggerRef}
         className="workspace-trigger"
         type="button"
         aria-label={`切换空间，当前为 ${activeWorkspace.name}`}
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
-        <span className="workspace-trigger-icon">{workspaceIcon(activeWorkspace, 17)}</span>
-        <span>
-          <small>{activeLabel}</small>
-          <strong>{activeWorkspace.name}</strong>
-        </span>
+        <strong>{activeWorkspace.name}</strong>
+        <small>{subscription?.plan_name ?? "Plus"} Plan</small>
         <ChevronDown aria-hidden="true" size={16} strokeWidth={1.8} />
       </button>
 
       {open ? (
         <div className="workspace-menu" role="menu" aria-label="可用空间">
+          <p>我的团队 · 切换后订阅与对话独立隔离</p>
           {groups.map((group) => {
             const spaces = workspaces.filter((workspace) => workspace.kind === group.kind);
             return (
@@ -130,16 +170,34 @@ function WorkspaceSwitcher({
           <div className="workspace-menu-actions">
             <button type="button" onClick={() => openAccess("CREATE")}>
               <Plus aria-hidden="true" size={15} strokeWidth={1.8} />
-              创建团队
+              新建团队
             </button>
-            <button type="button" onClick={() => openAccess("JOIN")}>
-              <Hash aria-hidden="true" size={15} strokeWidth={1.8} />
-              使用团队号加入
+            <button
+              type="button"
+              disabled={!canOpenTeamSettings}
+              title={canOpenTeamSettings ? "打开团队设置" : "切换到协作团队后可用"}
+              onClick={openSettings}
+            >
+              <Users aria-hidden="true" size={15} strokeWidth={1.8} />
+              团队设置
             </button>
           </div>
         </div>
       ) : null}
-    </div>
+
+      <button
+        className="workspace-current-member"
+        type="button"
+        aria-label={canOpenTeamSettings ? "打开团队设置" : "当前空间成员"}
+        disabled={!canOpenTeamSettings}
+        title={canOpenTeamSettings ? "打开团队设置" : "当前为个人空间"}
+        onClick={openSettings}
+      >
+        <UserAvatar user={user} />
+        <strong>{user.display_name}</strong>
+        <small>{activeWorkspace.role === "OWNER" ? "所有者" : "成员"}</small>
+      </button>
+    </section>
   );
 }
 
@@ -333,14 +391,6 @@ export function Sidebar({
             </button>
           </div>
 
-          <WorkspaceSwitcher
-            workspaces={workspaces}
-            activeWorkspace={activeWorkspace}
-            busy={workspaceBusy}
-            onSelect={onWorkspaceSelect}
-            onTeamAccess={onTeamAccess}
-          />
-
           <nav className="primary-nav" aria-label="主要功能">
             {navItems.map((item) => (
               <button
@@ -365,18 +415,18 @@ export function Sidebar({
                 </span>
               </button>
             ))}
-            {collaborative ? (
-              <button
-                className={view === "TEAM" ? "is-active" : ""}
-                type="button"
-                aria-label={activeWorkspace.kind === "FAMILY" ? "家庭成员" : "团队"}
-                onClick={() => onView("TEAM")}
-              >
-                {activeWorkspace.kind === "FAMILY" ? <House size={18} /> : <Users size={18} />}
-                <span>{activeWorkspace.kind === "FAMILY" ? "家庭成员" : "团队"}</span>
-              </button>
-            ) : null}
           </nav>
+
+          <WorkspaceSwitcher
+            user={user}
+            workspaces={workspaces}
+            activeWorkspace={activeWorkspace}
+            busy={workspaceBusy}
+            subscription={subscription}
+            onSelect={onWorkspaceSelect}
+            onTeamAccess={onTeamAccess}
+            onTeamSettings={() => onView("TEAM")}
+          />
 
           <section className="sidebar-history" aria-labelledby="sidebar-history-title">
             <header>

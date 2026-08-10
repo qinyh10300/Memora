@@ -39,9 +39,6 @@ export function TeamAccessDialog({
   onWorkspaceReady: (workspace: Workspace, alreadyActive: boolean) => Promise<void>;
 }) {
   const [mode, setMode] = useState<"CREATE" | "JOIN">(initialMode === "JOIN" ? "JOIN" : "CREATE");
-  const [workspaceKind, setWorkspaceKind] = useState<"TEAM" | "FAMILY">(
-    initialMode === "CREATE_FAMILY" ? "FAMILY" : "TEAM",
-  );
   const [teamName, setTeamName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -64,7 +61,7 @@ export function TeamAccessDialog({
     const normalizedName = teamName.trim();
     const normalizedCode = joinCode.replace(/[^a-z0-9]/gi, "").toUpperCase();
     if (mode === "CREATE" && !normalizedName) {
-      setError(`请输入${workspaceKind === "FAMILY" ? "家庭" : "团队"}名称`);
+      setError("请输入团队名称");
       return;
     }
     if (mode === "JOIN" && normalizedCode.length !== 12) {
@@ -77,7 +74,7 @@ export function TeamAccessDialog({
     try {
       if (mode === "CREATE") {
         const result = await api.POST("/workspaces", {
-          body: { name: normalizedName, kind: workspaceKind },
+          body: { name: normalizedName, kind: "TEAM" },
         });
         if (!result.data || !result.response.ok) {
           throw new Error(apiErrorMessage(result.error, "创建空间失败"));
@@ -127,11 +124,7 @@ export function TeamAccessDialog({
         </header>
         <p className="eyebrow">COLLABORATIVE WORKSPACE</p>
         <h2 id="team-access-title">
-          {pendingTeamName
-            ? "申请已提交"
-            : mode === "CREATE"
-              ? `创建${workspaceKind === "FAMILY" ? "家庭" : "团队"}`
-              : "加入空间"}
+          {pendingTeamName ? "申请已提交" : mode === "CREATE" ? "创建团队" : "加入团队"}
         </h2>
         {pendingTeamName ? (
           <div className="team-request-success" role="status">
@@ -172,36 +165,16 @@ export function TeamAccessDialog({
             </div>
             <form onSubmit={submit}>
               {mode === "CREATE" ? (
-                <>
-                  <div className="workspace-kind-control" role="group" aria-label="空间类型">
-                    <button
-                      type="button"
-                      className={workspaceKind === "TEAM" ? "is-active" : ""}
-                      onClick={() => setWorkspaceKind("TEAM")}
-                    >
-                      团队
-                    </button>
-                    <button
-                      type="button"
-                      className={workspaceKind === "FAMILY" ? "is-active" : ""}
-                      onClick={() => setWorkspaceKind("FAMILY")}
-                    >
-                      家庭
-                    </button>
-                  </div>
-                  <label>
-                    <span>{workspaceKind === "FAMILY" ? "家庭名称" : "团队名称"}</span>
-                    <input
-                      autoFocus
-                      maxLength={120}
-                      value={teamName}
-                      onChange={(event) => setTeamName(event.target.value)}
-                      placeholder={
-                        workspaceKind === "FAMILY" ? "例如：我们的家" : "例如：产品研究组"
-                      }
-                    />
-                  </label>
-                </>
+                <label>
+                  <span>团队名称</span>
+                  <input
+                    autoFocus
+                    maxLength={120}
+                    value={teamName}
+                    onChange={(event) => setTeamName(event.target.value)}
+                    placeholder="例如：产品研究组"
+                  />
+                </label>
               ) : (
                 <label>
                   <span>团队号</span>

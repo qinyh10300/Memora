@@ -111,7 +111,7 @@
   }
 
   .rich-model-menu {
-    width: min(360px, calc(100vw - 24px));
+    width: min(288px, calc(100vw - 24px));
     max-height: min(240px, calc(100dvh - 120px));
     overscroll-behavior: contain;
   }
@@ -334,7 +334,7 @@
   }
 
   .conversation-panel.is-empty-conversation .conversation-intro {
-    top: calc(50% - 132px);
+    top: calc(50% - var(--composer-auto-half-height, 50px) - 58px);
   }
 
   .conversation-panel.is-empty-conversation .conversation-intro h2 {
@@ -342,8 +342,8 @@
   }
 
   .composer-wrap.is-centered {
-    top: calc(50% - 6px);
-    width: min(calc(100% - 24px), 680px);
+    top: calc(50% - var(--composer-auto-half-height, 50px) + 58px);
+    width: min(calc(100% - 24px), 620px);
   }
 
   .message-list {
@@ -351,7 +351,7 @@
   }
 
   .composer-wrap {
-    padding: 10px 12px 13px;
+    padding: 8px 12px 11px;
   }
 
   .assistant-result-actions button {
@@ -436,6 +436,25 @@
   .revision-actions {
     align-items: flex-end;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 620px) {
+  .composer-tools > span {
+    display: none;
+  }
+
+  .composer-tools {
+    gap: 4px;
+  }
+
+  .rich-model-menu,
+  .rich-model-picker.is-header .rich-model-menu {
+    width: min(280px, calc(100vw - 20px));
+  }
+
+  .rich-model-picker.is-compact .rich-model-trigger {
+    max-width: 132px;
   }
 }
 
@@ -641,6 +660,14 @@
   .landing-hero h1 {
     font-size: 2.35rem;
   }
+
+  .rich-model-picker.is-compact .rich-model-trigger {
+    max-width: 112px;
+  }
+
+  .search-mode-control select {
+    max-width: 68px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -659,6 +686,9 @@
   .chat-message,
   .login-card,
   .intro-mark,
+  .conversation-intro h2,
+  .conversation-intro h2 > span,
+  .composer-wrap.is-centered,
   .settings-backdrop,
   .settings-dialog,
   .settings-form,
