@@ -2,7 +2,7 @@
 
 Status: Accepted baseline with personal and team Markdown workspaces
 
-Last updated: 2026-08-06
+Last updated: 2026-08-12
 
 ## Architecture goal
 
@@ -32,8 +32,8 @@ flowchart LR
 
 ## Current Markdown workspace surface
 
-当前 Web 提供个人与团队空间、选择性共享和 Markdown 记忆闭环。多 conversation 和报告界面
-继续隐藏，但后端能力和历史数据不删除。
+当前 Web 提供个人与团队空间、选择性共享和 Markdown 记忆闭环。多 conversation 历史已恢复到
+侧栏；独立报告配置界面继续隐藏，但后端能力和历史数据不删除。
 
 - 注册或新登录后，Web 优先进入用户的 `PERSONAL` 空间；已有 session 启动时恢复数据库会话
   中最近活动的空间。所有业务接口仍从服务端 session 解析活动空间。
@@ -41,6 +41,9 @@ flowchart LR
   `FAMILY` 记录只作历史兼容，不提供新的 Web 创建入口。桌面侧栏宽度和
   主工作区 split 比例是仅存于浏览器 localStorage 的可选布局偏好；pane 接近最小宽度时
   吸附隐藏，侧栏最小态仍保留品牌窄栏。移动端保持完整抽屉；未保存草稿会阻止切换。
+- 一级导航只暴露 `CAPTURE`、`LIBRARY` 和 `KNOWLEDGE` 三个用户任务，分别显示为新对话、
+  我的记忆和团队记忆。团队记忆中心在内部组合共享时间线、现有授权 Diagram 视图和分析
+  视图；隐藏旧一级入口不构成权限控制，也不删除其服务端能力。
 - 新 capture 对话在客户端以居中输入态启动，首条消息后切换为底部 composer。右侧 pane
   默认关闭，并由本地 `rightPanelOpen` / `rightPanelView` 状态在 Markdown 草稿与云知识库
   之间切换；这些状态不持久化正文，也不是新的授权边界。
@@ -61,6 +64,10 @@ flowchart LR
 - `POST /drafts/chat` 同时接受 `AUTO`、`REQUIRED` 或 `DISABLED` 联网模式。联网阶段
   返回受预算约束的摘要和 URL 来源，最终 Chat 阶段统一决定回答或更新 Markdown；
   API 只返回搜索候选白名单中被模型实际使用的 HTTP(S) 引用。
+- `POST /drafts/chat` 还接受显式 `memory_scope`：`NONE` 不构造 memory evidence，
+  `PERSONAL` 在统一授权查询后限制为当前作者，`TEAM` 只允许协作空间并限制为当前 workspace
+  中仍为 `WORKSPACE` 的活动记录。最近记录回退、语义检索和模型完成后的再次授权必须应用
+  同一范围；该字段只缩小召回候选，不改变 conversation 或 memory 的可见性。
 - 模型未配置时，空草稿确定性地保留用户原文；非空草稿保持不变。供应商失败时也不覆盖当前内容。
 - `POST /memories` 仍是唯一的新记忆保存动作，缺省 `PRIVATE`。只有活动空间为 `TEAM` 且
   用户显式选择时才接受 `WORKSPACE`；个人空间在服务端拒绝共享可见性。
@@ -126,8 +133,15 @@ v0.2 在同一模块化单体内增加工作区切换、持久化 conversation �
 
 ### Persistent conversations
 
-- conversation 绑定 `workspace_id + user_id`，默认仅创建者可列出、读取、重命名或归档。
-- `title`、`updated_at` 与 `archived_at` 支持侧栏历史和生命周期；归档不删除审计或消息。
+- conversation 绑定 `workspace_id + user_id`，默认仅创建者可列出、读取、置顶、重命名、归档
+  或删除。
+- `title`、`updated_at`、`pinned_at` 与 `archived_at` 支持侧栏历史和生命周期；`pinned_at`
+  为空代表未置顶，归档会清除置顶但不删除消息。
+- 显式删除 conversation 会级联删除其 messages 与 message citations，但不会反向删除通过
+  `messages.memory_id` 关联的正式 memory；删除前由 Web 二次确认。
+- 外部模型完成后，Chat 与 Draft 在追加消息前重新锁定并确认 conversation 仍处于活动状态；
+  如果生成期间 conversation 被归档或删除，接口返回 404。Draft 的消息、引用与 credits 消耗在
+  同一最终事务提交，因此生命周期竞态不会留下消息或扣费；已经发生的供应商用量仍单独记录。
 - Chat 请求可以指定当前用户在活动空间内的 conversation，后续消息追加到同一 conversation。
 - memory 创建可以指定 conversation；memory、embedding outbox、审计事件与 capture 消息在同一事务中写入。
 - `messages.memory_id` 是可选的来源关联，用于在历史中呈现保存回执；它不改变 memory 的作者、可见性或事实来源。
@@ -190,7 +204,7 @@ apps/api/
 | `workspace_join_requests`       | 不构成权限的团队加入申请             | workspace_id, user_id, status, requested_at, reviewed_at, reviewed_by_user_id                                                        |
 | `memories`                      | 不可原地改写的想法与修订             | id, author_id, workspace_id, title, body, visibility, supersedes_id, timeline_entry_id, timeline_visible, revision_kind, created_at  |
 | `memory_embeddings`             | 可重建的检索投影                     | memory_id, model, dimensions, embedding, status                                                                                      |
-| `conversations`                 | 用户私有 Chatbot 会话及默认范围      | id, user_id, workspace_id, title, scope, updated_at, archived_at                                                                     |
+| `conversations`                 | 用户私有 Chatbot 会话及默认范围      | id, user_id, workspace_id, title, scope, updated_at, pinned_at, archived_at                                                          |
 | `messages`                      | 问题、回答、capture 关联和生成元数据 | conversation_id, role, content, memory_id, model, usage                                                                              |
 | `message_citations`             | 回答到原记录的可审计引用             | message_id, memory_id, excerpt                                                                                                       |
 | `assets`                        | 受保护 Markdown 图片和文档来源       | id, workspace_id, owner_id, kind, content_type, size_bytes, sha256, content, deleted_at                                              |
@@ -295,19 +309,19 @@ embedding 独立失败或重试，不阻塞资产与文本结果可用。
 
 联网搜索 adapter 使用 OpenAI-compatible Responses API 的原生 `web_search` 工具，
 而不是让应用任意抓取 URL。搜索与最终 Markdown 生成分为两次调用：搜索端口只获得
-当前用户查询并产出带来源的证据；Chat 端口再结合对话、当前 Markdown、授权个人记忆
+当前用户查询并产出带来源的证据；Chat 端口再结合对话、当前 Markdown、本轮授权记忆
 和网页证据生成结构化响应。网页摘要与来源均是不可信数据，数量、字符数和 URL 协议
 受限。搜索无引用、超时或失败时不调用最终生成覆盖草稿。
 
 `POST /drafts/refine` 复用 `ChatModelPort`，把当前 Markdown 作为不可信数据、把用户修改要求作为独立字段发送。模型只能返回完整 Markdown，不能执行保存。调用成功、禁用或失败都只写入不含正文的审计事件；成功调用同时记录模型和 token 用量。
 
-个人 capture 界面使用独立的草稿 Chatbot endpoint，把有长度上限的本次会话、
-当前 Markdown 和服务端授权筛选的个人记忆作为三个独立的不可信数据区传入模型。
+Markdown 工作台使用独立的草稿 Chatbot endpoint，把有长度上限的本次会话、当前 Markdown
+和服务端按 `memory_scope` 筛选的可选记忆证据作为独立的不可信数据区传入模型。
 模型返回结构化的聊天回复、草稿变更标记和完整 Markdown；服务端负责解析和长度
-校验，并在模型声明不修改草稿时强制保留当前版本。个人记忆上下文必须来自统一授权
-查询；优先在整个当前用户个人记忆向量投影上召回相关记录，embedding 不可用时降级
-到最近记录。两种路径都设置记录数、单条正文和总字符预算，不能由前端上传记录正文
-冒充检索结果。
+校验，并在模型声明不修改草稿时强制保留当前版本。个人与团队记忆上下文都必须来自统一
+授权查询；优先在对应范围的向量投影上召回相关记录，embedding 不可用时降级到同范围最近
+记录。通用范围完全跳过记忆召回。所有召回路径都设置记录数、单条正文和总字符预算，不能
+由前端上传记录正文冒充检索结果。
 
 `POST /chat/questions` 要求客户端显式传入范围和检索主题，问题与主题都放在 JSON body 中。服务端先用统一授权查询生成最多 12 条证据，再结束数据库事务并调用外部模型。模型输入中的 memory 正文被当作不可信数据；返回前重新授权所有证据，若生成期间发生撤回或删除，则丢弃模型答案并用剩余证据重建。无模型配置或供应商失败时使用确定性证据回答；没有证据时明确返回不知道。
 
