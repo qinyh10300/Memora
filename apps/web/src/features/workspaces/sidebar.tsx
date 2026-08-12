@@ -3,25 +3,28 @@
 import {
   Archive,
   BookOpenText,
-  BrainCircuit,
   Check,
   ChevronDown,
+  CirclePlus,
   CreditCard,
   Database,
-  History,
+  Ellipsis,
   House,
   LogOut,
   Mail,
   MessageSquarePlus,
-  Microscope,
-  Network,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
+  Pin,
+  PinOff,
   Plus,
   Settings,
+  Trash2,
   UserRound,
   UserRoundPlus,
   Users,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -34,8 +37,189 @@ import type {
   TeamAccessMode,
   Workspace,
 } from "@/features/shared/contracts";
-import { isCollaborativeWorkspace } from "@/features/shared/contracts";
 import { CaptureIcon, CloseIcon, LibraryIcon, Logo, UserAvatar } from "@/features/shared/icons";
+
+const CONVERSATION_MENU_WIDTH = 158;
+const CONVERSATION_MENU_HEIGHT = 150;
+
+type ConversationDialogState = {
+  action: "RENAME" | "DELETE";
+  conversation: ConversationSummary;
+};
+
+function ConversationActionDialog({
+  state,
+  onClose,
+  onRename,
+  onDelete,
+}: {
+  state: ConversationDialogState;
+  onClose: () => void;
+  onRename: (conversation: ConversationSummary, title: string) => Promise<boolean>;
+  onDelete: (conversation: ConversationSummary) => Promise<boolean>;
+}) {
+  const [title, setTitle] = useState(state.conversation.title);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const dialogRef = useRef<HTMLElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const isRename = state.action === "RENAME";
+  const normalizedTitle = title.replaceAll(/\s+/g, " ").trim();
+
+  useEffect(() => {
+    if (isRename) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    } else {
+      cancelButtonRef.current?.focus();
+    }
+  }, [isRename]);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [busy, onClose]);
+
+  useEffect(() => {
+    if (busy) {
+      dialogRef.current?.focus();
+    } else if (error) {
+      if (isRename) inputRef.current?.focus();
+      else cancelButtonRef.current?.focus();
+    }
+  }, [busy, error, isRename]);
+
+  async function submitRename(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!normalizedTitle || busy) return;
+    if (normalizedTitle === state.conversation.title) {
+      onClose();
+      return;
+    }
+    setBusy(true);
+    setError("");
+    const renamed = await onRename(state.conversation, normalizedTitle);
+    setBusy(false);
+    if (renamed) onClose();
+    else setError("重命名失败，请稍后重试");
+  }
+
+  async function confirmDelete() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    const deleted = await onDelete(state.conversation);
+    setBusy(false);
+    if (deleted) onClose();
+    else setError("删除失败，请稍后重试");
+  }
+
+  function keepFocusInside(event: React.KeyboardEvent<HTMLElement>) {
+    if (event.key !== "Tab") return;
+    if (busy) {
+      event.preventDefault();
+      dialogRef.current?.focus();
+      return;
+    }
+    const focusable = Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        "button:not(:disabled), input:not(:disabled), [href], [tabindex]:not([tabindex='-1'])",
+      ) ?? [],
+    );
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (
+      event.shiftKey &&
+      (document.activeElement === first || document.activeElement === dialogRef.current)
+    ) {
+      event.preventDefault();
+      last?.focus();
+    } else if (
+      !event.shiftKey &&
+      (document.activeElement === last || document.activeElement === dialogRef.current)
+    ) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  return (
+    <div
+      className="conversation-action-backdrop"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onClose();
+      }}
+    >
+      <section
+        ref={dialogRef}
+        className={`conversation-action-dialog ${isRename ? "" : "is-danger"}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="conversation-action-title"
+        tabIndex={-1}
+        onKeyDown={keepFocusInside}
+      >
+        <header>
+          <div>
+            <strong id="conversation-action-title">{isRename ? "重命名对话" : "删除对话"}</strong>
+            <small>{state.conversation.title}</small>
+          </div>
+          <button type="button" aria-label="关闭对话操作" disabled={busy} onClick={onClose}>
+            <X aria-hidden="true" size={17} strokeWidth={1.8} />
+          </button>
+        </header>
+
+        {isRename ? (
+          <form onSubmit={(event) => void submitRename(event)}>
+            <label htmlFor="conversation-title-input">对话名称</label>
+            <input
+              ref={inputRef}
+              id="conversation-title-input"
+              aria-label="对话名称"
+              value={title}
+              maxLength={120}
+              disabled={busy}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+            {error ? <p role="alert">{error}</p> : null}
+            <footer>
+              <button ref={cancelButtonRef} type="button" disabled={busy} onClick={onClose}>
+                取消
+              </button>
+              <button type="submit" className="primary-action" disabled={!normalizedTitle || busy}>
+                {busy ? "保存中…" : "保存"}
+              </button>
+            </footer>
+          </form>
+        ) : (
+          <div className="conversation-delete-confirmation">
+            <p>删除后，该对话及其中的消息将永久移除，无法恢复。</p>
+            <small>已经保存到记忆库的内容不会被删除。</small>
+            {error ? <p role="alert">{error}</p> : null}
+            <footer>
+              <button ref={cancelButtonRef} type="button" disabled={busy} onClick={onClose}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="danger-action"
+                disabled={busy}
+                onClick={() => void confirmDelete()}
+              >
+                {busy ? "删除中…" : "确认删除"}
+              </button>
+            </footer>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
 
 function workspaceIcon(workspace: Workspace, size = 16) {
   if (workspace.kind === "FAMILY")
@@ -123,67 +307,69 @@ function WorkspaceSwitcher({
           <UserRoundPlus aria-hidden="true" size={16} strokeWidth={1.7} />
         </button>
       </header>
-      <button
-        ref={triggerRef}
-        className="workspace-trigger"
-        type="button"
-        aria-label={`切换空间，当前为 ${activeWorkspace.name}`}
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <strong>{activeWorkspace.name}</strong>
-        <small>{subscription?.plan_name ?? "Plus"} Plan</small>
-        <ChevronDown aria-hidden="true" size={16} strokeWidth={1.8} />
-      </button>
+      <div className="workspace-trigger-stack">
+        <button
+          ref={triggerRef}
+          className="workspace-trigger"
+          type="button"
+          aria-label={`切换空间，当前为 ${activeWorkspace.name}`}
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <strong>{activeWorkspace.name}</strong>
+          <small>{subscription?.plan_name ?? "Plus"} Plan</small>
+          <ChevronDown aria-hidden="true" size={16} strokeWidth={1.8} />
+        </button>
 
-      {open ? (
-        <div className="workspace-menu" role="menu" aria-label="可用空间">
-          <p>我的团队 · 切换后订阅与对话独立隔离</p>
-          {groups.map((group) => {
-            const spaces = workspaces.filter((workspace) => workspace.kind === group.kind);
-            return (
-              <div className="workspace-menu-group" key={group.kind}>
-                <span>{group.label}</span>
-                {spaces.length ? (
-                  spaces.map((workspace) => (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className={workspace.id === activeWorkspace.id ? "is-current" : ""}
-                      key={workspace.id}
-                      disabled={busy}
-                      onClick={() => selectWorkspace(workspace)}
-                    >
-                      {workspaceIcon(workspace, 15)}
-                      <span>{workspace.name}</span>
-                      {workspace.id === activeWorkspace.id ? (
-                        <Check aria-hidden="true" size={14} strokeWidth={2} />
-                      ) : null}
-                    </button>
-                  ))
-                ) : (
-                  <small>{group.empty}</small>
-                )}
-              </div>
-            );
-          })}
-          <div className="workspace-menu-actions">
-            <button type="button" onClick={() => openAccess("CREATE")}>
-              <Plus aria-hidden="true" size={15} strokeWidth={1.8} />
-              新建团队
-            </button>
-            <button
-              type="button"
-              disabled={!canOpenTeamSettings}
-              title={canOpenTeamSettings ? "打开团队设置" : "切换到协作团队后可用"}
-              onClick={openSettings}
-            >
-              <Users aria-hidden="true" size={15} strokeWidth={1.8} />
-              团队设置
-            </button>
+        {open ? (
+          <div className="workspace-menu" role="menu" aria-label="可用空间">
+            <p>我的团队 · 切换后订阅与对话独立隔离</p>
+            {groups.map((group) => {
+              const spaces = workspaces.filter((workspace) => workspace.kind === group.kind);
+              return (
+                <div className="workspace-menu-group" key={group.kind}>
+                  <span>{group.label}</span>
+                  {spaces.length ? (
+                    spaces.map((workspace) => (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={workspace.id === activeWorkspace.id ? "is-current" : ""}
+                        key={workspace.id}
+                        disabled={busy}
+                        onClick={() => selectWorkspace(workspace)}
+                      >
+                        {workspaceIcon(workspace, 15)}
+                        <span>{workspace.name}</span>
+                        {workspace.id === activeWorkspace.id ? (
+                          <Check aria-hidden="true" size={14} strokeWidth={2} />
+                        ) : null}
+                      </button>
+                    ))
+                  ) : (
+                    <small>{group.empty}</small>
+                  )}
+                </div>
+              );
+            })}
+            <div className="workspace-menu-actions">
+              <button type="button" onClick={() => openAccess("CREATE")}>
+                <Plus aria-hidden="true" size={15} strokeWidth={1.8} />
+                新建团队
+              </button>
+              <button
+                type="button"
+                disabled={!canOpenTeamSettings}
+                title={canOpenTeamSettings ? "打开团队设置" : "切换到协作团队后可用"}
+                onClick={openSettings}
+              >
+                <Users aria-hidden="true" size={15} strokeWidth={1.8} />
+                团队设置
+              </button>
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       <button
         className="workspace-current-member"
@@ -207,11 +393,8 @@ const navItems: Array<{
   icon: React.ReactNode;
 }> = [
   { view: "CAPTURE", label: "新对话", icon: <MessageSquarePlus size={18} strokeWidth={1.75} /> },
-  { view: "DIAGRAMS", label: "框图", icon: <Network size={18} strokeWidth={1.75} /> },
-  { view: "KNOWLEDGE", label: "云知识库", icon: <Database size={18} strokeWidth={1.75} /> },
-  { view: "RESEARCH", label: "深度调研", icon: <Microscope size={18} strokeWidth={1.75} /> },
-  { view: "INSIGHTS", label: "智能洞察", icon: <BrainCircuit size={18} strokeWidth={1.75} /> },
-  { view: "LIBRARY", label: "记忆库", icon: <BookOpenText size={18} strokeWidth={1.75} /> },
+  { view: "LIBRARY", label: "我的记忆", icon: <BookOpenText size={18} strokeWidth={1.75} /> },
+  { view: "KNOWLEDGE", label: "团队记忆", icon: <Database size={18} strokeWidth={1.75} /> },
 ];
 
 export function Sidebar({
@@ -221,6 +404,7 @@ export function Sidebar({
   workspaceBusy,
   subscription,
   conversations,
+  pendingConversationActions,
   activeConversationId,
   view,
   open,
@@ -228,7 +412,10 @@ export function Sidebar({
   onView,
   onNewConversation,
   onConversationSelect,
+  onConversationPin,
+  onConversationRename,
   onConversationArchive,
+  onConversationDelete,
   onWorkspaceSelect,
   onTeamAccess,
   onClose,
@@ -245,6 +432,7 @@ export function Sidebar({
   workspaceBusy: boolean;
   subscription: Subscription | null;
   conversations: ConversationSummary[];
+  pendingConversationActions: ReadonlySet<string>;
   activeConversationId: string | null;
   view: AppView;
   open: boolean;
@@ -252,7 +440,10 @@ export function Sidebar({
   onView: (view: AppView) => void;
   onNewConversation: () => void;
   onConversationSelect: (conversation: ConversationSummary) => void;
+  onConversationPin: (conversation: ConversationSummary, pinned: boolean) => void;
+  onConversationRename: (conversation: ConversationSummary, title: string) => Promise<boolean>;
   onConversationArchive: (conversation: ConversationSummary) => void;
+  onConversationDelete: (conversation: ConversationSummary) => Promise<boolean>;
   onWorkspaceSelect: (workspace: Workspace) => void;
   onTeamAccess: (mode: TeamAccessMode) => void;
   onClose: () => void;
@@ -263,10 +454,20 @@ export function Sidebar({
   onOpenSettings: (view: SettingsView) => void;
   onLogout: () => void;
 }) {
-  const collaborative = isCollaborativeWorkspace(activeWorkspace);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [conversationMenu, setConversationMenu] = useState<{
+    id: string;
+    left: number;
+    top: number;
+  } | null>(null);
+  const [conversationDialog, setConversationDialog] = useState<ConversationDialogState | null>(
+    null,
+  );
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const accountButtonRef = useRef<HTMLButtonElement>(null);
+  const historyNewButtonRef = useRef<HTMLButtonElement>(null);
+  const conversationMenuRef = useRef<HTMLDivElement>(null);
+  const conversationMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!accountMenuOpen) return;
@@ -286,6 +487,63 @@ export function Sidebar({
     };
   }, [accountMenuOpen]);
 
+  useEffect(() => {
+    if (!conversationMenu) return;
+    const closeOnPointerDown = (event: PointerEvent) => {
+      if (!conversationMenuRef.current?.contains(event.target as Node)) setConversationMenu(null);
+    };
+    const closeMenu = () => setConversationMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setConversationMenu(null);
+      window.requestAnimationFrame(() => conversationMenuTriggerRef.current?.focus());
+    };
+    document.addEventListener("pointerdown", closeOnPointerDown);
+    document.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("keydown", closeOnEscape);
+    const focusFrame = window.requestAnimationFrame(() => {
+      conversationMenuRef.current?.querySelector<HTMLButtonElement>("[role='menuitem']")?.focus();
+    });
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("pointerdown", closeOnPointerDown);
+      document.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [conversationMenu]);
+
+  function closeConversationMenu(restoreFocus = false) {
+    setConversationMenu(null);
+    if (restoreFocus) {
+      restoreConversationTriggerFocus();
+    }
+  }
+
+  function restoreConversationTriggerFocus() {
+    window.requestAnimationFrame(() => {
+      const trigger = conversationMenuTriggerRef.current;
+      if (trigger?.isConnected) trigger.focus();
+      else historyNewButtonRef.current?.focus();
+    });
+  }
+
+  function moveConversationMenuFocus(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const items = Array.from(
+      conversationMenuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']") ?? [],
+    );
+    if (!items.length) return;
+    event.preventDefault();
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === "Home") items[0]?.focus();
+    else if (event.key === "End") items.at(-1)?.focus();
+    else if (event.key === "ArrowDown")
+      items[(currentIndex + 1 + items.length) % items.length]?.focus();
+    else items[(currentIndex - 1 + items.length) % items.length]?.focus();
+  }
+
   function openSettings(view: SettingsView) {
     setAccountMenuOpen(false);
     onOpenSettings(view);
@@ -299,6 +557,62 @@ export function Sidebar({
   function logout() {
     setAccountMenuOpen(false);
     onLogout();
+  }
+
+  const menuConversation = conversationMenu
+    ? conversations.find((conversation) => conversation.id === conversationMenu.id)
+    : null;
+  const pinnedConversations = conversations.filter((conversation) => conversation.pinned_at);
+  const recentConversations = conversations.filter((conversation) => !conversation.pinned_at);
+
+  function conversationRow(conversation: ConversationSummary) {
+    const menuOpen = conversationMenu?.id === conversation.id;
+    const actionPending = pendingConversationActions.has(conversation.id);
+    return (
+      <div
+        className={`sidebar-history-row ${conversation.id === activeConversationId ? "is-active" : ""} ${menuOpen ? "is-menu-open" : ""}`}
+        key={conversation.id}
+      >
+        <button
+          className="sidebar-history-open"
+          type="button"
+          aria-busy={actionPending}
+          disabled={actionPending}
+          onClick={() => onConversationSelect(conversation)}
+        >
+          <span>{conversation.title}</span>
+        </button>
+        <button
+          className="sidebar-history-more"
+          type="button"
+          aria-label={`更多对话操作 ${conversation.title}`}
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          aria-busy={actionPending}
+          disabled={actionPending}
+          title={actionPending ? "操作处理中" : "更多操作"}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            const hasRoomBelow = window.innerHeight - rect.bottom >= CONVERSATION_MENU_HEIGHT + 8;
+            conversationMenuTriggerRef.current = event.currentTarget;
+            setConversationMenu((current) =>
+              current?.id === conversation.id
+                ? null
+                : {
+                    id: conversation.id,
+                    left: Math.max(8, rect.right - CONVERSATION_MENU_WIDTH),
+                    top: hasRoomBelow
+                      ? rect.bottom + 5
+                      : Math.max(8, rect.top - CONVERSATION_MENU_HEIGHT - 5),
+                  },
+            );
+          }}
+        >
+          <Ellipsis aria-hidden="true" size={16} strokeWidth={1.8} />
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -331,29 +645,14 @@ export function Sidebar({
               <button
                 type="button"
                 className={view === item.view ? "is-active" : ""}
-                aria-label={
-                  item.view === "INSIGHTS" ? (collaborative ? "团队智能" : "我的洞察") : item.label
-                }
-                title={
-                  item.view === "INSIGHTS" ? (collaborative ? "团队智能" : "我的洞察") : item.label
-                }
+                aria-label={item.label}
+                title={item.label}
                 key={item.view}
                 onClick={() => (item.view === "CAPTURE" ? onNewConversation() : onView(item.view))}
               >
                 {item.icon}
               </button>
             ))}
-            {collaborative ? (
-              <button
-                type="button"
-                className={view === "TEAM" ? "is-active" : ""}
-                aria-label={activeWorkspace.kind === "FAMILY" ? "家庭成员" : "团队"}
-                title={activeWorkspace.kind === "FAMILY" ? "家庭成员" : "团队"}
-                onClick={() => onView("TEAM")}
-              >
-                <Users size={18} strokeWidth={1.75} />
-              </button>
-            ) : null}
           </nav>
           <button
             className="collapsed-avatar-button"
@@ -406,13 +705,7 @@ export function Sidebar({
                 ) : (
                   item.icon
                 )}
-                <span>
-                  {item.view === "INSIGHTS"
-                    ? collaborative
-                      ? "团队智能"
-                      : "我的洞察"
-                    : item.label}
-                </span>
+                <span>{item.label}</span>
               </button>
             ))}
           </nav>
@@ -430,41 +723,105 @@ export function Sidebar({
 
           <section className="sidebar-history" aria-labelledby="sidebar-history-title">
             <header>
-              <span id="sidebar-history-title">
-                <History aria-hidden="true" size={14} />
-                历史对话
-              </span>
+              <span id="sidebar-history-title">历史对话</span>
               <button
+                ref={historyNewButtonRef}
                 type="button"
                 aria-label="新建对话"
                 title="新建对话"
                 onClick={onNewConversation}
               >
-                <Plus aria-hidden="true" size={14} />
+                <CirclePlus aria-hidden="true" size={16} strokeWidth={1.7} />
               </button>
             </header>
-            <div>
-              {conversations.slice(0, 8).map((conversation) => (
-                <div
-                  className={conversation.id === activeConversationId ? "is-active" : ""}
-                  key={conversation.id}
+            <div className="sidebar-history-scroll">
+              {pinnedConversations.length ? (
+                <section className="sidebar-history-group" aria-labelledby="pinned-history-title">
+                  <h3 id="pinned-history-title">
+                    <Pin aria-hidden="true" size={12} strokeWidth={1.8} />
+                    已置顶
+                  </h3>
+                  {pinnedConversations.map(conversationRow)}
+                </section>
+              ) : null}
+              {recentConversations.length ? (
+                <section
+                  className="sidebar-history-group"
+                  aria-labelledby={pinnedConversations.length ? "recent-history-title" : undefined}
+                  aria-label={pinnedConversations.length ? undefined : "最近对话"}
                 >
-                  <button type="button" onClick={() => onConversationSelect(conversation)}>
-                    <span>{conversation.title}</span>
-                    <small>{conversation.message_count}</small>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`归档对话 ${conversation.title}`}
-                    title="归档"
-                    onClick={() => onConversationArchive(conversation)}
-                  >
-                    <Archive aria-hidden="true" size={12} />
-                  </button>
-                </div>
-              ))}
+                  {pinnedConversations.length ? <h3 id="recent-history-title">最近</h3> : null}
+                  {recentConversations.map(conversationRow)}
+                </section>
+              ) : null}
               {!conversations.length ? <small>还没有历史对话</small> : null}
             </div>
+            {conversationMenu && menuConversation ? (
+              <div
+                ref={conversationMenuRef}
+                className="sidebar-history-menu"
+                role="menu"
+                aria-label={`对话操作 ${menuConversation.title}`}
+                style={{ left: conversationMenu.left, top: conversationMenu.top }}
+                onKeyDown={moveConversationMenuFocus}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-label={`${menuConversation.pinned_at ? "取消置顶" : "置顶"}对话 ${menuConversation.title}`}
+                  onClick={() => {
+                    closeConversationMenu();
+                    window.requestAnimationFrame(() => historyNewButtonRef.current?.focus());
+                    onConversationPin(menuConversation, !menuConversation.pinned_at);
+                  }}
+                >
+                  {menuConversation.pinned_at ? (
+                    <PinOff aria-hidden="true" size={15} strokeWidth={1.7} />
+                  ) : (
+                    <Pin aria-hidden="true" size={15} strokeWidth={1.7} />
+                  )}
+                  {menuConversation.pinned_at ? "取消置顶" : "置顶"}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-label={`重命名对话 ${menuConversation.title}`}
+                  onClick={() => {
+                    setConversationDialog({ action: "RENAME", conversation: menuConversation });
+                    closeConversationMenu();
+                  }}
+                >
+                  <Pencil aria-hidden="true" size={15} strokeWidth={1.7} />
+                  重命名
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-label={`归档对话 ${menuConversation.title}`}
+                  onClick={() => {
+                    closeConversationMenu();
+                    window.requestAnimationFrame(() => historyNewButtonRef.current?.focus());
+                    onConversationArchive(menuConversation);
+                  }}
+                >
+                  <Archive aria-hidden="true" size={15} strokeWidth={1.7} />
+                  归档
+                </button>
+                <button
+                  className="is-danger"
+                  type="button"
+                  role="menuitem"
+                  aria-label={`删除对话 ${menuConversation.title}`}
+                  onClick={() => {
+                    setConversationDialog({ action: "DELETE", conversation: menuConversation });
+                    closeConversationMenu();
+                  }}
+                >
+                  <Trash2 aria-hidden="true" size={15} strokeWidth={1.7} />
+                  删除
+                </button>
+              </div>
+            ) : null}
           </section>
 
           <div
@@ -514,7 +871,7 @@ export function Sidebar({
                 </button>
               </div>
             ) : null}
-            <div className="sidebar-account-card">
+            <div className="sidebar-account-dock">
               <button
                 ref={accountButtonRef}
                 className="account-profile-button"
@@ -542,6 +899,18 @@ export function Sidebar({
           </div>
         </div>
       </aside>
+      {conversationDialog ? (
+        <ConversationActionDialog
+          key={`${conversationDialog.action}-${conversationDialog.conversation.id}`}
+          state={conversationDialog}
+          onClose={() => {
+            setConversationDialog(null);
+            restoreConversationTriggerFocus();
+          }}
+          onRename={onConversationRename}
+          onDelete={onConversationDelete}
+        />
+      ) : null}
     </>
   );
 }

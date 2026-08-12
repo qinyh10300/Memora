@@ -1,4 +1,5 @@
 import type {
+  ChatContext,
   DraftDocumentAttachment,
   DraftImageAttachment,
   DraftTrace,
@@ -13,6 +14,7 @@ export type CaptureAgentPhase =
   "IDLE" | "RUNNING" | "CANCELLING" | "RECOVERING" | "COMPLETED" | "FAILED" | "CANCELLED";
 
 export type CaptureRetryRequest = {
+  chatContext: ChatContext;
   instruction: string;
   images: DraftImageAttachment[];
   documents: DraftDocumentAttachment[];

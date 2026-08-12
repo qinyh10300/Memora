@@ -94,6 +94,7 @@ describe("streamDraftChat", () => {
     const response = await streamDraftChat(
       {
         markdown: "",
+        memory_scope: "PERSONAL",
         messages: [{ role: "USER", content: "整理这段内容" }],
         web_search: "AUTO",
       },
@@ -125,6 +126,7 @@ describe("streamDraftChat", () => {
       streamDraftChat(
         {
           markdown: "# 保留",
+          memory_scope: "PERSONAL",
           messages: [{ role: "USER", content: "继续整理" }],
           web_search: "DISABLED",
         },

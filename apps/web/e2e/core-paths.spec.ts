@@ -92,7 +92,7 @@ async function selectTeam(page: Page, teamName: string) {
 test("核心记忆、Agent、团队权限和移动端路径", async ({ page, browser }) => {
   await register(page, owner);
 
-  await page.getByRole("combobox", { name: "联网模式" }).selectOption("DISABLED");
+  await expect(page.getByRole("combobox", { name: "联网模式" })).toHaveCount(0);
   await page.locator('input[type="file"][accept*="application/pdf"]').setInputFiles({
     name: "browser-e2e-evidence.pdf",
     mimeType: "application/pdf",

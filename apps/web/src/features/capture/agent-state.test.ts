@@ -30,6 +30,7 @@ const trace: DraftTrace = {
 };
 
 const retryRequest = {
+  chatContext: "PERSONAL" as const,
   instruction: "整理这段内容",
   images: [],
   documents: [],

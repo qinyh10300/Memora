@@ -27,6 +27,7 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type {
+  ChatContext,
   DraftDocumentAttachment,
   DraftDocumentCitation,
   DraftImageAttachment,
@@ -40,7 +41,7 @@ import type {
   Workspace,
 } from "@/features/shared/contracts";
 import { isCollaborativeWorkspace } from "@/features/shared/contracts";
-import { CloseIcon, GlobeIcon, LibraryIcon, Logo, SendIcon } from "@/features/shared/icons";
+import { CloseIcon, LibraryIcon, Logo, SendIcon } from "@/features/shared/icons";
 import {
   formatDateTime,
   readStoredNumber,
@@ -82,10 +83,12 @@ const COMPOSER_TEXT_BASE_HEIGHT = 34;
 
 export function CaptureWorkspace({
   mode = "CAPTURE",
+  chatContext,
   workspace,
   draft,
   messages,
   refining,
+  interactionLocked,
   activity,
   saving,
   savedBody,
@@ -117,10 +120,12 @@ export function CaptureWorkspace({
   onRetry,
 }: {
   mode?: "CAPTURE" | "RESEARCH";
+  chatContext: ChatContext;
   workspace: Workspace;
   draft: string;
   messages: DraftMessage[];
   refining: boolean;
+  interactionLocked: boolean;
   activity: DraftTrace | null;
   saving: boolean;
   savedBody: string | null;
@@ -163,7 +168,6 @@ export function CaptureWorkspace({
   const [documents, setDocuments] = useState<DraftDocumentAttachment[]>([]);
   const [uploadingDocuments, setUploadingDocuments] = useState(0);
   const [attachmentError, setAttachmentError] = useState("");
-  const [webSearchMode, setWebSearchMode] = useState<WebSearchMode>("AUTO");
   const [composerHeight, setComposerHeight] = useState(COMPOSER_DEFAULT_HEIGHT);
   const [autoComposerHeight, setAutoComposerHeight] = useState(CENTERED_COMPOSER_HEIGHT);
   const [renderedComposerHeight, setRenderedComposerHeight] = useState(CENTERED_COMPOSER_HEIGHT);
@@ -177,6 +181,7 @@ export function CaptureWorkspace({
   const composerWrapRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
   const visibleMessages = messages.filter((message) => message.id !== "welcome");
+  const controlsDisabled = refining || interactionLocked;
   const emptyConversation =
     visibleMessages.length === 0 &&
     !draft.trim() &&
@@ -190,7 +195,24 @@ export function CaptureWorkspace({
   );
   const selectedModel = modelOptions.find((model) => model.id === selectedModelId);
   const selectedModelLabel = selectedDraftModelLabel(modelOptions, selectedModelId);
-  const introTitle = researchMode ? "今天想深入研究什么？" : "有什么可以帮助您的？";
+  const contextCopy = {
+    GENERAL: {
+      title: "有什么可以帮助您的？",
+      badge: "通用助手 · 不读取记忆",
+      placeholder: "问答、调研、绘图，或上传文件开始…",
+    },
+    PERSONAL: {
+      title: "想整理哪段个人记忆？",
+      badge: "整理助手 · 只使用我的记忆",
+      placeholder: "记录一段想法，或告诉我怎样整理成 Markdown…",
+    },
+    TEAM: {
+      title: "想了解团队记录的什么？",
+      badge: "团队助手 · 只使用成员主动共享的记忆",
+      placeholder: "询问团队进展、决定、分歧或知识缺口…",
+    },
+  }[chatContext];
+  const introTitle = researchMode ? "今天想深入研究什么？" : contextCopy.title;
   const pickerOptions = modelOptions.map((model) => ({
     id: model.id,
     label: model.label,
@@ -200,12 +222,11 @@ export function CaptureWorkspace({
     locked: !planAllows(subscriptionPlan, model.min_plan),
   }));
   const canUseImages = modelSupports(selectedModel, "vision");
-  const canUseWeb = modelSupports(selectedModel, "web_search");
   const documentProcessing = documents.some((document) =>
     ["QUEUED", "PARSING", "OCR", "CANCEL_REQUESTED"].includes(document.document.status),
   );
   const attachmentUploadDisabled =
-    refining ||
+    controlsDisabled ||
     uploadingDocuments > 0 ||
     (attachments.length >= MAX_DRAFT_IMAGES && documents.length >= MAX_DRAFT_DOCUMENTS);
 
@@ -340,6 +361,7 @@ export function CaptureWorkspace({
   }
 
   function startNewConversation() {
+    if (interactionLocked) return;
     setInstruction("");
     setAttachments([]);
     setDocuments([]);
@@ -352,7 +374,7 @@ export function CaptureWorkspace({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = instruction.trim();
-    if ((!value && attachments.length === 0 && documents.length === 0) || refining) return;
+    if ((!value && attachments.length === 0 && documents.length === 0) || controlsDisabled) return;
     if (documentProcessing || uploadingDocuments > 0) {
       setAttachmentError("PDF 仍在解析，请等待完成后再发送。");
       return;
@@ -370,8 +392,7 @@ export function CaptureWorkspace({
     setAttachmentError("");
     setAddMenuOpen(false);
     if (imageInputRef.current) imageInputRef.current.value = "";
-    const selectedWebSearchMode = researchMode ? "REQUIRED" : webSearchMode;
-    if (!researchMode && selectedWebSearchMode === "REQUIRED") setWebSearchMode("AUTO");
+    const selectedWebSearchMode: WebSearchMode = researchMode ? "REQUIRED" : "AUTO";
     await onRefine(
       message,
       selectedAttachments,
@@ -395,9 +416,6 @@ export function CaptureWorkspace({
       setAttachmentError("已切换到不支持图片的模型，待发送图片已移除。");
     } else {
       setAttachmentError("");
-    }
-    if (!modelSupports(nextModel, "web_search")) {
-      setWebSearchMode("DISABLED");
     }
     onModelChange(modelId);
   }
@@ -439,6 +457,7 @@ export function CaptureWorkspace({
   }
 
   async function attachFiles(files: File[]) {
+    if (interactionLocked) return;
     setAttachmentError("");
     const validationError = validateFiles(files);
     if (validationError) {
@@ -470,6 +489,7 @@ export function CaptureWorkspace({
   }
 
   async function cancelDocument(document: DraftDocumentAttachment) {
+    if (interactionLocked) return;
     try {
       const status = await cancelDocumentParse(document.assetId);
       setDocuments((current) =>
@@ -483,6 +503,7 @@ export function CaptureWorkspace({
   }
 
   async function retryDocument(document: DraftDocumentAttachment) {
+    if (interactionLocked) return;
     try {
       const status = await retryDocumentParse(document.assetId);
       setAttachmentError("");
@@ -505,19 +526,19 @@ export function CaptureWorkspace({
 
   async function pasteIntoComposer(event: ClipboardEvent<HTMLTextAreaElement>) {
     const files = Array.from(event.clipboardData?.files ?? []);
-    if (!files.length || refining) return;
+    if (!files.length || controlsDisabled) return;
     event.preventDefault();
     await attachFiles(files);
   }
 
   function dragFilesOver(event: DragEvent<HTMLElement>) {
-    if (!event.dataTransfer.types.includes("Files") || refining) return;
+    if (!event.dataTransfer.types.includes("Files") || controlsDisabled) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
   }
 
   function dragFilesEnter(event: DragEvent<HTMLElement>) {
-    if (!event.dataTransfer.types.includes("Files") || refining) return;
+    if (!event.dataTransfer.types.includes("Files") || controlsDisabled) return;
     event.preventDefault();
     dragDepthRef.current += 1;
     setDraggingFiles(true);
@@ -531,7 +552,7 @@ export function CaptureWorkspace({
   }
 
   async function dropFiles(event: DragEvent<HTMLElement>) {
-    if (!event.dataTransfer.types.includes("Files") || refining) return;
+    if (!event.dataTransfer.types.includes("Files") || controlsDisabled) return;
     event.preventDefault();
     dragDepthRef.current = 0;
     setDraggingFiles(false);
@@ -581,7 +602,7 @@ export function CaptureWorkspace({
                   label="切换顶部聊天模型"
                   options={pickerOptions}
                   selectedId={selectedModelId}
-                  disabled={refining}
+                  disabled={controlsDisabled}
                   onChange={changeModel}
                   onUpgrade={onUpgrade}
                 />
@@ -594,6 +615,7 @@ export function CaptureWorkspace({
               className="conversation-new-chat"
               type="button"
               aria-label="在顶部开始新对话"
+              disabled={interactionLocked}
               onClick={startNewConversation}
             >
               <SquarePen aria-hidden="true" size={17} strokeWidth={1.8} />
@@ -618,6 +640,9 @@ export function CaptureWorkspace({
                     </span>
                   ))}
                 </h2>
+                <p className={`conversation-context is-${chatContext.toLowerCase()}`}>
+                  {researchMode ? "深度调研 · 使用实时网页来源" : contextCopy.badge}
+                </p>
               </div>
             ) : null}
             <div className="message-list" aria-live="polite">
@@ -858,6 +883,7 @@ export function CaptureWorkspace({
                           type="button"
                           title="停止解析"
                           aria-label={`停止解析 ${document.name}`}
+                          disabled={interactionLocked}
                           onClick={() => void cancelDocument(document)}
                         >
                           <Square aria-hidden="true" size={12} />
@@ -869,6 +895,7 @@ export function CaptureWorkspace({
                           type="button"
                           title="重新解析"
                           aria-label={`重新解析 ${document.name}`}
+                          disabled={interactionLocked}
                           onClick={() => void retryDocument(document)}
                         >
                           <RefreshCw aria-hidden="true" size={13} />
@@ -895,14 +922,14 @@ export function CaptureWorkspace({
                     ? "描述研究问题、范围和期望输出…"
                     : draft
                       ? "继续说，或告诉我怎样修改草稿…"
-                      : "发送消息，输入 ‘/’ 以调用指令"
+                      : contextCopy.placeholder
                 }
                 rows={1}
                 value={instruction}
                 onChange={(event) => setInstruction(event.target.value)}
                 onKeyDown={composerKeyDown}
                 onPaste={(event) => void pasteIntoComposer(event)}
-                disabled={refining}
+                disabled={controlsDisabled}
               />
               <div className="composer-tools">
                 <input
@@ -927,7 +954,7 @@ export function CaptureWorkspace({
                     aria-expanded={addMenuOpen}
                     title="添加内容"
                     onClick={() => setAddMenuOpen((open) => !open)}
-                    disabled={refining}
+                    disabled={controlsDisabled}
                   >
                     <Plus aria-hidden="true" size={20} strokeWidth={1.8} />
                   </button>
@@ -965,55 +992,20 @@ export function CaptureWorkspace({
                     label="选择聊天模型"
                     options={pickerOptions}
                     selectedId={selectedModelId}
-                    disabled={refining}
+                    disabled={controlsDisabled}
                     onChange={changeModel}
                     onUpgrade={onUpgrade}
                   />
                 ) : (
                   <span className="model-unavailable">AI 未配置</span>
                 )}
-                <label
-                  className={`search-mode-control is-${researchMode ? "required" : webSearchMode.toLowerCase()}`}
-                >
-                  <GlobeIcon />
-                  <select
-                    aria-label="联网模式"
-                    value={researchMode ? "REQUIRED" : webSearchMode}
-                    onChange={(event) => {
-                      const nextMode = event.target.value as WebSearchMode;
-                      if (nextMode !== "DISABLED" && !canUseWeb) {
-                        setAttachmentError("当前模型不支持联网，请切换模型或关闭联网。");
-                        setWebSearchMode("DISABLED");
-                        return;
-                      }
-                      setAttachmentError("");
-                      setWebSearchMode(nextMode);
-                    }}
-                    disabled={researchMode || refining || !canUseWeb}
-                  >
-                    <option value="AUTO">自动联网</option>
-                    <option value="REQUIRED">本轮联网</option>
-                    <option value="DISABLED">关闭联网</option>
-                  </select>
-                </label>
-                <span>
-                  {researchMode
-                    ? "深度调研会检索实时网页并展示来源"
-                    : !canUseWeb
-                      ? "当前模型不支持联网"
-                      : webSearchMode === "AUTO"
-                        ? "需要最新信息时自动搜索"
-                        : webSearchMode === "REQUIRED"
-                          ? "发送后恢复自动"
-                          : "只使用对话与个人记忆"}
-                </span>
                 <button
                   className="send-button"
                   type="submit"
                   aria-label="发送"
                   disabled={
                     (!instruction.trim() && attachments.length === 0 && documents.length === 0) ||
-                    refining ||
+                    controlsDisabled ||
                     documentProcessing ||
                     uploadingDocuments > 0
                   }
@@ -1074,7 +1066,12 @@ export function CaptureWorkspace({
                   <PanelRightClose aria-hidden="true" size={16} strokeWidth={1.8} />
                 </button>
                 {draft ? (
-                  <button className="text-button" type="button" onClick={onReset}>
+                  <button
+                    className="text-button"
+                    type="button"
+                    disabled={interactionLocked}
+                    onClick={onReset}
+                  >
                     新想法
                   </button>
                 ) : null}
@@ -1104,6 +1101,7 @@ export function CaptureWorkspace({
               ariaLabel="Markdown 草稿"
               placeholder={"# 想法标题\n\n你的 Markdown 草稿会出现在这里。"}
               previewVisible={draftPreviewVisible}
+              readOnly={interactionLocked}
             />
             <footer className="draft-footer">
               <div>
@@ -1116,6 +1114,7 @@ export function CaptureWorkspace({
                     type="button"
                     className={saveVisibility === "PRIVATE" ? "is-active" : ""}
                     aria-pressed={saveVisibility === "PRIVATE"}
+                    disabled={interactionLocked}
                     onClick={() => onSaveVisibilityChange("PRIVATE")}
                   >
                     <LockKeyhole aria-hidden="true" size={14} strokeWidth={1.8} />
@@ -1125,6 +1124,7 @@ export function CaptureWorkspace({
                     type="button"
                     className={saveVisibility === "WORKSPACE" ? "is-active" : ""}
                     aria-pressed={saveVisibility === "WORKSPACE"}
+                    disabled={interactionLocked}
                     onClick={() => onSaveVisibilityChange("WORKSPACE")}
                   >
                     <Users aria-hidden="true" size={14} strokeWidth={1.8} />
@@ -1135,7 +1135,7 @@ export function CaptureWorkspace({
               <button
                 className="primary-action"
                 type="button"
-                disabled={!normalizedDraft || saving || isSaved}
+                disabled={interactionLocked || !normalizedDraft || saving || isSaved}
                 onClick={() => void onSave()}
               >
                 {saving

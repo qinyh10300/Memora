@@ -6,6 +6,7 @@ import HomePage from "./page";
 
 type Memory = components["schemas"]["MemoryResponse"];
 type DraftModel = components["schemas"]["DraftModelResponse"];
+type ConversationSummary = components["schemas"]["ConversationSummaryResponse"];
 type Workspace = components["schemas"]["WorkspaceResponse"];
 type WorkspaceMember = components["schemas"]["WorkspaceMemberResponse"];
 type WorkspaceJoinRequest = components["schemas"]["WorkspaceJoinRequestResponse"];
@@ -434,7 +435,10 @@ function mockAuthenticatedSession(
           };
         }
       ).body;
-      if (body.web_search === "REQUIRED") {
+      if (
+        body.web_search === "REQUIRED" ||
+        body.messages.at(-1)?.content.includes("最新模型进展")
+      ) {
         return Promise.resolve(
           ok({
             markdown:
@@ -651,7 +655,7 @@ async function openCaptureView() {
 }
 
 async function openLibraryView() {
-  fireEvent.click(await screen.findByRole("button", { name: "记忆库" }));
+  fireEvent.click(await screen.findByRole("button", { name: "我的记忆" }));
 }
 
 async function openAccountSettings(view: "个人资料" | "我的邀请" | "通用设置" = "个人资料") {
@@ -815,7 +819,7 @@ describe("Memora personal Markdown MVP", () => {
       expect.anything(),
     );
     expect(screen.getByRole("button", { name: "新对话" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "记忆库" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "我的记忆" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "首页" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Balanced" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "有什么可以帮助您的？" })).toBeInTheDocument();
@@ -847,12 +851,13 @@ describe("Memora personal Markdown MVP", () => {
         "--character-delay",
       ),
     ).toBe("80ms");
-    expect(composer).toHaveAttribute("placeholder", "发送消息，输入 ‘/’ 以调用指令");
+    expect(composer).toHaveAttribute("placeholder", "问答、调研、绘图，或上传文件开始…");
     const composerTools = composer.nextElementSibling;
     expect(composerTools).toHaveClass("composer-tools");
     expect(composerTools).toContainElement(screen.getByRole("button", { name: "添加内容" }));
     expect(composerTools).toContainElement(screen.getByRole("button", { name: "选择聊天模型" }));
-    expect(composerTools).toContainElement(screen.getByRole("combobox", { name: "联网模式" }));
+    expect(screen.queryByRole("combobox", { name: "联网模式" })).not.toBeInTheDocument();
+    expect(screen.queryByText("需要最新信息时自动搜索")).not.toBeInTheDocument();
     expect(composerTools).toContainElement(screen.getByRole("button", { name: "发送" }));
     fireEvent.change(composer, { target: { value: "尚未发送的临时内容" } });
     fireEvent.click(screen.getByRole("button", { name: "在顶部开始新对话" }));
@@ -928,7 +933,7 @@ describe("Memora personal Markdown MVP", () => {
     });
   });
 
-  it("助手修改草稿后可以跳转或在右侧停靠云知识库", async () => {
+  it("助手修改草稿后可以跳转到我的记忆或在右侧停靠云知识库", async () => {
     mockAuthenticatedSession([memory]);
 
     render(<HomePage />);
@@ -954,7 +959,7 @@ describe("Memora personal Markdown MVP", () => {
     expect(panelSeparator.parentElement).toHaveClass("is-right-collapsed");
 
     fireEvent.click(screen.getByRole("button", { name: "前往云知识库" }));
-    expect(await screen.findByRole("heading", { name: "云知识库" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "我的记忆" })).toBeVisible();
   });
 
   it("刷新后保留团队空间，并显示团队号、组织成员和邀请入口", async () => {
@@ -1065,7 +1070,8 @@ describe("Memora personal Markdown MVP", () => {
         params: { path: { workspace_id: "workspace-created" } },
       });
     });
-    expect(await screen.findByRole("heading", { name: "社会智能研究组" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "团队记忆" })).toBeVisible();
+    expect(screen.getAllByText("社会智能研究组", { selector: ".eyebrow" })).not.toHaveLength(0);
 
     fireEvent.click(screen.getByRole("button", { name: "切换空间，当前为 社会智能研究组" }));
     fireEvent.click(screen.getByRole("button", { name: "新建团队" }));
@@ -1199,7 +1205,10 @@ describe("Memora personal Markdown MVP", () => {
     render(<HomePage />);
     fireEvent.click(await screen.findByRole("button", { name: /2,000 credits/ }));
 
-    expect(screen.getByRole("dialog", { name: "套餐与 Credits" })).toBeVisible();
+    expect(screen.getByRole("dialog", { name: "订阅计划" })).toBeVisible();
+    expect(await screen.findByText("最受欢迎")).toBeVisible();
+    expect(screen.getByText("内测方案已开放，升级不会发起真实扣款")).toBeVisible();
+    expect(screen.queryByText(/\$\d/)).not.toBeInTheDocument();
     expect(await screen.findByText("最近额度记录")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "升级到 Pro" }));
 
@@ -1264,7 +1273,8 @@ describe("Memora personal Markdown MVP", () => {
 
     expect(await screen.findByText("整理之前的产品判断")).toBeInTheDocument();
     expect(screen.getByLabelText("Markdown 草稿")).toHaveValue(memory.body);
-    fireEvent.click(screen.getByRole("button", { name: "归档对话 历史研究记录" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多对话操作 历史研究记录" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "归档对话 历史研究记录" }));
 
     await waitFor(() => {
       expect(apiMocks.PATCH).toHaveBeenCalledWith("/conversations/{conversation_id}", {
@@ -1275,17 +1285,929 @@ describe("Memora personal Markdown MVP", () => {
     expect(screen.queryByText("历史研究记录")).not.toBeInTheDocument();
   });
 
-  it("云知识库和 MamaRail 框图可从侧栏进入", async () => {
+  it("可以滚动访问全部历史并置顶、取消置顶、重命名和删除对话", async () => {
+    mockAuthenticatedSession([]);
+    const pinned = {
+      id: "conversation-pinned",
+      title: "已置顶的研究",
+      scope: "PERSONAL" as const,
+      topic: "全部",
+      created_at: "2026-08-05T08:00:00Z",
+      updated_at: "2026-08-07T08:00:00Z",
+      archived_at: null,
+      pinned_at: "2026-08-08T08:00:00Z",
+      message_count: 2,
+    };
+    const recent = {
+      ...pinned,
+      id: "conversation-recent",
+      title: "最近产品判断",
+      updated_at: "2026-08-09T08:00:00Z",
+      pinned_at: null,
+    };
+    let summaries: ConversationSummary[] = [
+      pinned,
+      recent,
+      ...Array.from({ length: 9 }, (_, index) => ({
+        ...recent,
+        id: `conversation-overflow-${index + 1}`,
+        title: `溢出对话 ${index + 1}`,
+        updated_at: `2026-08-0${Math.max(1, 8 - index)}T08:00:00Z`,
+      })),
+    ];
+    const baseGet = apiMocks.GET.getMockImplementation();
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/conversations") return Promise.resolve(ok(summaries));
+      return baseGet?.(path, options);
+    });
+    const basePatch = apiMocks.PATCH.getMockImplementation();
+    apiMocks.PATCH.mockImplementation((path: string, options?: unknown) => {
+      if (path !== "/conversations/{conversation_id}") return basePatch?.(path, options);
+      const request = options as {
+        params: { path: { conversation_id: string } };
+        body: { pinned?: boolean; title?: string; archived?: boolean };
+      };
+      const current = summaries.find(
+        (conversation) => conversation.id === request.params.path.conversation_id,
+      );
+      if (!current) return Promise.resolve(missing());
+      const updated = {
+        ...current,
+        ...(request.body.title ? { title: request.body.title } : {}),
+        ...(request.body.pinned === undefined
+          ? {}
+          : { pinned_at: request.body.pinned ? "2026-08-10T08:00:00Z" : null }),
+        ...(request.body.archived ? { archived_at: "2026-08-10T08:00:00Z", pinned_at: null } : {}),
+        updated_at: "2026-08-10T08:00:00Z",
+      };
+      summaries = summaries.map((conversation) =>
+        conversation.id === updated.id ? updated : conversation,
+      );
+      return Promise.resolve(ok(updated));
+    });
+    apiMocks.DELETE.mockImplementation((path: string, options?: unknown) => {
+      if (path !== "/conversations/{conversation_id}") return Promise.resolve(missing());
+      const conversationId = (options as { params: { path: { conversation_id: string } } }).params
+        .path.conversation_id;
+      summaries = summaries.filter((conversation) => conversation.id !== conversationId);
+      return Promise.resolve(ok(undefined, 204));
+    });
+
+    render(<HomePage />);
+
+    expect(await screen.findByText("溢出对话 9")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "已置顶" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "最近" })).toBeVisible();
+
+    const recentMenuButton = screen.getByRole("button", {
+      name: "更多对话操作 最近产品判断",
+    });
+    fireEvent.click(recentMenuButton);
+    await waitFor(() => {
+      expect(screen.getByRole("menuitem", { name: "置顶对话 最近产品判断" })).toHaveFocus();
+    });
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "置顶对话 最近产品判断" }), {
+      key: "ArrowDown",
+    });
+    expect(screen.getByRole("menuitem", { name: "重命名对话 最近产品判断" })).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(recentMenuButton).toHaveFocus());
+
+    fireEvent.click(recentMenuButton);
+    fireEvent.click(screen.getByRole("menuitem", { name: "置顶对话 最近产品判断" }));
+    await waitFor(() => {
+      expect(apiMocks.PATCH).toHaveBeenCalledWith("/conversations/{conversation_id}", {
+        params: { path: { conversation_id: recent.id } },
+        body: { pinned: true },
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "新建对话" })).toHaveFocus();
+    });
+    expect(screen.getByText("最近产品判断").closest(".sidebar-history-group")).toHaveAttribute(
+      "aria-labelledby",
+      "pinned-history-title",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "更多对话操作 最近产品判断" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "取消置顶对话 最近产品判断" }));
+    await waitFor(() => {
+      expect(apiMocks.PATCH).toHaveBeenLastCalledWith("/conversations/{conversation_id}", {
+        params: { path: { conversation_id: recent.id } },
+        body: { pinned: false },
+      });
+    });
+    expect(screen.getByText("最近产品判断").closest(".sidebar-history-group")).toHaveAttribute(
+      "aria-labelledby",
+      "recent-history-title",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "更多对话操作 已置顶的研究" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "重命名对话 已置顶的研究" }));
+    const titleInput = screen.getByRole("textbox", { name: "对话名称" });
+    fireEvent.change(titleInput, { target: { value: "   " } });
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    fireEvent.change(titleInput, { target: { value: "重命名后的判断" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findByText("重命名后的判断")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "更多对话操作 重命名后的判断" }));
+    const deleteItem = screen.getByRole("menuitem", { name: "删除对话 重命名后的判断" });
+    expect(deleteItem).toHaveClass("is-danger");
+    fireEvent.click(deleteItem);
+    expect(screen.getByRole("dialog", { name: "删除对话" })).toBeVisible();
+    expect(screen.getByText("已经保存到记忆库的内容不会被删除。")).toBeVisible();
+    const cancelDelete = screen.getByRole("button", { name: "取消" });
+    const closeDelete = screen.getByRole("button", { name: "关闭对话操作" });
+    const confirmDelete = screen.getByRole("button", { name: "确认删除" });
+    expect(cancelDelete).toHaveFocus();
+    closeDelete.focus();
+    fireEvent.keyDown(closeDelete, { key: "Tab", shiftKey: true });
+    expect(confirmDelete).toHaveFocus();
+    fireEvent.keyDown(confirmDelete, { key: "Tab" });
+    expect(closeDelete).toHaveFocus();
+    fireEvent.click(confirmDelete);
+
+    await waitFor(() => {
+      expect(apiMocks.DELETE).toHaveBeenCalledWith("/conversations/{conversation_id}", {
+        params: { path: { conversation_id: pinned.id } },
+      });
+    });
+    expect(screen.queryByText("重命名后的判断")).not.toBeInTheDocument();
+  });
+
+  it("切换工作区后丢弃旧空间延迟返回的置顶结果", async () => {
+    mockAuthenticatedSession([]);
+    const personalConversation: ConversationSummary = {
+      id: "conversation-personal-delayed",
+      title: "个人空间的延迟置顶",
+      scope: "PERSONAL",
+      topic: "全部",
+      created_at: "2026-08-08T08:00:00Z",
+      updated_at: "2026-08-09T08:00:00Z",
+      archived_at: null,
+      pinned_at: null,
+      message_count: 1,
+    };
+    let conversationLoads = 0;
+    const baseGet = apiMocks.GET.getMockImplementation();
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/conversations") {
+        conversationLoads += 1;
+        return Promise.resolve(ok(conversationLoads === 1 ? [personalConversation] : []));
+      }
+      return baseGet?.(path, options);
+    });
+    let finishPin: (() => void) | undefined;
+    const delayedPin = new Promise((resolve) => {
+      finishPin = () =>
+        resolve(
+          ok({
+            ...personalConversation,
+            pinned_at: "2026-08-10T08:00:00Z",
+          }),
+        );
+    });
+    apiMocks.PATCH.mockImplementation((path: string) => {
+      if (path === "/conversations/{conversation_id}") return delayedPin;
+      return Promise.resolve(missing());
+    });
+
+    render(<HomePage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: `更多对话操作 ${personalConversation.title}`,
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: `置顶对话 ${personalConversation.title}` }),
+    );
+    await waitFor(() => expect(apiMocks.PATCH).toHaveBeenCalledOnce());
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "新建对话" })).toHaveFocus();
+    });
+    const pendingConversationMenu = screen.getByRole("button", {
+      name: `更多对话操作 ${personalConversation.title}`,
+    });
+    expect(pendingConversationMenu).toBeDisabled();
+    fireEvent.click(pendingConversationMenu);
+    expect(
+      screen.queryByRole("menuitem", { name: `归档对话 ${personalConversation.title}` }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: `切换空间，当前为 ${personalWorkspace.name}` }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: teamWorkspace.name }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: `切换空间，当前为 ${teamWorkspace.name}` }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(personalConversation.title)).not.toBeInTheDocument();
+
+    await act(async () => finishPin?.());
+
+    expect(screen.queryByText(personalConversation.title)).not.toBeInTheDocument();
+    expect(screen.queryByText("对话已置顶")).not.toBeInTheDocument();
+  });
+
+  it("切换工作区后丢弃旧空间延迟返回的历史列表", async () => {
+    mockAuthenticatedSession([]);
+    const staleConversation: ConversationSummary = {
+      id: "conversation-stale-list",
+      title: "不应进入团队空间的旧列表",
+      scope: "PERSONAL",
+      topic: "全部",
+      created_at: "2026-08-08T08:00:00Z",
+      updated_at: "2026-08-09T08:00:00Z",
+      archived_at: null,
+      pinned_at: null,
+      message_count: 1,
+    };
+    let conversationLoads = 0;
+    let finishStaleReload: (() => void) | undefined;
+    const staleReload = new Promise((resolve) => {
+      finishStaleReload = () => resolve(ok([staleConversation]));
+    });
+    const baseGet = apiMocks.GET.getMockImplementation();
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/conversations") {
+        conversationLoads += 1;
+        if (conversationLoads === 2) return staleReload;
+        return Promise.resolve(ok([]));
+      }
+      return baseGet?.(path, options);
+    });
+
+    render(<HomePage />);
+
+    fireEvent.change(await screen.findByLabelText("告诉 Memora 你的想法"), {
+      target: { value: "我以前记录过什么？" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("你以前记录过先验证个人记录和回顾。")).toBeVisible();
+    await waitFor(() => expect(conversationLoads).toBe(2));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: `切换空间，当前为 ${personalWorkspace.name}` }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: teamWorkspace.name }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: `切换空间，当前为 ${teamWorkspace.name}` }),
+      ).toBeInTheDocument();
+    });
+
+    await act(async () => finishStaleReload?.());
+
+    expect(screen.queryByText(staleConversation.title)).not.toBeInTheDocument();
+  });
+
+  it("切换工作区时立即隐藏旧列表并丢弃延迟返回的旧详情", async () => {
+    mockAuthenticatedSession([]);
+    const personalConversation: ConversationSummary = {
+      id: "conversation-stale-detail",
+      title: "个人空间旧详情",
+      scope: "PERSONAL",
+      topic: "全部",
+      created_at: "2026-08-08T08:00:00Z",
+      updated_at: "2026-08-09T08:00:00Z",
+      archived_at: null,
+      pinned_at: null,
+      message_count: 1,
+    };
+    let conversationLoads = 0;
+    let finishTeamList: (() => void) | undefined;
+    let finishDetail: (() => void) | undefined;
+    const delayedTeamList = new Promise((resolve) => {
+      finishTeamList = () => resolve(ok([]));
+    });
+    const delayedDetail = new Promise((resolve) => {
+      finishDetail = () =>
+        resolve(
+          ok({
+            ...personalConversation,
+            messages: [
+              {
+                id: "message-stale-detail",
+                role: "ASSISTANT" as const,
+                status: "COMPLETE" as const,
+                content: "旧空间详情绝不能写回新空间",
+                created_at: "2026-08-09T08:00:00Z",
+                citations: [],
+                memory: null,
+              },
+            ],
+          }),
+        );
+    });
+    const baseGet = apiMocks.GET.getMockImplementation();
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/conversations") {
+        conversationLoads += 1;
+        return conversationLoads === 1
+          ? Promise.resolve(ok([personalConversation]))
+          : delayedTeamList;
+      }
+      if (path === "/conversations/{conversation_id}") return delayedDetail;
+      return baseGet?.(path, options);
+    });
+
+    render(<HomePage />);
+
+    fireEvent.click((await screen.findByText(personalConversation.title)).closest("button")!);
+    await waitFor(() => {
+      expect(apiMocks.GET).toHaveBeenCalledWith("/conversations/{conversation_id}", {
+        params: { path: { conversation_id: personalConversation.id } },
+      });
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: `切换空间，当前为 ${personalWorkspace.name}` }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: teamWorkspace.name }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: `切换空间，当前为 ${teamWorkspace.name}` }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(personalConversation.title)).not.toBeInTheDocument();
+
+    await act(async () => finishDetail?.());
+
+    expect(screen.queryByText("旧空间详情绝不能写回新空间")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "团队记忆" })).toBeVisible();
+
+    await act(async () => finishTeamList?.());
+  });
+
+  it("归档会使同一空间内已经发出的旧详情失效", async () => {
+    mockAuthenticatedSession([]);
+    const conversation: ConversationSummary = {
+      id: "conversation-detail-before-archive",
+      title: "等待详情时归档",
+      scope: "PERSONAL",
+      topic: "全部",
+      created_at: "2026-08-08T08:00:00Z",
+      updated_at: "2026-08-09T08:00:00Z",
+      archived_at: null,
+      pinned_at: null,
+      message_count: 1,
+    };
+    let finishDetail: (() => void) | undefined;
+    const delayedDetail = new Promise((resolve) => {
+      finishDetail = () =>
+        resolve(
+          ok({
+            ...conversation,
+            messages: [
+              {
+                id: "message-archived-detail",
+                role: "ASSISTANT" as const,
+                status: "COMPLETE" as const,
+                content: "已归档对话的旧详情不应恢复",
+                created_at: "2026-08-09T08:00:00Z",
+                citations: [],
+                memory: null,
+              },
+            ],
+          }),
+        );
+    });
+    const baseGet = apiMocks.GET.getMockImplementation();
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/conversations") return Promise.resolve(ok([conversation]));
+      if (path === "/conversations/{conversation_id}") return delayedDetail;
+      return baseGet?.(path, options);
+    });
+    apiMocks.PATCH.mockResolvedValue(
+      ok({
+        ...conversation,
+        archived_at: "2026-08-10T08:00:00Z",
+      }),
+    );
+
+    render(<HomePage />);
+
+    fireEvent.click((await screen.findByText(conversation.title)).closest("button")!);
+    await waitFor(() => {
+      expect(apiMocks.GET).toHaveBeenCalledWith("/conversations/{conversation_id}", {
+        params: { path: { conversation_id: conversation.id } },
+      });
+    });
+    fireEvent.click(screen.getByRole("button", { name: `更多对话操作 ${conversation.title}` }));
+    fireEvent.click(screen.getByRole("menuitem", { name: `归档对话 ${conversation.title}` }));
+    await waitFor(() => expect(screen.queryByText(conversation.title)).not.toBeInTheDocument());
+
+    await act(async () => finishDetail?.());
+
+    expect(screen.queryByText("已归档对话的旧详情不应恢复")).not.toBeInTheDocument();
+  });
+
+  it("慢归档完成后不会清空用户已经开始的新对话输入", async () => {
+    mockAuthenticatedSession([]);
+    const conversation: ConversationSummary = {
+      id: "conversation-slow-archive",
+      title: "慢归档活动对话",
+      scope: "PERSONAL",
+      topic: "全部",
+      created_at: "2026-08-08T08:00:00Z",
+      updated_at: "2026-08-09T08:00:00Z",
+      archived_at: null,
+      pinned_at: null,
+      message_count: 1,
+    };
+    const detail = {
+      ...conversation,
+      messages: [
+        {
+          id: "message-slow-archive",
+          role: "ASSISTANT" as const,
+          status: "COMPLETE" as const,
+          content: "归档前的已保存内容",
+          created_at: "2026-08-09T08:00:00Z",
+          citations: [],
+          memory,
+        },
+      ],
+    };
+    let finishArchive: (() => void) | undefined;
+    const delayedArchive = new Promise((resolve) => {
+      finishArchive = () => resolve(ok({ ...conversation, archived_at: "2026-08-10T08:00:00Z" }));
+    });
+    const baseGet = apiMocks.GET.getMockImplementation();
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/conversations") return Promise.resolve(ok([conversation]));
+      if (path === "/conversations/{conversation_id}") return Promise.resolve(ok(detail));
+      return baseGet?.(path, options);
+    });
+    apiMocks.PATCH.mockImplementation((path: string) => {
+      if (path === "/conversations/{conversation_id}") return delayedArchive;
+      return Promise.resolve(missing());
+    });
+
+    render(<HomePage />);
+
+    fireEvent.click((await screen.findByText(conversation.title)).closest("button")!);
+    expect(await screen.findByLabelText("Markdown 草稿")).toHaveValue(memory.body);
+    fireEvent.click(screen.getByRole("button", { name: `更多对话操作 ${conversation.title}` }));
+    fireEvent.click(screen.getByRole("menuitem", { name: `归档对话 ${conversation.title}` }));
+    await waitFor(() => expect(screen.getByLabelText("Markdown 草稿")).toHaveValue(""));
+    fireEvent.change(screen.getByLabelText("Markdown 草稿"), {
+      target: { value: "# 归档之后开始的新输入" },
+    });
+
+    await act(async () => finishArchive?.());
+
+    expect(screen.getByLabelText("Markdown 草稿")).toHaveValue("# 归档之后开始的新输入");
+  });
+
+  it("同一空间的旧列表响应不会覆盖更晚完成的置顶", async () => {
+    mockAuthenticatedSession([]);
+    const conversation: ConversationSummary = {
+      id: "conversation-stale-list-after-pin",
+      title: "置顶不能被旧列表回滚",
+      scope: "PERSONAL",
+      topic: "全部",
+      created_at: "2026-08-08T08:00:00Z",
+      updated_at: "2026-08-09T08:00:00Z",
+      archived_at: null,
+      pinned_at: null,
+      message_count: 1,
+    };
+    let conversationLoads = 0;
+    let finishStaleList: (() => void) | undefined;
+    const staleList = new Promise((resolve) => {
+      finishStaleList = () => resolve(ok([conversation]));
+    });
+    const baseGet = apiMocks.GET.getMockImplementation();
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/conversations") {
+        conversationLoads += 1;
+        return conversationLoads === 1 ? Promise.resolve(ok([conversation])) : staleList;
+      }
+      return baseGet?.(path, options);
+    });
+    apiMocks.PATCH.mockResolvedValue(
+      ok({
+        ...conversation,
+        pinned_at: "2026-08-10T08:00:00Z",
+      }),
+    );
+
+    render(<HomePage />);
+
+    fireEvent.change(await screen.findByLabelText("告诉 Memora 你的想法"), {
+      target: { value: "我以前记录过什么？" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("你以前记录过先验证个人记录和回顾。")).toBeVisible();
+    await waitFor(() => expect(conversationLoads).toBe(2));
+    fireEvent.click(screen.getByRole("button", { name: `更多对话操作 ${conversation.title}` }));
+    fireEvent.click(screen.getByRole("menuitem", { name: `置顶对话 ${conversation.title}` }));
+    await waitFor(() => {
+      expect(
+        screen.getByText(conversation.title).closest(".sidebar-history-group"),
+      ).toHaveAttribute("aria-labelledby", "pinned-history-title");
+    });
+
+    await act(async () => finishStaleList?.());
+
+    expect(screen.getByText(conversation.title).closest(".sidebar-history-group")).toHaveAttribute(
+      "aria-labelledby",
+      "pinned-history-title",
+    );
+  });
+
+  it("重命名失败时忙碌焦点留在弹窗内并恢复到输入框", async () => {
+    mockAuthenticatedSession([]);
+    const conversation: ConversationSummary = {
+      id: "conversation-rename-focus",
+      title: "重命名焦点恢复",
+      scope: "PERSONAL",
+      topic: "全部",
+      created_at: "2026-08-08T08:00:00Z",
+      updated_at: "2026-08-09T08:00:00Z",
+      archived_at: null,
+      pinned_at: null,
+      message_count: 1,
+    };
+    const baseGet = apiMocks.GET.getMockImplementation();
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) =>
+      path === "/conversations" ? Promise.resolve(ok([conversation])) : baseGet?.(path, options),
+    );
+    let finishRename: (() => void) | undefined;
+    const delayedFailure = new Promise((resolve) => {
+      finishRename = () => resolve(missing());
+    });
+    apiMocks.PATCH.mockImplementation((path: string) => {
+      if (path === "/conversations/{conversation_id}") return delayedFailure;
+      return Promise.resolve(missing());
+    });
+
+    render(<HomePage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: `更多对话操作 ${conversation.title}` }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: `重命名对话 ${conversation.title}` }));
+    const titleInput = screen.getByRole("textbox", { name: "对话名称" });
+    fireEvent.change(titleInput, { target: { value: "新的名称" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    const dialog = screen.getByRole("dialog", { name: "重命名对话" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(dialog).toHaveFocus();
+
+    await act(async () => finishRename?.());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("重命名失败，请稍后重试");
+    expect(titleInput).toHaveFocus();
+  });
+
+  it("首次发送创建对话期间锁住重复提交和工作区切换", async () => {
+    mockAuthenticatedSession([]);
+    const createdConversation: ConversationSummary = {
+      id: "conversation-delayed-create",
+      title: "首次发送慢创建",
+      scope: "PERSONAL",
+      topic: "全部",
+      created_at: "2026-08-10T08:00:00Z",
+      updated_at: "2026-08-10T08:00:00Z",
+      archived_at: null,
+      pinned_at: null,
+      message_count: 0,
+    };
+    let finishCreate: (() => void) | undefined;
+    const delayedCreate = new Promise((resolve) => {
+      finishCreate = () => resolve(ok(createdConversation, 201));
+    });
+    const basePost = apiMocks.POST.getMockImplementation();
+    apiMocks.POST.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/conversations") return delayedCreate;
+      return basePost?.(path, options);
+    });
+
+    render(<HomePage />);
+
+    fireEvent.change(await screen.findByLabelText("告诉 Memora 你的想法"), {
+      target: { value: "首次发送慢创建" },
+    });
+    const sendButton = screen.getByRole("button", { name: "发送" });
+    fireEvent.click(sendButton);
+    fireEvent.click(sendButton);
+    await waitFor(() => {
+      expect(apiMocks.POST.mock.calls.filter(([path]) => path === "/conversations")).toHaveLength(
+        1,
+      );
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: `切换空间，当前为 ${personalWorkspace.name}` }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: teamWorkspace.name }));
+    expect(await screen.findByText("请等待当前操作完成后再切换空间")).toBeVisible();
+    expect(apiMocks.POST).not.toHaveBeenCalledWith(
+      "/workspaces/{workspace_id}/activate",
+      expect.anything(),
+    );
+
+    await act(async () => finishCreate?.());
+
+    expect(
+      await screen.findByText("已按你的要求更新右侧草稿。保存前你还可以继续修改。"),
+    ).toBeVisible();
+    expect(apiMocks.POST.mock.calls.filter(([path]) => path === "/conversations")).toHaveLength(1);
+  });
+
+  it("工作区切换刷新期间阻止首次发送创建对话", async () => {
+    mockAuthenticatedSession([]);
+    render(<HomePage />);
+
+    const composer = await screen.findByLabelText("告诉 Memora 你的想法");
+    fireEvent.change(composer, { target: { value: "切换期间不应创建对话" } });
+    const baseGet = apiMocks.GET.getMockImplementation();
+    const authCallsBeforeSwitch = apiMocks.GET.mock.calls.filter(
+      ([path]) => path === "/auth/me",
+    ).length;
+    let finishWorkspaceRefresh: (() => void) | undefined;
+    const delayedAuthRefresh = new Promise((resolve) => {
+      finishWorkspaceRefresh = () => {
+        void Promise.resolve(baseGet?.("/auth/me")).then(resolve);
+      };
+    });
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/auth/me") return delayedAuthRefresh;
+      return baseGet?.(path, options);
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: `切换空间，当前为 ${personalWorkspace.name}` }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: teamWorkspace.name }));
+    await waitFor(() => {
+      expect(
+        apiMocks.GET.mock.calls.filter(([path]) => path === "/auth/me").length,
+      ).toBeGreaterThan(authCallsBeforeSwitch);
+    });
+
+    expect(composer).toBeDisabled();
+    expect(composer).toHaveValue("切换期间不应创建对话");
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(apiMocks.POST.mock.calls.filter(([path]) => path === "/conversations")).toHaveLength(0);
+    expect(composer).toHaveValue("切换期间不应创建对话");
+
+    await act(async () => finishWorkspaceRefresh?.());
+    expect(
+      await screen.findByRole("button", { name: `切换空间，当前为 ${teamWorkspace.name}` }),
+    ).toBeVisible();
+  });
+
+  it("工作区切换刷新期间锁住草稿编辑和附件上传", async () => {
+    mockAuthenticatedSession([]);
+    const summary: ConversationSummary = {
+      id: "conversation-saved-before-switch",
+      title: "切换前已保存的对话",
+      scope: "PERSONAL",
+      topic: "全部",
+      created_at: "2026-08-10T08:00:00Z",
+      updated_at: "2026-08-10T08:00:00Z",
+      archived_at: null,
+      pinned_at: null,
+      message_count: 1,
+    };
+    const sessionGet = apiMocks.GET.getMockImplementation();
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/conversations") return Promise.resolve(ok([summary]));
+      if (path === "/conversations/{conversation_id}") {
+        return Promise.resolve(
+          ok({
+            ...summary,
+            messages: [
+              {
+                id: "message-saved-before-switch",
+                role: "ASSISTANT" as const,
+                status: "COMPLETE" as const,
+                content: "已经保存。",
+                created_at: "2026-08-10T08:00:01Z",
+                citations: [],
+                memory,
+              },
+            ],
+          }),
+        );
+      }
+      return sessionGet?.(path, options);
+    });
+
+    render(<HomePage />);
+    fireEvent.click((await screen.findByText(summary.title)).closest("button")!);
+    const editor = await screen.findByLabelText("Markdown 草稿");
+    expect(editor).toHaveValue(memory.body);
+
+    const baseGet = apiMocks.GET.getMockImplementation();
+    let finishWorkspaceRefresh: (() => void) | undefined;
+    const delayedAuthRefresh = new Promise((resolve) => {
+      finishWorkspaceRefresh = () => {
+        void Promise.resolve(baseGet?.("/auth/me")).then(resolve);
+      };
+    });
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/auth/me") return delayedAuthRefresh;
+      return baseGet?.(path, options);
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: `切换空间，当前为 ${personalWorkspace.name}` }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: teamWorkspace.name }));
+    await waitFor(() => expect(screen.getByRole("main")).toHaveAttribute("inert"));
+
+    expect(editor).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("告诉 Memora 你的想法")).toBeDisabled();
+    expect(screen.getByLabelText("选择图片或 PDF")).toBeDisabled();
+    fireEvent.change(editor, { target: { value: "不应写进目标空间" } });
+    expect(editor).toHaveValue(memory.body);
+    expect(apiMocks.POST.mock.calls.filter(([path]) => path === "/memories")).toHaveLength(0);
+
+    await act(async () => finishWorkspaceRefresh?.());
+    expect(
+      await screen.findByRole("button", { name: `切换空间，当前为 ${teamWorkspace.name}` }),
+    ).toBeVisible();
+  });
+
+  it("工作区激活后刷新失败时进入安全停止页并可重新同步", async () => {
+    mockAuthenticatedSession([]);
+    render(<HomePage />);
+    await screen.findByLabelText("告诉 Memora 你的想法");
+
+    const baseGet = apiMocks.GET.getMockImplementation();
+    let failNextAuthRefresh = true;
+    apiMocks.GET.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/auth/me" && failNextAuthRefresh) {
+        failNextAuthRefresh = false;
+        return Promise.resolve(missing(500));
+      }
+      return baseGet?.(path, options);
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: `切换空间，当前为 ${personalWorkspace.name}` }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: teamWorkspace.name }));
+
+    expect(await screen.findByRole("heading", { name: "暂时无法进入工作空间" })).toBeVisible();
+    expect(screen.queryByLabelText("告诉 Memora 你的想法")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新尝试" }));
+    expect(
+      await screen.findByRole("button", { name: `切换空间，当前为 ${teamWorkspace.name}` }),
+    ).toBeVisible();
+  });
+
+  it("记忆操作未完成时阻止切换工作区", async () => {
+    mockAuthenticatedSession();
+    let finishRefine: (() => void) | undefined;
+    const delayedRefine = new Promise((resolve) => {
+      finishRefine = () =>
+        resolve(
+          ok({
+            markdown: "# 延迟返回的旧空间内容",
+            assistant_message: "已修改。",
+            model_status: "AVAILABLE",
+          }),
+        );
+    });
+    const basePost = apiMocks.POST.getMockImplementation();
+    apiMocks.POST.mockImplementation((path: string, options?: unknown) => {
+      if (path === "/drafts/refine") return delayedRefine;
+      return basePost?.(path, options);
+    });
+
+    render(<HomePage />);
+    await openLibraryView();
+    fireEvent.click(await screen.findByRole("button", { name: /查看记忆：产品方向/ }));
+    fireEvent.change(await screen.findByLabelText("让 AI 修改这条记忆"), {
+      target: { value: "慢慢修改" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "修改草稿" }));
+    await waitFor(() => {
+      expect(apiMocks.POST).toHaveBeenCalledWith("/drafts/refine", {
+        body: { markdown: memory.body, instruction: "慢慢修改" },
+      });
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: `切换空间，当前为 ${personalWorkspace.name}` }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: teamWorkspace.name }));
+
+    expect(await screen.findByText("请等待当前记忆操作完成后再切换空间")).toBeVisible();
+    expect(apiMocks.POST).not.toHaveBeenCalledWith(
+      "/workspaces/{workspace_id}/activate",
+      expect.anything(),
+    );
+
+    await act(async () => finishRefine?.());
+  });
+
+  it("团队记忆把共享时间线、图谱和分析收进同一个入口", async () => {
+    mockAuthenticatedSession([teammateMemory], teamWorkspace.id);
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
+    expect(await screen.findByRole("heading", { name: "团队记忆" })).toBeVisible();
+    expect(screen.getAllByText("社会世界模型")).not.toHaveLength(0);
+    expect(screen.getByRole("button", { name: "问团队记忆" })).toBeVisible();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "共享记忆",
+      "记忆图谱",
+      "记忆分析",
+    ]);
+
+    fireEvent.click(screen.getByRole("tab", { name: "记忆图谱" }));
+    expect(await screen.findByRole("heading", { name: "框图" })).toBeVisible();
+  });
+
+  it("新对话明确使用不读取记忆的通用助手", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+    expect(await screen.findByText("通用助手 · 不读取记忆")).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("告诉 Memora 你的想法"), {
+      target: { value: "帮我调研并画一张流程图" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(apiMocks.STREAM).toHaveBeenCalledWith(
+        expect.objectContaining({ memory_scope: "NONE" }),
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+  });
+
+  it("我的记忆整理助手只请求个人记忆上下文", async () => {
     mockAuthenticatedSession([memory]);
 
     render(<HomePage />);
-    fireEvent.click(await screen.findByRole("button", { name: "云知识库" }));
-    expect(await screen.findByRole("heading", { name: "云知识库" })).toBeVisible();
-    expect(screen.getByText("产品方向")).toBeInTheDocument();
+    await openLibraryView();
+    fireEvent.click(await screen.findByRole("button", { name: "整理助手" }));
+    expect(await screen.findByText("整理助手 · 只使用我的记忆")).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: "框图" }));
-    expect(await screen.findByRole("heading", { name: "科研绘图" })).toBeVisible();
-    expect(screen.getByLabelText("绘图描述")).toBeVisible();
+    fireEvent.change(screen.getByLabelText("告诉 Memora 你的想法"), {
+      target: { value: "把我最近的产品想法整理成 Markdown" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(apiMocks.STREAM).toHaveBeenCalledWith(
+        expect.objectContaining({ memory_scope: "PERSONAL" }),
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+  });
+
+  it("团队记忆问答只请求团队共享记忆上下文", async () => {
+    mockAuthenticatedSession([teammateMemory], teamWorkspace.id);
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
+    fireEvent.click(await screen.findByRole("button", { name: "问团队记忆" }));
+    expect(await screen.findByText("团队助手 · 只使用成员主动共享的记忆")).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("告诉 Memora 你的想法"), {
+      target: { value: "团队最近记录了哪些研究结论" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(apiMocks.STREAM).toHaveBeenCalledWith(
+        expect.objectContaining({ memory_scope: "TEAM" }),
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+  });
+
+  it("从团队助手切回个人空间时重置为不读取记忆的通用助手", async () => {
+    mockAuthenticatedSession([teammateMemory], teamWorkspace.id);
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
+    fireEvent.click(await screen.findByRole("button", { name: "问团队记忆" }));
+    expect(await screen.findByText("团队助手 · 只使用成员主动共享的记忆")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: `切换空间，当前为 ${teamWorkspace.name}` }));
+    fireEvent.click(screen.getByRole("menuitem", { name: personalWorkspace.name }));
+
+    expect(await screen.findByText("通用助手 · 不读取记忆")).toBeVisible();
+    expect(screen.queryByText("团队助手 · 只使用成员主动共享的记忆")).not.toBeInTheDocument();
   });
 
   it("模型菜单可以在 GPT、Claude 和 Gemini 之间切换", async () => {
@@ -1355,32 +2277,27 @@ describe("Memora personal Markdown MVP", () => {
     });
   });
 
-  it("深度调研入口固定使用本轮联网并保留来源体验", async () => {
+  it("左侧主功能只保留三个入口且收起后标签一致", async () => {
     mockAuthenticatedSession([]);
 
     render(<HomePage />);
-    fireEvent.click(await screen.findByRole("button", { name: "深度调研" }));
+    const primaryNavigation = await screen.findByRole("navigation", { name: "主要功能" });
+    expect(
+      Array.from(primaryNavigation.querySelectorAll("button"), (button) =>
+        button.textContent?.trim(),
+      ),
+    ).toEqual(["新对话", "我的记忆", "团队记忆"]);
+    expect(screen.queryByRole("button", { name: "深度调研" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "云知识库" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "框图" })).not.toBeInTheDocument();
 
-    expect(await screen.findByRole("heading", { name: "今天想深入研究什么？" })).toBeVisible();
-    const mode = screen.getByRole("combobox", { name: "联网模式" });
-    expect(mode).toHaveValue("REQUIRED");
-    expect(mode).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("告诉 Memora 你的想法"), {
-      target: { value: "调研可解释社会世界模型" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "发送" }));
-
-    await waitFor(() => {
-      expect(apiMocks.STREAM).toHaveBeenCalledWith(
-        expect.objectContaining({
-          conversation_id: "conversation-current",
-          web_search: "REQUIRED",
-        }),
-        expect.any(Function),
-        expect.anything(),
-      );
-    });
-    expect(await screen.findByText(/已联网 · 1 个来源/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "收起侧边栏" }));
+    const compactNavigation = screen.getByRole("navigation", { name: "快捷功能" });
+    expect(
+      Array.from(compactNavigation.querySelectorAll("button"), (button) =>
+        button.getAttribute("aria-label"),
+      ),
+    ).toEqual(["新对话", "我的记忆", "团队记忆"]);
   });
 
   it("可以取消正在运行的 Agent，并从持久化执行记录确认取消", async () => {
@@ -1624,6 +2541,7 @@ describe("Memora personal Markdown MVP", () => {
       body: {
         conversation_id: "conversation-current",
         markdown: "",
+        memory_scope: "NONE",
         model_id: "balanced",
         web_search: "AUTO",
         messages: [{ role: "USER", content: "我想先验证个人记录和回顾。" }],
@@ -1674,7 +2592,7 @@ describe("Memora personal Markdown MVP", () => {
     mockAuthenticatedSession([teammateMemory], teamWorkspace.id);
 
     render(<HomePage />);
-    await openLibraryView();
+    fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
     fireEvent.click(await screen.findByRole("button", { name: /查看记忆：社会世界模型/ }));
 
     const editor = await screen.findByLabelText("记忆 Markdown");
@@ -1685,16 +2603,14 @@ describe("Memora personal Markdown MVP", () => {
     expect(screen.queryByLabelText("让 AI 修改这条记忆")).not.toBeInTheDocument();
   });
 
-  it("可以强制本轮联网，把优化后的内容和可点击来源加入右侧", async () => {
+  it("隐藏联网控件并默认自动联网，把优化后的内容和可点击来源加入右侧", async () => {
     mockAuthenticatedSession([]);
 
     render(<HomePage />);
     await openCaptureView();
 
-    const mode = await screen.findByRole("combobox", { name: "联网模式" });
-    expect(mode).toHaveValue("AUTO");
-    fireEvent.change(mode, { target: { value: "REQUIRED" } });
-    expect(screen.getByText("发送后恢复自动")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "联网模式" })).not.toBeInTheDocument();
+    expect(screen.queryByText("需要最新信息时自动搜索")).not.toBeInTheDocument();
 
     const composer = screen.getByLabelText("告诉 Memora 你的想法");
     fireEvent.change(composer, {
@@ -1707,8 +2623,9 @@ describe("Memora personal Markdown MVP", () => {
         body: {
           conversation_id: "conversation-current",
           markdown: "",
+          memory_scope: "NONE",
           model_id: "balanced",
-          web_search: "REQUIRED",
+          web_search: "AUTO",
           messages: [
             {
               role: "USER",
@@ -1730,7 +2647,6 @@ describe("Memora personal Markdown MVP", () => {
     expect(screen.getByText(/已联网 · 1 个来源/)).toBeInTheDocument();
     expect(screen.getByText("联网搜索")).toBeInTheDocument();
     expect(screen.getByText("使用 1 个来源")).toBeInTheDocument();
-    expect(mode).toHaveValue("AUTO");
     expect(apiMocks.POST).not.toHaveBeenCalledWith("/memories", expect.anything());
   });
 
@@ -1777,6 +2693,7 @@ describe("Memora personal Markdown MVP", () => {
         body: {
           conversation_id: "conversation-current",
           markdown: "# 产品方向\n\n先验证个人记录和回顾。",
+          memory_scope: "NONE",
           model_id: "balanced",
           web_search: "AUTO",
           messages: [
@@ -1818,6 +2735,7 @@ describe("Memora personal Markdown MVP", () => {
         body: {
           conversation_id: "conversation-current",
           markdown: "![截图.png](/api/assets/asset-image/content)",
+          memory_scope: "NONE",
           model_id: "balanced",
           web_search: "AUTO",
           messages: [
@@ -1851,6 +2769,7 @@ describe("Memora personal Markdown MVP", () => {
         body: {
           conversation_id: "conversation-current",
           markdown: "# 产品方向\n\n先验证个人记录和回顾。",
+          memory_scope: "NONE",
           model_id: "balanced",
           web_search: "AUTO",
           messages: [
@@ -1904,6 +2823,7 @@ describe("Memora personal Markdown MVP", () => {
         body: {
           conversation_id: "conversation-current",
           markdown: "",
+          memory_scope: "NONE",
           model_id: "balanced",
           web_search: "AUTO",
           messages: [
@@ -1990,7 +2910,7 @@ describe("Memora personal Markdown MVP", () => {
     mockAuthenticatedSession([memory, teammateMemory], teamWorkspace.id);
 
     render(<HomePage />);
-    await openLibraryView();
+    fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
     fireEvent.click(await screen.findByRole("button", { name: "检索记忆库" }));
     fireEvent.change(screen.getByLabelText("关键词"), { target: { value: "社会世界" } });
     fireEvent.click(screen.getByRole("button", { name: "仅标题" }));
@@ -2184,7 +3104,13 @@ describe("Memora personal Markdown MVP", () => {
     mockAuthenticatedSession([]);
 
     render(<HomePage />);
-    fireEvent.click(await screen.findByRole("button", { name: "打开账户菜单" }));
+    const accountButton = await screen.findByRole("button", { name: "打开账户菜单" });
+    const accountDock = accountButton.closest(".sidebar-account-dock");
+    expect(accountDock).toBeInTheDocument();
+    expect(accountDock).toHaveTextContent("Plus Plan");
+    expect(accountDock).toContainElement(screen.getByRole("button", { name: /打开订阅与账单/ }));
+    expect(accountDock).not.toHaveClass("sidebar-account-card");
+    fireEvent.click(accountButton);
 
     const menu = screen.getByRole("menu", { name: "账户菜单" });
     expect(menu).toBeVisible();

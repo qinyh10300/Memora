@@ -33,19 +33,21 @@ import {
   willSearchWeb,
 } from "@/features/capture/trace";
 import { SubscriptionDialog } from "@/features/billing/subscription-dialog";
-import { KnowledgeBaseWorkspace } from "@/features/knowledge/knowledge-base-workspace";
+import { DiagramWorkspace } from "@/features/diagrams/diagram-workspace";
 import { TeamIntelligenceWorkspace } from "@/features/insights/team-intelligence-workspace";
 import { MemoryDetail, Timeline } from "@/features/library/memory-library";
 import { ServerStateClient, serverStateKeys } from "@/features/server-state/query-client";
 import { AccountSettingsDialog } from "@/features/settings/account-settings-dialog";
 import type {
   AppView,
+  ChatContext,
   ConversationSummary,
   CurrentUser,
   DraftDocumentAttachment,
   DraftDocumentCitation,
   DraftImageAttachment,
   DraftMessage,
+  DraftMemoryScope,
   DraftModel,
   Memory,
   MemorySearchFilters,
@@ -75,6 +77,7 @@ import {
 import { applyInterfaceTheme, readInterfaceTheme } from "@/features/shared/interface-theme";
 import { formatDateTime, nextId, readStoredBoolean, storeBoolean } from "@/features/shared/utils";
 import { TeamAccessDialog, TeamWorkspace } from "@/features/team/team";
+import { TeamMemoryCenter } from "@/features/team-memory/team-memory-center";
 import { VisualWorkspace } from "@/features/visuals/visual-workspace";
 import { ResizableSplit } from "@/features/workbench/layout";
 import { Sidebar } from "@/features/workspaces/sidebar";
@@ -92,6 +95,34 @@ const demoAccounts = [
   { name: "Casey", email: "casey@memora.local" },
   { name: "Devon", email: "devon@memora.local" },
 ];
+
+const memoryScopeForContext: Record<ChatContext, DraftMemoryScope> = {
+  GENERAL: "NONE",
+  PERSONAL: "PERSONAL",
+  TEAM: "TEAM",
+};
+
+function orderConversations(items: ConversationSummary[]) {
+  return [...items].sort((left, right) => {
+    const leftPinned = Boolean(left.pinned_at);
+    const rightPinned = Boolean(right.pinned_at);
+    if (leftPinned !== rightPinned) return leftPinned ? -1 : 1;
+
+    const leftTime = Date.parse(leftPinned ? (left.pinned_at ?? left.updated_at) : left.updated_at);
+    const rightTime = Date.parse(
+      rightPinned ? (right.pinned_at ?? right.updated_at) : right.updated_at,
+    );
+    if (leftTime !== rightTime) return rightTime - leftTime;
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function replaceConversationSummary(items: ConversationSummary[], updated: ConversationSummary) {
+  return orderConversations([
+    updated,
+    ...items.filter((conversation) => conversation.id !== updated.id),
+  ]);
+}
 
 function AuthDialog({
   mode,
@@ -750,6 +781,7 @@ export function WorkbenchShell() {
   const [booting, setBooting] = useState(true);
   const [sessionError, setSessionError] = useState("");
   const [view, setView] = useState<AppView>("CAPTURE");
+  const [chatContext, setChatContext] = useState<ChatContext>("GENERAL");
   const [viewMotion, setViewMotion] = useState<"forward" | "back">("forward");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -760,8 +792,20 @@ export function WorkbenchShell() {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const activeConversationIdRef = useRef<string | null>(null);
+  const conversationLifecycleEpochRef = useRef(new Map<string, number>());
+  const conversationListRevisionRef = useRef(0);
+  const conversationListRequestRef = useRef(0);
+  const conversationDetailRequestRef = useRef(0);
+  const conversationViewRevisionRef = useRef(0);
+  const [pendingConversationActions, setPendingConversationActions] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const pendingConversationActionsRef = useRef(new Set<string>());
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
+  const conversationWorkspaceEpochRef = useRef(0);
+  const workspaceSwitchInFlightRef = useRef(false);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [teamAccessMode, setTeamAccessMode] = useState<TeamAccessMode | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
@@ -793,7 +837,10 @@ export function WorkbenchShell() {
   );
   const draftAbortControllerRef = useRef<AbortController | null>(null);
   const draftExecutionIdRef = useRef<string | null>(null);
-  const refiningDraft = isCaptureAgentActive(draftAgent.phase);
+  const draftRunGenerationRef = useRef(0);
+  const draftRunInFlightRef = useRef(false);
+  const [draftStarting, setDraftStarting] = useState(false);
+  const refiningDraft = draftStarting || isCaptureAgentActive(draftAgent.phase);
   const draftActivity = refiningDraft ? draftAgent.trace : null;
   const [savingDraft, setSavingDraft] = useState(false);
   const [modelOptions, setModelOptions] = useState<DraftModel[]>([]);
@@ -842,6 +889,8 @@ export function WorkbenchShell() {
   }
 
   function navigateTo(nextView: AppView) {
+    conversationDetailRequestRef.current += 1;
+    conversationViewRevisionRef.current += 1;
     if (nextView !== view) {
       setViewMotion(nextView === "LIBRARY" ? "forward" : "back");
       setView(nextView);
@@ -965,13 +1014,30 @@ export function WorkbenchShell() {
     }
   }, []);
 
-  const loadConversations = useCallback(async () => {
+  const loadConversations = useCallback(async (workspaceEpoch: number) => {
+    const requestId = conversationListRequestRef.current + 1;
+    conversationListRequestRef.current = requestId;
+    const listRevision = conversationListRevisionRef.current;
     try {
       const result = await api.GET("/conversations");
       const next = result.data && result.response.ok ? result.data : [];
+      if (
+        workspaceEpoch !== conversationWorkspaceEpochRef.current ||
+        requestId !== conversationListRequestRef.current ||
+        listRevision !== conversationListRevisionRef.current
+      ) {
+        return [];
+      }
       setConversations(next);
       return next;
     } catch {
+      if (
+        workspaceEpoch !== conversationWorkspaceEpochRef.current ||
+        requestId !== conversationListRequestRef.current ||
+        listRevision !== conversationListRevisionRef.current
+      ) {
+        return [];
+      }
       setConversations([]);
       return [];
     }
@@ -1019,6 +1085,13 @@ export function WorkbenchShell() {
         );
         if (!resolvedWorkspace) throw new Error("workspace_missing_after_activation");
 
+        conversationWorkspaceEpochRef.current += 1;
+        const workspaceEpoch = conversationWorkspaceEpochRef.current;
+        conversationLifecycleEpochRef.current.clear();
+        conversationListRevisionRef.current += 1;
+        conversationListRequestRef.current += 1;
+        pendingConversationActionsRef.current.clear();
+        setPendingConversationActions(new Set());
         setUser(resolvedUser);
         setWorkspaces(resolvedWorkspaces);
         setActiveWorkspace(resolvedWorkspace);
@@ -1044,14 +1117,20 @@ export function WorkbenchShell() {
           loadMemories(resolvedUser.id, resolvedWorkspace),
           loadWorkspaceMembers(resolvedWorkspace),
           loadSubscription(),
-          loadConversations(),
+          loadConversations(workspaceEpoch),
         ]);
       } catch {
+        conversationWorkspaceEpochRef.current += 1;
+        conversationLifecycleEpochRef.current.clear();
+        conversationListRevisionRef.current += 1;
+        conversationListRequestRef.current += 1;
+        activeConversationIdRef.current = null;
         setSessionError("无法进入工作空间，请刷新后重试。");
         setUser(null);
         setWorkspaces([]);
         setActiveWorkspace(null);
         setMembers([]);
+        setConversations([]);
         setModelOptions([]);
         setSelectedModelId(null);
       } finally {
@@ -1083,9 +1162,14 @@ export function WorkbenchShell() {
   }, [enterPersonalSpace]);
 
   useEffect(() => {
-    if (view === "LIBRARY" && !selectedMemory && memories[0]) {
-      void selectMemory(memories[0]);
-    }
+    if (selectedMemory) return;
+    const firstVisibleMemory =
+      view === "LIBRARY"
+        ? memories.find((memory) => memory.is_owner)
+        : view === "KNOWLEDGE"
+          ? memories.find((memory) => memory.visibility === "WORKSPACE")
+          : null;
+    if (firstVisibleMemory) void selectMemory(firstVisibleMemory);
   }, [view, memories, selectedMemory]);
 
   async function selectMemory(memory: Memory) {
@@ -1108,7 +1192,15 @@ export function WorkbenchShell() {
   }
 
   function workspaceChangeIsBlocked() {
-    if (savingDraft || refiningDraft) {
+    if (workspaceSwitchInFlightRef.current) {
+      showToast("请等待空间切换完成");
+      return true;
+    }
+    if (refiningMemory || savingMode || deletingMemory || visibilityChanging) {
+      showToast("请等待当前记忆操作完成后再切换空间");
+      return true;
+    }
+    if (savingDraft || refiningDraft || draftRunInFlightRef.current) {
       showToast("请等待当前操作完成后再切换空间");
       return true;
     }
@@ -1121,7 +1213,9 @@ export function WorkbenchShell() {
 
   async function switchWorkspace(workspace: Workspace, alreadyActive = false) {
     if (workspace.id === activeWorkspace?.id && !alreadyActive) return true;
+    if (workspaceSwitchInFlightRef.current) return false;
     if (workspaceChangeIsBlocked()) return false;
+    workspaceSwitchInFlightRef.current = true;
     setWorkspaceBusy(true);
     try {
       if (!alreadyActive) {
@@ -1149,9 +1243,17 @@ export function WorkbenchShell() {
       );
       if (!resolvedWorkspace) throw new Error("workspace_membership_missing");
 
+      conversationWorkspaceEpochRef.current += 1;
+      const workspaceEpoch = conversationWorkspaceEpochRef.current;
+      conversationLifecycleEpochRef.current.clear();
+      conversationListRevisionRef.current += 1;
+      conversationListRequestRef.current += 1;
+      pendingConversationActionsRef.current.clear();
+      setPendingConversationActions(new Set());
       setUser(userResult.data);
       setWorkspaces(workspaceResult.data);
       setActiveWorkspace(resolvedWorkspace);
+      setConversations([]);
       setSelectedMemory(null);
       setMemoryMarkdown("");
       setMemoryBaseline("");
@@ -1160,20 +1262,38 @@ export function WorkbenchShell() {
       setMemorySearchActive(false);
       setVisualSeed(null);
       resetDraft();
-      setView(isCollaborativeWorkspace(resolvedWorkspace) ? "TEAM" : "CAPTURE");
+      setChatContext("GENERAL");
+      setView(isCollaborativeWorkspace(resolvedWorkspace) ? "KNOWLEDGE" : "CAPTURE");
       setViewMotion("forward");
       setSidebarOpen(false);
       await Promise.all([
         loadMemories(userResult.data.id, resolvedWorkspace),
         loadWorkspaceMembers(resolvedWorkspace),
-        loadConversations(),
+        loadConversations(workspaceEpoch),
       ]);
       showToast(`已进入 ${resolvedWorkspace.name}`);
       return true;
     } catch {
-      showToast("切换空间失败，请稍后重试");
+      conversationWorkspaceEpochRef.current += 1;
+      conversationLifecycleEpochRef.current.clear();
+      conversationListRevisionRef.current += 1;
+      conversationListRequestRef.current += 1;
+      conversationDetailRequestRef.current += 1;
+      pendingConversationActionsRef.current.clear();
+      activeConversationIdRef.current = null;
+      setPendingConversationActions(new Set());
+      setSessionError("无法确认切换后的工作空间，请重新尝试。");
+      setUser(null);
+      setWorkspaces([]);
+      setActiveWorkspace(null);
+      setMembers([]);
+      setConversations([]);
+      setMemories([]);
+      setSelectedMemory(null);
+      resetDraft();
       return false;
     } finally {
+      workspaceSwitchInFlightRef.current = false;
       setWorkspaceBusy(false);
     }
   }
@@ -1267,23 +1387,48 @@ export function WorkbenchShell() {
     }
   }
 
-  function startNewConversation() {
+  function startNewConversation(nextContext: ChatContext = "GENERAL") {
     if (workspaceChangeIsBlocked()) return;
+    if (
+      nextContext === "TEAM" &&
+      (!activeWorkspace || !isCollaborativeWorkspace(activeWorkspace))
+    ) {
+      showToast("请先进入协作团队，再询问团队记忆");
+      return;
+    }
+    setChatContext(nextContext);
     resetDraft();
     navigateTo("CAPTURE");
   }
 
   async function openConversation(conversation: ConversationSummary) {
-    if (conversation.id === activeConversationId) {
+    if (conversation.id === activeConversationIdRef.current) {
       navigateTo("CAPTURE");
       return;
     }
     if (workspaceChangeIsBlocked()) return;
+    if (pendingConversationActionsRef.current.has(conversation.id)) {
+      showToast("请等待当前对话操作完成");
+      return;
+    }
+    const workspaceEpoch = conversationWorkspaceEpochRef.current;
+    const lifecycleEpoch = conversationLifecycleEpochRef.current.get(conversation.id) ?? 0;
+    const viewRevision = conversationViewRevisionRef.current;
+    const requestId = conversationDetailRequestRef.current + 1;
+    conversationDetailRequestRef.current = requestId;
     try {
       const result = await api.GET("/conversations/{conversation_id}", {
         params: { path: { conversation_id: conversation.id } },
       });
       if (!result.data || !result.response.ok) throw new Error("conversation_load_failed");
+      if (
+        workspaceEpoch !== conversationWorkspaceEpochRef.current ||
+        lifecycleEpoch !== (conversationLifecycleEpochRef.current.get(conversation.id) ?? 0) ||
+        requestId !== conversationDetailRequestRef.current ||
+        viewRevision !== conversationViewRevisionRef.current
+      ) {
+        return;
+      }
       const detail = result.data;
       const restoredMessages: DraftMessage[] = detail.messages.map((message) => ({
         id: message.id,
@@ -1296,6 +1441,14 @@ export function WorkbenchShell() {
       const linkedMemory = [...detail.messages]
         .reverse()
         .find((message) => message.memory !== null)?.memory;
+      setChatContext(
+        detail.topic === "团队记忆" || detail.scope === "WORKSPACE"
+          ? "TEAM"
+          : detail.topic === "个人记忆"
+            ? "PERSONAL"
+            : "GENERAL",
+      );
+      activeConversationIdRef.current = detail.id;
       setMessages(restoredMessages.length ? restoredMessages : [initialMessage]);
       setActiveConversationId(detail.id);
       setDraft(linkedMemory?.body ?? "");
@@ -1319,25 +1472,139 @@ export function WorkbenchShell() {
             : [],
         ),
       );
+      conversationViewRevisionRef.current += 1;
       navigateTo("CAPTURE");
     } catch {
+      if (
+        workspaceEpoch !== conversationWorkspaceEpochRef.current ||
+        lifecycleEpoch !== (conversationLifecycleEpochRef.current.get(conversation.id) ?? 0) ||
+        requestId !== conversationDetailRequestRef.current ||
+        viewRevision !== conversationViewRevisionRef.current
+      ) {
+        return;
+      }
       showToast("历史对话暂时无法读取");
     }
   }
 
+  function beginConversationAction(conversationId: string) {
+    if (workspaceSwitchInFlightRef.current) {
+      showToast("请等待空间切换完成");
+      return false;
+    }
+    if (pendingConversationActionsRef.current.has(conversationId)) {
+      showToast("请等待当前对话操作完成");
+      return false;
+    }
+    conversationListRevisionRef.current += 1;
+    pendingConversationActionsRef.current.add(conversationId);
+    setPendingConversationActions(new Set(pendingConversationActionsRef.current));
+    return true;
+  }
+
+  function finishConversationAction(conversationId: string) {
+    pendingConversationActionsRef.current.delete(conversationId);
+    setPendingConversationActions(new Set(pendingConversationActionsRef.current));
+  }
+
   async function archiveConversation(conversation: ConversationSummary) {
-    if (conversation.id === activeConversationId && workspaceChangeIsBlocked()) return;
+    if (conversation.id === activeConversationIdRef.current && workspaceChangeIsBlocked()) return;
+    if (!beginConversationAction(conversation.id)) return;
+    conversationLifecycleEpochRef.current.set(
+      conversation.id,
+      (conversationLifecycleEpochRef.current.get(conversation.id) ?? 0) + 1,
+    );
+    if (conversation.id === activeConversationIdRef.current) resetDraft();
+    const workspaceEpoch = conversationWorkspaceEpochRef.current;
     try {
       const result = await api.PATCH("/conversations/{conversation_id}", {
         params: { path: { conversation_id: conversation.id } },
         body: { archived: true },
       });
       if (!result.data || !result.response.ok) throw new Error("conversation_archive_failed");
+      if (workspaceEpoch !== conversationWorkspaceEpochRef.current) return;
+      conversationListRevisionRef.current += 1;
       setConversations((current) => current.filter((item) => item.id !== conversation.id));
-      if (conversation.id === activeConversationId) resetDraft();
       showToast("对话已归档");
     } catch {
+      if (workspaceEpoch !== conversationWorkspaceEpochRef.current) return;
       showToast("归档失败，请稍后重试");
+    } finally {
+      finishConversationAction(conversation.id);
+    }
+  }
+
+  async function pinConversation(conversation: ConversationSummary, pinned: boolean) {
+    if (!beginConversationAction(conversation.id)) return;
+    const workspaceEpoch = conversationWorkspaceEpochRef.current;
+    try {
+      const result = await api.PATCH("/conversations/{conversation_id}", {
+        params: { path: { conversation_id: conversation.id } },
+        body: { pinned },
+      });
+      if (!result.data || !result.response.ok) throw new Error("conversation_pin_failed");
+      if (workspaceEpoch !== conversationWorkspaceEpochRef.current) return;
+      conversationListRevisionRef.current += 1;
+      setConversations((current) => replaceConversationSummary(current, result.data));
+      showToast(pinned ? "对话已置顶" : "已取消置顶");
+    } catch {
+      if (workspaceEpoch !== conversationWorkspaceEpochRef.current) return;
+      showToast(pinned ? "置顶失败，请稍后重试" : "取消置顶失败，请稍后重试");
+    } finally {
+      finishConversationAction(conversation.id);
+    }
+  }
+
+  async function renameConversation(conversation: ConversationSummary, title: string) {
+    if (!beginConversationAction(conversation.id)) return false;
+    const workspaceEpoch = conversationWorkspaceEpochRef.current;
+    try {
+      const result = await api.PATCH("/conversations/{conversation_id}", {
+        params: { path: { conversation_id: conversation.id } },
+        body: { title },
+      });
+      if (!result.data || !result.response.ok) throw new Error("conversation_rename_failed");
+      if (workspaceEpoch !== conversationWorkspaceEpochRef.current) return true;
+      conversationListRevisionRef.current += 1;
+      setConversations((current) => replaceConversationSummary(current, result.data));
+      showToast("对话已重命名");
+      return true;
+    } catch {
+      if (workspaceEpoch !== conversationWorkspaceEpochRef.current) return true;
+      showToast("重命名失败，请稍后重试");
+      return false;
+    } finally {
+      finishConversationAction(conversation.id);
+    }
+  }
+
+  async function deleteConversation(conversation: ConversationSummary) {
+    if (conversation.id === activeConversationIdRef.current && workspaceChangeIsBlocked()) {
+      return false;
+    }
+    if (!beginConversationAction(conversation.id)) return false;
+    conversationLifecycleEpochRef.current.set(
+      conversation.id,
+      (conversationLifecycleEpochRef.current.get(conversation.id) ?? 0) + 1,
+    );
+    if (conversation.id === activeConversationIdRef.current) resetDraft();
+    const workspaceEpoch = conversationWorkspaceEpochRef.current;
+    try {
+      const result = await api.DELETE("/conversations/{conversation_id}", {
+        params: { path: { conversation_id: conversation.id } },
+      });
+      if (!result.response.ok) throw new Error("conversation_delete_failed");
+      if (workspaceEpoch !== conversationWorkspaceEpochRef.current) return true;
+      conversationListRevisionRef.current += 1;
+      setConversations((current) => current.filter((item) => item.id !== conversation.id));
+      showToast("对话已删除");
+      return true;
+    } catch {
+      if (workspaceEpoch !== conversationWorkspaceEpochRef.current) return true;
+      showToast("删除失败，请稍后重试");
+      return false;
+    } finally {
+      finishConversationAction(conversation.id);
     }
   }
 
@@ -1349,22 +1616,58 @@ export function WorkbenchShell() {
     modelId: string | null,
     appendUserMessage = true,
   ) {
-    let conversationId = activeConversationId;
+    if (workspaceSwitchInFlightRef.current) {
+      showToast("请等待空间切换完成后再发送");
+      return;
+    }
+    if (draftRunInFlightRef.current) return;
+    draftRunInFlightRef.current = true;
+    draftRunGenerationRef.current += 1;
+    const draftRunGeneration = draftRunGenerationRef.current;
+    const workspaceEpoch = conversationWorkspaceEpochRef.current;
+    const draftRunIsCurrent = () =>
+      draftRunGeneration === draftRunGenerationRef.current &&
+      workspaceEpoch === conversationWorkspaceEpochRef.current;
+    setDraftStarting(true);
+    conversationDetailRequestRef.current += 1;
+    conversationViewRevisionRef.current += 1;
+    let conversationId = activeConversationIdRef.current;
     if (!conversationId) {
       const title = instruction.replaceAll(/\s+/g, " ").trim().slice(0, 48) || "新对话";
+      conversationListRevisionRef.current += 1;
       try {
         const result = await api.POST("/conversations", { body: { title } });
         if (!result.data || !result.response.ok) throw new Error("conversation_create_failed");
+        if (!draftRunIsCurrent()) {
+          if (draftRunGeneration === draftRunGenerationRef.current) {
+            draftRunInFlightRef.current = false;
+            setDraftStarting(false);
+          }
+          return;
+        }
         conversationId = result.data.id;
+        conversationListRevisionRef.current += 1;
+        activeConversationIdRef.current = conversationId;
         setActiveConversationId(conversationId);
         setConversations((current) => [
           result.data,
           ...current.filter((item) => item.id !== result.data?.id),
         ]);
       } catch {
-        showToast("无法开始新对话，请稍后重试");
+        if (draftRunIsCurrent()) showToast("无法开始新对话，请稍后重试");
+        if (draftRunGeneration === draftRunGenerationRef.current) {
+          draftRunInFlightRef.current = false;
+          setDraftStarting(false);
+        }
         return;
       }
+    }
+    if (!draftRunIsCurrent()) {
+      if (draftRunGeneration === draftRunGenerationRef.current) {
+        draftRunInFlightRef.current = false;
+        setDraftStarting(false);
+      }
+      return;
     }
     const requestedWebSearch = willSearchWeb(instruction, webSearch);
     const modelLabel = selectedDraftModelLabel(modelOptions, modelId);
@@ -1373,7 +1676,7 @@ export function WorkbenchShell() {
       images,
       documents,
     });
-    const retryRequest = { instruction, images, documents, webSearch, modelId };
+    const retryRequest = { chatContext, instruction, images, documents, webSearch, modelId };
     const abortController = new AbortController();
     draftAbortControllerRef.current = abortController;
     draftExecutionIdRef.current = null;
@@ -1416,16 +1719,19 @@ export function WorkbenchShell() {
     const conversation = [...priorConversation, currentTurn];
     if (appendUserMessage) setMessages((current) => [...current, userMessage]);
     dispatchDraftAgent({ type: "START", trace: liveTrace, request: retryRequest });
+    setDraftStarting(false);
     try {
       const data = await streamDraftChat(
         {
           conversation_id: conversationId,
+          memory_scope: memoryScopeForContext[chatContext],
           markdown: draft,
           messages: conversation,
           web_search: webSearch,
           ...(modelId ? { model_id: modelId } : {}),
         },
         (event) => {
+          if (!draftRunIsCurrent()) return;
           if (event.type === "progress") {
             liveTrace = {
               ...liveTrace,
@@ -1446,13 +1752,18 @@ export function WorkbenchShell() {
         {
           signal: abortController.signal,
           onExecutionId: (executionId) => {
+            if (!draftRunIsCurrent()) return;
             draftExecutionIdRef.current = executionId;
             dispatchDraftAgent({ type: "EXECUTION_IDENTIFIED", executionId });
           },
         },
       );
+      if (!draftRunIsCurrent()) return;
       const responseDocumentCitations = data.document_citations ?? [];
-      if (data.conversation_id) setActiveConversationId(data.conversation_id);
+      if (data.conversation_id) {
+        activeConversationIdRef.current = data.conversation_id;
+        setActiveConversationId(data.conversation_id);
+      }
       if (data.credits_remaining !== null && data.credits_remaining !== undefined) {
         setSubscription((current) =>
           current
@@ -1553,11 +1864,13 @@ export function WorkbenchShell() {
         }),
         savedMemoryId: savedMemory?.id,
       });
-      void loadConversations();
+      void loadConversations(conversationWorkspaceEpochRef.current);
     } catch (caught) {
+      if (!draftRunIsCurrent()) return;
       const streamError = caught instanceof DraftChatStreamError ? caught : null;
       if (streamError?.code === "http_402") {
         await loadSubscription();
+        if (!draftRunIsCurrent()) return;
         setSubscriptionOpen(true);
         showToast("Credits 余额不足，请升级套餐后继续");
       }
@@ -1567,6 +1880,7 @@ export function WorkbenchShell() {
         dispatchDraftAgent({ type: "RECOVERY_STARTED", executionId });
         try {
           let execution = await getAgentExecution(executionId);
+          if (!draftRunIsCurrent()) return;
           for (let attempt = 0; attempt < 7; attempt += 1) {
             liveTrace = traceFromExecution(execution, streamError?.trace ?? liveTrace);
             dispatchDraftAgent({ type: "RECOVERED", execution, trace: liveTrace });
@@ -1580,12 +1894,14 @@ export function WorkbenchShell() {
             }
             await new Promise((resolve) => window.setTimeout(resolve, 300));
             execution = await getAgentExecution(executionId);
+            if (!draftRunIsCurrent()) return;
           }
 
           if (execution.saved_memory_id) {
             const savedResult = await api.GET("/memories/{memory_id}", {
               params: { path: { memory_id: execution.saved_memory_id } },
             });
+            if (!draftRunIsCurrent()) return;
             if (savedResult.data && savedResult.response.ok) {
               const recoveredMemory = savedResult.data;
               setDraft(recoveredMemory.body);
@@ -1664,14 +1980,22 @@ export function WorkbenchShell() {
         cancelled,
       });
     } finally {
-      if (draftAbortControllerRef.current === abortController) {
-        draftAbortControllerRef.current = null;
+      if (draftRunGeneration === draftRunGenerationRef.current) {
+        draftRunInFlightRef.current = false;
+        setDraftStarting(false);
+        if (draftAbortControllerRef.current === abortController) {
+          draftAbortControllerRef.current = null;
+        }
       }
     }
   }
 
   async function cancelDraftRun() {
     if (!refiningDraft) return;
+    if (draftStarting) {
+      resetDraft();
+      return;
+    }
     dispatchDraftAgent({ type: "CANCEL_REQUESTED" });
     draftAbortControllerRef.current?.abort();
     const executionId = draftExecutionIdRef.current;
@@ -1686,6 +2010,7 @@ export function WorkbenchShell() {
   async function retryDraftRun() {
     if (!draftAgent.retryRequest || refiningDraft) return;
     const request = draftAgent.retryRequest;
+    setChatContext(request.chatContext);
     await refineCapture(
       request.instruction,
       request.images,
@@ -1697,6 +2022,10 @@ export function WorkbenchShell() {
   }
 
   async function saveDraft() {
+    if (workspaceSwitchInFlightRef.current) {
+      showToast("请等待空间切换完成后再保存");
+      return;
+    }
     if (!draft.trim() || savingDraft || !activeWorkspace) return;
     const requestedVisibility = isCollaborativeWorkspace(activeWorkspace)
       ? saveVisibility
@@ -1764,6 +2093,12 @@ export function WorkbenchShell() {
   }
 
   function resetDraft() {
+    draftRunGenerationRef.current += 1;
+    draftRunInFlightRef.current = false;
+    setDraftStarting(false);
+    conversationDetailRequestRef.current += 1;
+    conversationViewRevisionRef.current += 1;
+    activeConversationIdRef.current = null;
     draftAbortControllerRef.current?.abort();
     draftAbortControllerRef.current = null;
     draftExecutionIdRef.current = null;
@@ -1792,7 +2127,13 @@ export function WorkbenchShell() {
       resolved = data;
       setMemories((current) => [data, ...current.filter((memory) => memory.id !== data.id)]);
     }
-    navigateTo("LIBRARY");
+    navigateTo(
+      resolved.visibility === "WORKSPACE" &&
+        activeWorkspace &&
+        isCollaborativeWorkspace(activeWorkspace)
+        ? "KNOWLEDGE"
+        : "LIBRARY",
+    );
     await selectMemory(resolved);
   }
 
@@ -1951,6 +2292,12 @@ export function WorkbenchShell() {
   }
 
   async function logout() {
+    conversationWorkspaceEpochRef.current += 1;
+    conversationLifecycleEpochRef.current.clear();
+    conversationListRevisionRef.current += 1;
+    conversationListRequestRef.current += 1;
+    pendingConversationActionsRef.current.clear();
+    setPendingConversationActions(new Set());
     await api.POST("/auth/logout");
     serverState.clear();
     setSettingsOpen(false);
@@ -2025,15 +2372,19 @@ export function WorkbenchShell() {
   const mobileTitle: Record<AppView, string> = {
     CAPTURE: "新对话",
     RESEARCH: "深度调研",
-    KNOWLEDGE: "云知识库",
+    KNOWLEDGE: "团队记忆",
     DIAGRAMS: "框图",
     INSIGHTS: isCollaborativeWorkspace(activeWorkspace) ? "团队智能" : "我的洞察",
-    LIBRARY: "记忆库",
+    LIBRARY: "我的记忆",
     TEAM: activeWorkspace.kind === "FAMILY" ? "家庭空间" : "团队空间",
   };
 
   return (
-    <main className={`app-shell ${sidebarCollapsed ? "is-sidebar-collapsed" : ""}`}>
+    <main
+      className={`app-shell ${sidebarCollapsed ? "is-sidebar-collapsed" : ""}`}
+      aria-busy={workspaceBusy}
+      inert={workspaceBusy}
+    >
       <Sidebar
         user={user}
         workspaces={workspaces}
@@ -2041,14 +2392,18 @@ export function WorkbenchShell() {
         workspaceBusy={workspaceBusy}
         subscription={subscription}
         conversations={conversations}
+        pendingConversationActions={pendingConversationActions}
         activeConversationId={activeConversationId}
         view={view}
         open={sidebarOpen}
         collapsed={sidebarCollapsed}
         onView={navigateTo}
-        onNewConversation={startNewConversation}
+        onNewConversation={() => startNewConversation("GENERAL")}
         onConversationSelect={(conversation) => void openConversation(conversation)}
+        onConversationPin={(conversation, pinned) => void pinConversation(conversation, pinned)}
+        onConversationRename={renameConversation}
         onConversationArchive={(conversation) => void archiveConversation(conversation)}
+        onConversationDelete={deleteConversation}
         onWorkspaceSelect={(workspace) => void switchWorkspace(workspace)}
         onTeamAccess={openTeamAccess}
         onClose={() => setSidebarOpen(false)}
@@ -2098,10 +2453,12 @@ export function WorkbenchShell() {
           >
             <CaptureWorkspace
               mode={view}
+              chatContext={chatContext}
               workspace={activeWorkspace}
               draft={draft}
               messages={messages}
               refining={refiningDraft}
+              interactionLocked={workspaceBusy}
               activity={draftActivity}
               saving={savingDraft}
               savedBody={savedBody}
@@ -2120,7 +2477,11 @@ export function WorkbenchShell() {
                 draftAgent.retryRequest &&
                 (draftAgent.phase === "FAILED" || draftAgent.phase === "CANCELLED"),
               )}
-              onDraftChange={setDraft}
+              onDraftChange={(nextDraft) => {
+                if (workspaceSwitchInFlightRef.current) return;
+                conversationViewRevisionRef.current += 1;
+                setDraft(nextDraft);
+              }}
               onRefine={refineCapture}
               onSave={saveDraft}
               onSaveVisibilityChange={setSaveVisibility}
@@ -2128,9 +2489,15 @@ export function WorkbenchShell() {
               onModelChange={setSelectedModelId}
               onRightPanelOpenChange={setCaptureRightPanelOpen}
               onRightPanelViewChange={setCaptureRightPanelView}
-              onOpenKnowledge={() => navigateTo("KNOWLEDGE")}
+              onOpenKnowledge={() =>
+                navigateTo(isCollaborativeWorkspace(activeWorkspace) ? "KNOWLEDGE" : "LIBRARY")
+              }
               onOpenKnowledgeMemory={(memory) => {
-                navigateTo("LIBRARY");
+                navigateTo(
+                  isCollaborativeWorkspace(activeWorkspace) && memory.visibility === "WORKSPACE"
+                    ? "KNOWLEDGE"
+                    : "LIBRARY",
+                );
                 void selectMemory(memory);
               }}
               onUpgrade={() => setSubscriptionOpen(true)}
@@ -2144,15 +2511,92 @@ export function WorkbenchShell() {
             className={`view-transition is-${viewMotion}`}
             key={`knowledge-${activeWorkspace.id}`}
           >
-            <KnowledgeBaseWorkspace
+            <TeamMemoryCenter
               workspace={activeWorkspace}
-              memories={memories}
-              loading={loadingMemories}
-              onOpenMemory={(memory) => {
-                navigateTo("LIBRARY");
-                void selectMemory(memory);
-              }}
-              onCapture={() => navigateTo("CAPTURE")}
+              sharedCount={memories.filter((memory) => memory.visibility === "WORKSPACE").length}
+              onAskTeam={() => startNewConversation("TEAM")}
+              memories={
+                <ResizableSplit
+                  className="team-memory-library"
+                  label="调整共享记忆列表和详情宽度"
+                  storageKey="memora.split.team-memory"
+                  defaultLeftPercent={34}
+                  minLeftPx={260}
+                  minRightPx={360}
+                  left={
+                    <Timeline
+                      workspace={activeWorkspace}
+                      members={members}
+                      memories={memories.filter((memory) => memory.visibility === "WORKSPACE")}
+                      selectedId={
+                        selectedMemory?.visibility === "WORKSPACE" ? selectedMemory.id : null
+                      }
+                      loading={loadingMemories}
+                      searchFilters={memorySearchFilters}
+                      searchActive={memorySearchActive}
+                      onSearchFiltersChange={setMemorySearchFilters}
+                      onSearch={() => void searchMemoryLibrary()}
+                      onResetSearch={() => void resetMemorySearch()}
+                      onSelect={(memory) => void selectMemory(memory)}
+                      title="共享记忆"
+                      eyebrow="成员主动共享"
+                    />
+                  }
+                  right={
+                    <MemoryDetail
+                      key={
+                        selectedMemory?.visibility === "WORKSPACE"
+                          ? selectedMemory.id
+                          : "empty-team-memory"
+                      }
+                      workspace={activeWorkspace}
+                      memory={selectedMemory?.visibility === "WORKSPACE" ? selectedMemory : null}
+                      markdown={selectedMemory?.visibility === "WORKSPACE" ? memoryMarkdown : ""}
+                      baseline={selectedMemory?.visibility === "WORKSPACE" ? memoryBaseline : ""}
+                      revisions={selectedMemory?.visibility === "WORKSPACE" ? revisions : []}
+                      refining={refiningMemory}
+                      savingMode={savingMode}
+                      deleting={deletingMemory}
+                      visibilityChanging={visibilityChanging}
+                      aiStatus={memoryAiStatus}
+                      onMarkdownChange={setMemoryMarkdown}
+                      onRefine={refineSelectedMemory}
+                      onSaveRevision={saveRevision}
+                      onVisibilityChange={changeSelectedVisibility}
+                      onDelete={deleteSelectedMemory}
+                    />
+                  }
+                />
+              }
+              graph={
+                <DiagramWorkspace
+                  workspace={activeWorkspace}
+                  memories={memories.filter((memory) => memory.visibility === "WORKSPACE")}
+                  members={members}
+                  onNotify={showToast}
+                />
+              }
+              analysis={
+                <TeamIntelligenceWorkspace
+                  workspace={activeWorkspace}
+                  members={members}
+                  subscription={subscription}
+                  onSubscriptionChange={setSubscription}
+                  onUpgrade={() => setSubscriptionOpen(true)}
+                  onOpenMemory={(memoryId) => void openCitation(memoryId)}
+                  onMemoryCreated={(memory) =>
+                    setMemories((current) => [
+                      memory,
+                      ...current.filter((item) => item.id !== memory.id),
+                    ])
+                  }
+                  onCreateVisual={(projectId, memoryIds) => {
+                    setVisualSeed({ projectId, memoryIds });
+                    navigateTo("DIAGRAMS");
+                  }}
+                  onNotify={showToast}
+                />
+              }
             />
           </div>
         ) : view === "DIAGRAMS" ? (
@@ -2210,7 +2654,7 @@ export function WorkbenchShell() {
               <Timeline
                 workspace={activeWorkspace}
                 members={members}
-                memories={memories}
+                memories={memories.filter((memory) => memory.is_owner)}
                 selectedId={selectedMemory?.id ?? null}
                 loading={loadingMemories}
                 searchFilters={memorySearchFilters}
@@ -2219,6 +2663,18 @@ export function WorkbenchShell() {
                 onSearch={() => void searchMemoryLibrary()}
                 onResetSearch={() => void resetMemorySearch()}
                 onSelect={(memory) => void selectMemory(memory)}
+                title="我的记忆"
+                eyebrow="个人 Markdown 记忆"
+                headerAction={
+                  <button
+                    className="memory-assistant-action"
+                    type="button"
+                    onClick={() => startNewConversation("PERSONAL")}
+                  >
+                    <Sparkles aria-hidden="true" size={14} strokeWidth={1.8} />
+                    整理助手
+                  </button>
+                }
               />
             }
             right={

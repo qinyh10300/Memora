@@ -32,6 +32,7 @@ export type DocumentStatus = components["schemas"]["DocumentStatusResponse"];
 export type DraftModel = components["schemas"]["DraftModelResponse"];
 export type DraftImageInput = components["schemas"]["DraftImageInput"];
 export type DraftChatResponse = components["schemas"]["DraftChatResponse"];
+export type DraftMemoryScope = components["schemas"]["DraftChatRequest"]["memory_scope"];
 export type DraftTrace = components["schemas"]["DraftTraceResponse"];
 export type DraftTraceStep = components["schemas"]["DraftTraceStepResponse"];
 export type Asset = components["schemas"]["AssetResponse"];
@@ -45,6 +46,7 @@ export type AppView =
   "CAPTURE" | "RESEARCH" | "KNOWLEDGE" | "DIAGRAMS" | "INSIGHTS" | "LIBRARY" | "TEAM";
 export type SettingsView = "PROFILE" | "INVITATIONS" | "SECURITY" | "GENERAL";
 export type PublicAuthMode = "LOGIN" | "REGISTER";
+export type ChatContext = "GENERAL" | "PERSONAL" | "TEAM";
 export type TeamAccessMode = "CREATE" | "CREATE_FAMILY" | "JOIN";
 
 export function isCollaborativeWorkspace(workspace: Workspace) {

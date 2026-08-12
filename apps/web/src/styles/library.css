@@ -19,6 +19,31 @@
   gap: 7px;
 }
 
+.memory-assistant-action {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: rgba(var(--mono-rgb), 0.035);
+  color: var(--text-soft);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semi);
+  white-space: nowrap;
+  transition:
+    border-color var(--t-base) var(--ease),
+    background var(--t-base) var(--ease),
+    transform var(--t-base) var(--ease-out);
+}
+
+.memory-assistant-action:hover {
+  border-color: var(--line-hover);
+  background: rgba(var(--mono-rgb), 0.075);
+  transform: translateY(-1px);
+}
+
 .library-list-actions > span {
   display: grid;
   min-width: 24px;

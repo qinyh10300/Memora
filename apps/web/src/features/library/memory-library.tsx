@@ -1,7 +1,7 @@
 "use client";
 
 import { LockKeyhole, Search, Users, X } from "lucide-react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { MarkdownWorkspace, PreviewToggle } from "@/features/capture/markdown-workspace";
@@ -189,6 +189,9 @@ export function Timeline({
   onSearch,
   onResetSearch,
   onSelect,
+  title = "记忆库",
+  eyebrow,
+  headerAction,
 }: {
   workspace: Workspace;
   members: WorkspaceMember[];
@@ -201,6 +204,9 @@ export function Timeline({
   onSearch: () => void;
   onResetSearch: () => void;
   onSelect: (memory: Memory) => void;
+  title?: string;
+  eyebrow?: string;
+  headerAction?: ReactNode;
 }) {
   const groups = useMemo(() => {
     const result: { key: string; label: string; memories: Memory[] }[] = [];
@@ -224,11 +230,12 @@ export function Timeline({
       <header className="library-list-header">
         <div>
           <p className="eyebrow">
-            {isCollaborativeWorkspace(workspace) ? workspace.name : "个人记忆"}
+            {eyebrow ?? (isCollaborativeWorkspace(workspace) ? workspace.name : "个人记忆")}
           </p>
-          <h1>记忆库</h1>
+          <h1>{title}</h1>
         </div>
         <div className="library-list-actions">
+          {headerAction}
           <span>{memories.length}</span>
           <MemorySearchPopover
             workspace={workspace}

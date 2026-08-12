@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Check, Coins, Crown, Gauge, X } from "lucide-react";
+import { ArrowUpRight, Check, Coins, Crown, Sparkles, X, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import type { CreditLedgerEntry, Plan, Subscription } from "@/features/shared/contracts";
@@ -95,17 +95,23 @@ export function SubscriptionDialog({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="subscription-header">
-          <div>
-            <Logo />
-            <span>
-              <small>MEMORA MEMBERSHIP</small>
-              <strong id="subscription-title">套餐与 Credits</strong>
-            </span>
-          </div>
           <button type="button" aria-label="关闭套餐窗口" onClick={onClose}>
-            <X aria-hidden="true" size={18} strokeWidth={1.8} />
+            <X aria-hidden="true" size={20} strokeWidth={1.7} />
           </button>
         </header>
+
+        <div className="subscription-hero">
+          <span className="subscription-eyebrow">
+            <Logo />
+            MEMORA MEMBERSHIP
+          </span>
+          <h2 id="subscription-title">订阅计划</h2>
+          <p>选择适合你的研究节奏，让每一次记录、检索与探索都拥有清晰的能力边界。</p>
+          <span className="subscription-promo">
+            <Sparkles aria-hidden="true" size={16} strokeWidth={1.8} />
+            内测方案已开放，升级不会发起真实扣款
+          </span>
+        </div>
 
         {loading ? (
           <div className="subscription-loading" role="status">
@@ -114,23 +120,29 @@ export function SubscriptionDialog({
         ) : subscription ? (
           <>
             <div className="credit-overview">
-              <div>
+              <div className="credit-balance">
                 <span className="credit-icon">
                   <Coins aria-hidden="true" size={18} strokeWidth={1.7} />
                 </span>
                 <span>
-                  <small>{subscription.plan_name} 当前可用</small>
-                  <strong>{subscription.credits_remaining.toLocaleString("zh-CN")}</strong>
+                  <small>当前方案</small>
+                  <strong>{subscription.plan_name}</strong>
                 </span>
+              </div>
+              <div className="credit-remaining">
+                <small>可用 Credits</small>
+                <strong>{subscription.credits_remaining.toLocaleString("zh-CN")}</strong>
+              </div>
+              <div className="credit-progress-copy">
+                <span>
+                  本周期已用 {subscription.credits_used.toLocaleString("zh-CN")} /{" "}
+                  {subscription.credits_granted.toLocaleString("zh-CN")}
+                </span>
+                <span>到期于 {formatDateTime(subscription.period_ends_at)}</span>
               </div>
               <div className="credit-meter" aria-label="额度使用进度">
                 <span style={{ width: `${usagePercent}%` }} />
               </div>
-              <small>
-                本周期已用 {subscription.credits_used.toLocaleString("zh-CN")} /{" "}
-                {subscription.credits_granted.toLocaleString("zh-CN")}，到期于{" "}
-                {formatDateTime(subscription.period_ends_at)}
-              </small>
             </div>
 
             <div className="plan-grid" aria-label="可用套餐">
@@ -139,27 +151,37 @@ export function SubscriptionDialog({
                 const isLower = planRank[plan.code] < planRank[subscription.plan_code];
                 return (
                   <article
-                    className={isCurrent ? "plan-option is-current" : "plan-option"}
+                    className={[
+                      "plan-option",
+                      isCurrent ? "is-current" : "",
+                      plan.code === "PRO" ? "is-recommended" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     key={plan.code}
                   >
+                    {plan.code === "PRO" ? (
+                      <span className="plan-recommended-badge">最受欢迎</span>
+                    ) : null}
                     <header>
-                      <span>
-                        {plan.code === "ULTRA" ? <Crown size={17} /> : <Gauge size={17} />}
-                      </span>
                       <div>
                         <h3>{plan.name}</h3>
-                        <strong>{plan.credits_per_period.toLocaleString("zh-CN")} credits</strong>
+                        <p>{plan.description}</p>
                       </div>
+                      <span className="plan-symbol" aria-hidden="true">
+                        {plan.code === "ULTRA" ? (
+                          <Crown size={19} strokeWidth={1.65} />
+                        ) : plan.code === "PRO" ? (
+                          <Zap size={19} strokeWidth={1.65} />
+                        ) : (
+                          <Sparkles size={19} strokeWidth={1.65} />
+                        )}
+                      </span>
                     </header>
-                    <p>{plan.description}</p>
-                    <ul>
-                      {plan.features.map((feature) => (
-                        <li key={feature}>
-                          <Check aria-hidden="true" size={13} strokeWidth={2} />
-                          {feature}
-                        </li>
-                      ))}
-                    </ul>
+                    <div className="plan-credit">
+                      <strong>{plan.credits_per_period.toLocaleString("zh-CN")} credits</strong>
+                      <small>/ 周期</small>
+                    </div>
                     <button
                       type="button"
                       disabled={isCurrent || isLower || upgrading !== null}
@@ -173,9 +195,18 @@ export function SubscriptionDialog({
                             ? "正在升级…"
                             : `升级到 ${plan.name}`}
                       {!isCurrent && !isLower && upgrading !== plan.code ? (
-                        <ArrowUpRight aria-hidden="true" size={14} />
+                        <ArrowUpRight aria-hidden="true" size={16} />
                       ) : null}
                     </button>
+                    <span className="plan-feature-label">方案包含</span>
+                    <ul>
+                      {plan.features.map((feature) => (
+                        <li key={feature}>
+                          <Check aria-hidden="true" size={13} strokeWidth={2} />
+                          {feature}
+                        </li>
+                      ))}
+                    </ul>
                   </article>
                 );
               })}
@@ -183,8 +214,11 @@ export function SubscriptionDialog({
 
             <div className="credit-ledger">
               <header>
-                <strong>最近额度记录</strong>
-                <small>AI 成功完成后扣除，失败不会扣除</small>
+                <span>
+                  <strong>最近额度记录</strong>
+                  <small>AI 成功完成后扣除，失败不会扣除</small>
+                </span>
+                <small>最近 6 条</small>
               </header>
               <div>
                 {ledger.slice(0, 6).map((entry) => (
@@ -206,7 +240,7 @@ export function SubscriptionDialog({
             {error}
           </p>
         ) : null}
-        <footer className="subscription-note">内测阶段升级不会发起真实扣款。</footer>
+        <footer className="subscription-note">Credits 仅在任务成功完成后结算。</footer>
       </section>
     </div>
   );
