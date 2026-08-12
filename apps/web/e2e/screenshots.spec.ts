@@ -19,6 +19,10 @@ function shotPath(screen: string, w: number, theme: string) {
 
 async function shoot(page: Page, screen: string, w: number, theme: string) {
   await page.waitForTimeout(350);
+  const overflows = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth + 1,
+  );
+  expect(overflows, `${screen} must not overflow horizontally at ${w}px`).toBe(false);
   await page.screenshot({
     path: shotPath(screen, w, theme),
     animations: "disabled",

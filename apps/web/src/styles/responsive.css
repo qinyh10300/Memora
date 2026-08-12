@@ -747,3 +747,9 @@
     transform: none;
   }
 }
+
+@media (max-width: 620px) {
+  .settings-theme-picker {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

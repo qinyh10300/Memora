@@ -2658,7 +2658,7 @@
   place-items: center;
   padding: 36px 48px;
   overflow-y: auto;
-  background: rgba(var(--scrim-rgb), 0.76);
+  background: rgba(var(--scrim-rgb), 0.78);
   backdrop-filter: blur(18px) saturate(0.72);
   animation: fade-in var(--t-base) var(--ease-out) both;
 }

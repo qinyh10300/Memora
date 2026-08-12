@@ -130,6 +130,12 @@
   --fs-4xl: 1.72rem;
   --fs-5xl: 2rem;
   --fs-hero: 2.35rem;
+  /* Landing display ladder (public landing only) */
+  --fs-landing-heading: 2.7rem;
+  --fs-landing-title: 3rem;
+  --fs-landing-hero-sm: 3.25rem;
+  --fs-landing-hero-md: 4rem;
+  --fs-landing-hero: 4.8rem;
 
   /* Weight scale */
   --fw-normal: 450;
