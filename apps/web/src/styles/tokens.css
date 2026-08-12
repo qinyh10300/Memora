@@ -128,6 +128,7 @@
   --fs-2xl: 1.2rem;
   --fs-3xl: 1.45rem;
   --fs-4xl: 1.72rem;
+  --fs-5xl: 2rem;
   --fs-hero: 2.35rem;
 
   /* Weight scale */
@@ -147,6 +148,8 @@
   --r-pill: 999px;
   --panel-radius: 12px;
   --r-2xs: 5px;
+  --r-3xl: 24px;
+  --r-line: 2px;
   --r-composer: 20px;
 
   /* Motion — one easing family, three speeds */

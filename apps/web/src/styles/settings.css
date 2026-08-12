@@ -255,7 +255,7 @@
   width: 76px;
   height: 76px;
   border-color: var(--line-strong);
-  font-size: 1.2rem;
+  font-size: var(--fs-2xl);
   box-shadow:
     var(--inset-hi),
     0 14px 32px rgba(var(--shadow-rgb), 0.35);

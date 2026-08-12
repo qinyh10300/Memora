@@ -55,7 +55,7 @@
 
 .team-access-dialog h2 {
   margin: 0 0 20px;
-  font-size: 1.45rem;
+  font-size: var(--fs-3xl);
   font-weight: var(--fw-semi);
   letter-spacing: 0;
 }
@@ -301,7 +301,7 @@
 .team-workspace-header h1 {
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: 2rem;
+  font-size: var(--fs-5xl);
   font-weight: var(--fw-semi);
   letter-spacing: 0;
 }
