@@ -84,6 +84,7 @@ import { formatDateTime, nextId, readStoredBoolean, storeBoolean } from "@/featu
 import { TeamAccessDialog, TeamWorkspace } from "@/features/team/team";
 import { TeamMemoryCenter } from "@/features/team-memory/team-memory-center";
 import { VisualWorkspace } from "@/features/visuals/visual-workspace";
+import { LandingConstellation } from "@/features/workbench/landing-constellation";
 import { ResizableSplit } from "@/features/workbench/layout";
 import { Sidebar } from "@/features/workspaces/sidebar";
 import {
@@ -436,6 +437,7 @@ function PublicLanding({
       </header>
 
       <section className="landing-hero" aria-labelledby="landing-title">
+        <LandingConstellation />
         <div className="landing-hero-copy">
           <button className="landing-announcement" type="button" onClick={start}>
             Memora 个人记忆工作台现已开放

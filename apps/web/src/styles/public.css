@@ -678,12 +678,26 @@
 
 .landing-hero {
   position: relative;
+  isolation: isolate;
   display: flex;
   min-height: calc(100dvh - 104px);
   align-items: flex-start;
   padding: 156px max(16px, calc((100% - 1240px) / 2)) 44px;
   overflow: hidden;
   background: var(--bg);
+}
+
+/* Ambient memory-constellation layer; masked so it reads as texture, never
+   competing with the headline column. */
+.landing-constellation {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  -webkit-mask-image: radial-gradient(130% 100% at 68% 30%, black 32%, transparent 76%);
+  mask-image: radial-gradient(130% 100% at 68% 30%, black 32%, transparent 76%);
 }
 
 .landing-hero-copy {
