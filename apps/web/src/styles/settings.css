@@ -190,7 +190,7 @@
 }
 
 .settings-tabs button.is-active svg {
-  color: var(--accent-light);
+  color: var(--blue-bright);
 }
 
 .settings-content {
@@ -470,15 +470,13 @@
   justify-content: center;
   gap: 7px;
   padding: 0 13px;
-  border: 1px solid rgba(var(--mono-rgb), 0.7);
+  border: 1px solid var(--blue-hover);
   border-radius: var(--r-sm);
-  background: var(--tone-e6);
-  color: var(--tone-0a);
+  background: var(--blue);
+  color: var(--on-blue);
   font-size: var(--fs-sm);
   font-weight: var(--fw-semi);
-  box-shadow:
-    0 1px 0 rgba(var(--mono-rgb), 0.7) inset,
-    var(--shadow-sm);
+  box-shadow: 0 6px 15px var(--blue-shadow);
   transition:
     background var(--t-base) var(--ease),
     box-shadow var(--t-base) var(--ease),
@@ -486,10 +484,8 @@
 }
 
 .settings-save:hover:not(:disabled) {
-  background: var(--accent-light);
-  box-shadow:
-    0 1px 0 rgba(var(--mono-rgb), 0.9) inset,
-    0 8px 20px rgba(var(--shadow-rgb), 0.3);
+  background: var(--blue-hover);
+  box-shadow: 0 8px 20px var(--blue-shadow);
   transform: translateY(-1px);
 }
 
@@ -697,12 +693,12 @@
 }
 
 .settings-toggle-list input:checked {
-  border-color: var(--tone-e6);
-  background: var(--tone-e6);
+  border-color: var(--blue);
+  background: var(--blue);
 }
 
 .settings-toggle-list input:checked::before {
-  background: var(--tone-09);
+  background: var(--on-blue);
   transform: translateX(16px);
 }
 

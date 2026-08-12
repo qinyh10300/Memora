@@ -83,6 +83,13 @@ html.memora-theme-light {
   --danger: #a62b31;
   --danger-soft: rgba(166, 43, 49, 0.1);
   --danger-line: rgba(166, 43, 49, 0.3);
+  /* --blue / --blue-hover / --on-blue stay brand-fixed across themes */
+  --blue-bright: #2748c9;
+  --blue-gradient-end: #5478ff;
+  --blue-soft: rgba(49, 88, 230, 0.09);
+  --blue-line: rgba(49, 88, 230, 0.32);
+  --blue-glow: rgba(49, 88, 230, 0.22);
+  --blue-shadow: rgba(24, 53, 172, 0.12);
   --preview-accent: #151515;
   --preview-soft: rgba(var(--mono-rgb), 0.055);
   --preview-line: rgba(var(--mono-rgb), 0.16);
@@ -174,46 +181,6 @@ html.memora-theme-light .sidebar-account-menu-items button:hover,
 html.memora-theme-light .model-provider-mark,
 html.memora-theme-light .visual-template-preview.is-scientific {
   color: var(--text);
-}
-
-/* asymmetric: black primary-button cluster on --ink/--paper with light-tuned shadow */
-html.memora-theme-light .settings-save,
-html.memora-theme-light .primary-action,
-html.memora-theme-light .library-search-popover > footer .primary-action,
-html.memora-theme-light .composer .send-button,
-html.memora-theme-light .landing-start-button,
-html.memora-theme-light .landing-hero-actions button,
-html.memora-theme-light .landing-final-cta button,
-html.memora-theme-light .auth-submit {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--paper);
-  box-shadow: 0 8px 24px rgba(var(--shadow-rgb), 0.13);
-}
-
-/* asymmetric: black primary-button hover deepens to --accent-light (#000) on --paper */
-html.memora-theme-light .settings-save:hover:not(:disabled),
-html.memora-theme-light .primary-action:hover:not(:disabled),
-html.memora-theme-light .composer .send-button:hover:not(:disabled),
-html.memora-theme-light .landing-start-button:hover,
-html.memora-theme-light .landing-hero-actions button:hover,
-html.memora-theme-light .landing-final-cta button:hover,
-html.memora-theme-light .auth-submit:hover:not(:disabled) {
-  border-color: var(--accent-light);
-  background: var(--accent-light);
-  color: var(--paper);
-}
-
-/* asymmetric: solid --ink/--paper hover fill instead of tone inversion */
-html.memora-theme-light .account-upgrade-button:hover {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--paper);
-}
-
-/* asymmetric: pure-white knob on the checked track; base tone-09 gives #f6f6f6 */
-html.memora-theme-light .settings-toggle-list input:checked::before {
-  background: var(--bg-deep);
 }
 
 /* asymmetric: solidifies glass fills (.landing-agent-visual span 0.88 -> 0.96) */

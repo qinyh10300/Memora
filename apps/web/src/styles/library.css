@@ -227,9 +227,9 @@
 }
 
 .library-search-popover > footer .primary-action {
-  border-color: rgba(var(--mono-rgb), 0.574);
-  background: linear-gradient(145deg, var(--tone-eb), var(--tone-a7) 58%, var(--tone-63));
-  color: var(--tone-0f);
+  border-color: var(--blue-hover);
+  background: var(--blue);
+  color: var(--on-blue);
 }
 
 .timeline-scroll {

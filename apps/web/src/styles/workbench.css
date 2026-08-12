@@ -484,7 +484,7 @@
   width: 2px;
   height: 0;
   border-radius: var(--r-pill);
-  background: var(--accent-light);
+  background: var(--blue-bright);
   content: "";
   transform: translateY(-50%);
   transition: height var(--t-base) var(--ease-out);
@@ -519,7 +519,7 @@
 }
 
 .primary-nav button.is-active svg {
-  color: var(--accent-light);
+  color: var(--blue-bright);
   opacity: 1;
   transform: scale(1.06);
 }
@@ -773,10 +773,10 @@
 }
 
 .account-upgrade-button:hover {
-  border-color: rgba(var(--mono-rgb), 0.32);
-  background: var(--tone-f1);
-  color: var(--tone-0a);
-  box-shadow: 0 8px 20px rgba(var(--shadow-rgb), 0.24);
+  border-color: var(--blue-hover);
+  background: var(--blue);
+  color: var(--on-blue);
+  box-shadow: 0 8px 20px var(--blue-shadow);
   transform: translateY(-1px) scale(1.02);
 }
 

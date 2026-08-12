@@ -116,6 +116,17 @@
   --danger-soft: rgba(255, 133, 133, 0.11);
   --danger-line: rgba(255, 133, 133, 0.28);
 
+  /* Blue accent family (plan 0037): fills are brand-fixed, bright/soft calibrate per theme */
+  --blue: #3158e6;
+  --blue-hover: #3e66f0;
+  --blue-bright: #8aa8ff;
+  --blue-gradient-end: #7b9bff;
+  --blue-soft: rgba(49, 88, 230, 0.13);
+  --blue-line: rgba(87, 125, 255, 0.34);
+  --blue-glow: rgba(76, 112, 255, 0.4);
+  --blue-shadow: rgba(24, 53, 172, 0.2);
+  --on-blue: #ffffff;
+
   /* Type scale */
   --fs-3xs: 0.58rem;
   --fs-2xs: 0.62rem;
@@ -263,7 +274,7 @@ textarea:focus-visible,
 summary:focus-visible,
 select:focus-visible,
 a:focus-visible {
-  outline: 2px solid var(--accent-light);
+  outline: 2px solid var(--blue-bright);
   outline-offset: 2px;
   border-radius: var(--r-xs);
 }

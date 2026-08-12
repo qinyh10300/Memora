@@ -643,10 +643,10 @@
   justify-content: center;
   gap: 8px;
   padding: 0 17px;
-  border: 1px solid rgba(var(--mono-rgb), 0.84);
+  border: 1px solid var(--blue-hover);
   border-radius: var(--r-md);
-  background: var(--text);
-  color: var(--tone-11);
+  background: var(--blue);
+  color: var(--on-blue);
   font-size: var(--fs-md);
   font-weight: 680;
   box-shadow: 0 8px 24px rgba(var(--shadow-rgb), 0.24);
@@ -659,7 +659,7 @@
 .landing-start-button:hover,
 .landing-hero-actions button:hover,
 .landing-final-cta button:hover {
-  background: var(--accent-light);
+  background: var(--blue-hover);
   box-shadow: 0 12px 32px rgba(var(--shadow-rgb), 0.36);
   transform: translateY(-2px);
 }
@@ -1568,7 +1568,7 @@
 .auth-mode-tabs button {
   min-height: 36px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--r-2xs);
   background: transparent;
   color: var(--tone-71);
   font-size: var(--fs-sm);
@@ -1669,10 +1669,10 @@
   justify-content: center;
   gap: 8px;
   margin-top: 4px;
-  border: 1px solid var(--tone-f1);
+  border: 1px solid var(--blue-hover);
   border-radius: var(--r-md);
-  background: var(--tone-f1);
-  color: var(--tone-13);
+  background: var(--blue);
+  color: var(--on-blue);
   font-size: var(--fs-md);
   font-weight: 680;
   transition:
@@ -1682,7 +1682,7 @@
 }
 
 .auth-submit:hover:not(:disabled) {
-  background: var(--accent-light);
+  background: var(--blue-hover);
   box-shadow: 0 12px 32px rgba(var(--shadow-rgb), 0.36);
   transform: translateY(-1px);
 }
