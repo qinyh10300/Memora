@@ -170,9 +170,10 @@ PLAYWRIGHT_BASE_URL="http://localhost:$HTTP_PORT" SCREENSHOT_DIR="${SCREENSHOT_D
   --shadow-rgb: 0, 0, 0; /* shadows stay dark in both themes */
   --scrim-rgb: 3, 4, 8; /* modal/backdrop dims */
   --panel-tint-rgb: 9, 9, 11; /* translucent panel fills over sheens */
+  --danger-rgb: 255, 133, 133; /* alpha-composable danger family */
 ```
 
-In `theme-light.css` token block: `--scrim-rgb: 235, 235, 235;` and `--panel-tint-rgb: 252, 252, 252;` (`--shadow-rgb` intentionally NOT overridden). Fix `tokens.css` `.privacy-dot` box-shadow `rgba(135,135,135,0.12)` → `rgba(var(--mono-rgb), 0.12)`. Add the canonical breakpoint comment block above `:root`:
+In `theme-light.css` token block: `--scrim-rgb: 235, 235, 235;`, `--panel-tint-rgb: 252, 252, 252;`, `--danger-rgb: 166, 43, 49;` (`--shadow-rgb` intentionally NOT overridden). Fix `tokens.css` `.privacy-dot` box-shadow `rgba(135,135,135,0.12)` → `rgba(var(--mono-rgb), 0.12)`. Add the canonical breakpoint comment block above `:root`:
 
 ```css
 /* Canonical breakpoints (max-width unless noted): 1100 laptop-narrow, 1040/1000/900 stage-specific,
@@ -201,9 +202,11 @@ exit $viol
 
 - [ ] **Step 3: Fan out the per-file conversion** (one subagent per CSS file, parallel — files are independent). Conversion rules each agent must apply, in priority order:
   1. `rgba(255, 255, 255, α)` → `rgba(var(--mono-rgb), α)` (keep α unchanged).
+  1b. Mid-grey `rgba(G, G, G, α)` with `64 ≤ G ≤ 250` → `rgba(var(--mono-rgb), round(α × G / 255, 3))` — a grey overlay equals a dimmer pure-mono overlay (exact over black; report any case whose context makes the approximation visibly off).
+  1c. Danger reds (`rgba(255,92,98,α)`, `rgba(210,72,72,α)`, `rgba(255,133,133,α)` etc.) → `rgba(var(--danger-rgb), α)` (keep α; report each).
   2. `rgba(0, 0, 0, α)` inside `box-shadow`/`text-shadow`/`drop-shadow` → `rgba(var(--shadow-rgb), α)`.
   3. Backdrop/scrim `background` on `*-backdrop`, `*-scrim`, overlay-dim rules → `rgba(var(--scrim-rgb), α)` (near-black rgb triplets like `0,1,5` / `0,0,0` used as full-viewport dims).
-  4. Other near-black translucent fills (all channels ≤ 24, non-shadow) → `rgba(var(--panel-tint-rgb), α)`.
+  4. Other near-black translucent fills (all channels ≤ 63, non-shadow) → `rgba(var(--panel-tint-rgb), α)`.
   5. Opaque grey hexes → nearest `--tone-*` / surface / text token (exact match required; if no exact tone exists, keep the value but hoist it into `tokens.css` as a new `--tone-XX` + light mirror — report additions back).
   6. Raw `font-size` in rem/px → nearest `--fs-*` (≤0.02rem delta acceptable); `clamp()` stays inline in this task (fluid type is deliberate) — EXCEPT identical clamp() repeated ≥3× in one file: hoist to a `--fs-fluid-<name>` token.
   7. Raw `border-radius` px → exact `--r-*` match only (7/8/10/12/16/999 → token; other values LEFT AS-IS in this task and reported back; do not visually shift radii).
