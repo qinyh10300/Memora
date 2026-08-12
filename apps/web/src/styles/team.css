@@ -7,7 +7,7 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(1, 1, 1, 0.78);
+  background: rgba(var(--scrim-rgb), 0.78);
   backdrop-filter: blur(9px);
   animation: settings-backdrop-in var(--t-base) var(--ease-out) both;
 }
@@ -19,7 +19,7 @@
   border-radius: var(--r-md);
   background: var(--tone-09);
   box-shadow:
-    0 32px 100px rgba(0, 0, 0, 0.62),
+    0 32px 100px rgba(var(--shadow-rgb), 0.62),
     var(--inset-hi);
   animation: settings-dialog-in var(--t-slow) var(--ease-out) both;
 }
@@ -121,8 +121,8 @@
 }
 
 .team-access-dialog input:focus {
-  border-color: rgba(209, 209, 209, 0.52);
-  box-shadow: 0 0 0 3px rgba(135, 135, 135, 0.09);
+  border-color: rgba(var(--mono-rgb), 0.426);
+  box-shadow: 0 0 0 3px rgba(var(--mono-rgb), 0.048);
 }
 
 .team-access-dialog form > p {
@@ -240,8 +240,8 @@
   padding: 9px 13px;
   border: 1px solid var(--danger-line);
   border-radius: var(--r-sm);
-  background: rgba(38, 38, 38, 0.95);
-  color: #d1d1d1;
+  background: rgba(var(--panel-tint-rgb), 0.95);
+  color: var(--tone-d1);
   font-size: var(--fs-sm);
   box-shadow: var(--shadow-md);
   backdrop-filter: blur(10px);
@@ -268,7 +268,7 @@
   border: 1px solid var(--line);
   border-radius: var(--panel-radius);
   background:
-    linear-gradient(180deg, rgba(135, 135, 135, 0.035), transparent 240px), var(--tone-06);
+    linear-gradient(180deg, rgba(var(--mono-rgb), 0.019), transparent 240px), var(--tone-06);
 }
 
 .team-workspace-header,
@@ -317,9 +317,9 @@
 .team-role-badge {
   flex: 0 0 auto;
   padding: 7px 10px;
-  border: 1px solid rgba(209, 209, 209, 0.18);
+  border: 1px solid rgba(var(--mono-rgb), 0.148);
   border-radius: var(--r-sm);
-  background: rgba(135, 135, 135, 0.06);
+  background: rgba(var(--mono-rgb), 0.032);
   color: var(--accent-light);
   font-size: var(--fs-sm);
 }
@@ -517,8 +517,8 @@
 }
 
 .request-actions .request-approve {
-  border-color: rgba(209, 209, 209, 0.24);
-  background: rgba(135, 135, 135, 0.075);
+  border-color: rgba(var(--mono-rgb), 0.197);
+  background: rgba(var(--mono-rgb), 0.04);
   color: var(--accent-light);
 }
 
@@ -529,7 +529,7 @@
 
 .member-row-actions button.is-confirming {
   width: auto;
-  border-color: rgba(255, 122, 135, 0.38);
+  border-color: rgba(var(--danger-rgb), 0.38);
   padding-inline: 8px;
   color: #ff9ca7;
 }
@@ -565,7 +565,7 @@
   width: 34px;
   height: 34px;
   place-items: center;
-  border: 1px solid rgba(209, 209, 209, 0.16);
+  border: 1px solid rgba(var(--mono-rgb), 0.131);
   border-radius: 50%;
   background: var(--tone-17);
   color: var(--text-soft);
@@ -590,7 +590,7 @@
 .team-members-panel li strong small {
   padding: 2px 5px;
   border-radius: var(--r-xs);
-  background: rgba(135, 135, 135, 0.09);
+  background: rgba(var(--mono-rgb), 0.048);
   color: var(--accent-light);
   font-size: var(--fs-3xs);
 }
@@ -645,8 +645,8 @@
 }
 
 .team-invite-panel input:focus {
-  border-color: rgba(209, 209, 209, 0.45);
-  box-shadow: 0 0 0 3px rgba(135, 135, 135, 0.08);
+  border-color: rgba(var(--mono-rgb), 0.369);
+  box-shadow: 0 0 0 3px rgba(var(--mono-rgb), 0.042);
 }
 
 .team-invite-panel form > p,

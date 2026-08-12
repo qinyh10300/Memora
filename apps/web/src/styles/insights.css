@@ -61,9 +61,9 @@
 }
 
 .insight-workspace-header > div:last-child > button {
-  border-color: rgba(135, 135, 135, 0.38);
-  color: #f4f4f4;
-  background: #3a3a3a;
+  border-color: rgba(var(--mono-rgb), 0.201);
+  color: var(--text);
+  background: var(--tone-3a);
 }
 
 .insight-tabs {
@@ -175,7 +175,7 @@
 .insight-list > button:hover,
 .insight-list > button.is-active {
   color: var(--accent-light);
-  background: rgba(135, 135, 135, 0.075);
+  background: rgba(var(--mono-rgb), 0.04);
 }
 
 .insight-list > button > span {
@@ -310,8 +310,8 @@
 .report-summary {
   margin: 24px 0;
   padding: 16px 0;
-  border-top: 1px solid rgba(135, 135, 135, 0.18);
-  border-bottom: 1px solid rgba(135, 135, 135, 0.18);
+  border-top: 1px solid rgba(var(--mono-rgb), 0.095);
+  border-bottom: 1px solid rgba(var(--mono-rgb), 0.095);
 }
 
 .report-summary span {
@@ -433,7 +433,7 @@
   border-radius: var(--r-md);
   color: var(--text-soft);
   background: var(--tone-13);
-  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.52);
+  box-shadow: 0 24px 58px rgba(var(--shadow-rgb), 0.52);
   animation: insight-panel-in var(--motion-base) var(--ease) both;
 }
 
@@ -507,8 +507,8 @@
 }
 
 .report-presets button.is-active {
-  border-color: rgba(135, 135, 135, 0.42);
-  color: #f2f2f2;
+  border-color: rgba(var(--mono-rgb), 0.222);
+  color: var(--text);
   background: var(--tone-22);
 }
 
@@ -604,7 +604,7 @@
 }
 
 .report-schedule.is-active {
-  border-color: rgba(135, 135, 135, 0.3);
+  border-color: rgba(var(--mono-rgb), 0.159);
   background: var(--tone-12);
 }
 
@@ -653,19 +653,19 @@
   height: 14px;
   display: block;
   border-radius: 50%;
-  background: #919191;
+  background: var(--tone-91);
   transition:
     transform var(--motion-fast) var(--ease),
     background var(--motion-fast) var(--ease);
 }
 
 .report-schedule > header > button[aria-checked="true"] {
-  border-color: #757575;
-  background: #595959;
+  border-color: var(--faint);
+  background: var(--faintest);
 }
 
 .report-schedule > header > button[aria-checked="true"] > span {
-  background: #fbfbfb;
+  background: var(--accent-light);
   transform: translateX(14px);
 }
 
@@ -730,7 +730,7 @@
 }
 
 .report-subscriptions article.is-active {
-  border-color: rgba(135, 135, 135, 0.2);
+  border-color: rgba(var(--mono-rgb), 0.106);
   background: var(--tone-11);
 }
 
@@ -806,10 +806,10 @@
   align-items: center;
   gap: 6px;
   padding: 7px 11px;
-  border: 1px solid rgba(135, 135, 135, 0.42);
+  border: 1px solid rgba(var(--mono-rgb), 0.222);
   border-radius: var(--r-xs);
-  color: #f5f5f5;
-  background: #3a3a3a;
+  color: var(--text);
+  background: var(--tone-3a);
 }
 
 .insight-create-panel > footer > button:disabled,
@@ -831,9 +831,9 @@
 
 .alignment-boundary-copy {
   padding: 9px 10px;
-  border-left: 2px solid rgba(135, 135, 135, 0.45);
+  border-left: 2px solid rgba(var(--mono-rgb), 0.238);
   color: var(--faint);
-  background: rgba(135, 135, 135, 0.055);
+  background: rgba(var(--mono-rgb), 0.029);
   font-size: var(--fs-xs);
   line-height: 1.55;
 }
@@ -855,7 +855,7 @@
 
 .alignment-position.is-confirmed,
 .alignment-position.is-revised {
-  border-color: rgba(135, 135, 135, 0.25);
+  border-color: rgba(var(--mono-rgb), 0.132);
   background: var(--tone-10);
 }
 

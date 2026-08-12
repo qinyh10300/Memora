@@ -1,3 +1,8 @@
+/* Canonical breakpoints (max-width unless noted): 1100 laptop-narrow,
+   1040/1000/900 stage-specific, 820 mobile shell boundary (821 min-width is
+   desktop-only), 760/680/620 phone compaction, 520 small phone, 360 minimum.
+   Do not introduce new breakpoints without updating this list. */
+
 @property --split-left {
   syntax: "<percentage>";
   inherits: false;
@@ -53,7 +58,37 @@
   --tone-25: #252525;
   --tone-28: #282828;
   --tone-29: #292929;
+  --tone-2b: #2b2b2b;
+  --tone-3a: #3a3a3a;
+  --tone-50: #505050;
+  --tone-63: #636363;
+  --tone-6c: #6c6c6c;
+  --tone-71: #717171;
+  --tone-82: #828282;
+  --tone-87: #878787;
+  --tone-91: #919191;
+  --tone-9b: #9b9b9b;
+  --tone-a7: #a7a7a7;
+  --tone-af: #afafaf;
+  --tone-b6: #b6b6b6;
+  --tone-c3: #c3c3c3;
+  --tone-c9: #c9c9c9;
+  --tone-d1: #d1d1d1;
+  --tone-de: #dedede;
+  --tone-e6: #e6e6e6;
+  --tone-eb: #ebebeb;
+  --tone-f1: #f1f1f1;
+  /* Fixed inks/papers: identical in both themes (theme swatches, inverted-button cores) */
+  --ink: #111111;
+  --ink-soft: #171717;
+  --ink-panel: #090909;
+  --paper: #ffffff;
+  --paper-soft: #f5f5f5;
   --mono-rgb: 255, 255, 255;
+  --shadow-rgb: 0, 0, 0; /* shadows stay dark in both themes */
+  --scrim-rgb: 3, 4, 8; /* modal/backdrop dims */
+  --panel-tint-rgb: 9, 9, 11; /* translucent panel fills over sheens */
+  --danger-rgb: 255, 133, 133; /* alpha-composable danger family */
 
   /* Text */
   --text: #f4f4f4;
@@ -298,5 +333,5 @@ button:active:not(:disabled) {
   flex: 0 0 auto;
   border-radius: var(--r-pill);
   background: var(--accent-light);
-  box-shadow: 0 0 0 4px rgba(135, 135, 135, 0.12);
+  box-shadow: 0 0 0 4px rgba(var(--mono-rgb), 0.063);
 }

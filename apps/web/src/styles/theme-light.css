@@ -41,7 +41,31 @@ html.memora-theme-light {
   --tone-25: #dadada;
   --tone-28: #d7d7d7;
   --tone-29: #d6d6d6;
+  --tone-2b: #d4d4d4;
+  --tone-3a: #c5c5c5;
+  --tone-50: #afafaf;
+  --tone-63: #9c9c9c;
+  --tone-6c: #939393;
+  --tone-71: #8e8e8e;
+  --tone-82: #7d7d7d;
+  --tone-87: #787878;
+  --tone-91: #6e6e6e;
+  --tone-9b: #646464;
+  --tone-a7: #585858;
+  --tone-af: #505050;
+  --tone-b6: #494949;
+  --tone-c3: #3c3c3c;
+  --tone-c9: #363636;
+  --tone-d1: #2e2e2e;
+  --tone-de: #212121;
+  --tone-e6: #191919;
+  --tone-eb: #141414;
+  --tone-f1: #0e0e0e;
+  /* --ink*, --paper* intentionally not overridden: fixed in both themes */
   --mono-rgb: 0, 0, 0;
+  --scrim-rgb: 235, 235, 235; /* --shadow-rgb intentionally not overridden: shadows stay dark */
+  --panel-tint-rgb: 252, 252, 252;
+  --danger-rgb: 166, 43, 49;
   --text: #0b0b0b;
   --text-soft: #292929;
   --muted: #5d5d5d;
@@ -76,33 +100,34 @@ html.memora-theme-light .landing-page {
 }
 
 html.memora-theme-light .app-sidebar {
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.72), transparent 38%), var(--sidebar);
+  background:
+    linear-gradient(155deg, rgba(var(--panel-tint-rgb), 0.72), transparent 38%), var(--sidebar);
 }
 
 html.memora-theme-light .workspace-menu,
 html.memora-theme-light .sidebar-account-menu {
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 24px 64px rgba(var(--shadow-rgb), 0.16);
 }
 
 html.memora-theme-light .file-drop-overlay {
-  background: rgba(248, 248, 248, 0.88);
+  background: rgba(var(--panel-tint-rgb), 0.88);
 }
 
 html.memora-theme-light .panel-header,
 html.memora-theme-light .markdown-header,
 html.memora-theme-light .library-list-header,
 html.memora-theme-light .detail-header {
-  background: rgba(246, 246, 246, 0.86);
+  background: rgba(var(--panel-tint-rgb), 0.86);
 }
 
 html.memora-theme-light .agent-retry-bar,
 html.memora-theme-light .visual-workspace-header,
 html.memora-theme-light .diagram-toolbar {
-  background: rgba(246, 246, 246, 0.96);
+  background: rgba(var(--panel-tint-rgb), 0.96);
 }
 
 html.memora-theme-light .composer-wrap {
-  background: rgba(248, 248, 248, 0.98);
+  background: rgba(var(--panel-tint-rgb), 0.98);
 }
 
 html.memora-theme-light .composer {
@@ -119,36 +144,36 @@ html.memora-theme-light .conversation-panel.is-empty-conversation::before {
 }
 
 html.memora-theme-light .subscription-backdrop {
-  background: rgba(235, 235, 235, 0.72);
+  background: rgba(var(--scrim-rgb), 0.72);
 }
 
 html.memora-theme-light .subscription-dialog {
   background:
-    radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.92), transparent 34%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.46), transparent 38%), var(--tone-17);
+    radial-gradient(circle at 50% -20%, rgba(var(--panel-tint-rgb), 0.92), transparent 34%),
+    linear-gradient(145deg, rgba(var(--panel-tint-rgb), 0.46), transparent 38%), var(--tone-17);
   box-shadow:
-    0 42px 130px rgba(0, 0, 0, 0.2),
-    0 1px 0 rgba(255, 255, 255, 0.86) inset;
+    0 42px 130px rgba(var(--shadow-rgb), 0.2),
+    0 1px 0 rgba(var(--panel-tint-rgb), 0.86) inset;
 }
 
 html.memora-theme-light .plan-option {
   background:
-    radial-gradient(circle at 88% 3%, rgba(255, 255, 255, 0.86), transparent 30%),
-    rgba(255, 255, 255, 0.24);
-  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.06);
+    radial-gradient(circle at 88% 3%, rgba(var(--panel-tint-rgb), 0.86), transparent 30%),
+    rgba(var(--panel-tint-rgb), 0.24);
+  box-shadow: 0 16px 42px rgba(var(--shadow-rgb), 0.06);
 }
 
 html.memora-theme-light .plan-option:hover {
   background:
-    radial-gradient(circle at 88% 3%, rgba(255, 255, 255, 0.96), transparent 34%),
-    rgba(255, 255, 255, 0.42);
-  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.11);
+    radial-gradient(circle at 88% 3%, rgba(var(--panel-tint-rgb), 0.96), transparent 34%),
+    rgba(var(--panel-tint-rgb), 0.42);
+  box-shadow: 0 24px 54px rgba(var(--shadow-rgb), 0.11);
 }
 
 html.memora-theme-light .plan-option.is-recommended {
   background:
     radial-gradient(circle at 86% 0%, rgba(49, 88, 230, 0.12), transparent 34%),
-    rgba(255, 255, 255, 0.34);
+    rgba(var(--panel-tint-rgb), 0.34);
   box-shadow:
     0 18px 56px rgba(24, 53, 172, 0.11),
     0 0 0 1px rgba(58, 91, 226, 0.06) inset;
@@ -159,11 +184,11 @@ html.memora-theme-light .composer-resize-handle {
 }
 
 html.memora-theme-light .pending-images > div > button:not(.document-status-action) {
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(var(--panel-tint-rgb), 0.88);
 }
 
 html.memora-theme-light .pending-images > div > button:not(.document-status-action):hover {
-  background: rgba(238, 238, 238, 0.96);
+  background: rgba(var(--panel-tint-rgb), 0.96);
 }
 
 html.memora-theme-light .conversation-intro h2,
@@ -183,10 +208,10 @@ html.memora-theme-light .landing-start-button,
 html.memora-theme-light .landing-hero-actions button,
 html.memora-theme-light .landing-final-cta button,
 html.memora-theme-light .auth-submit {
-  border-color: #111111;
-  background: #111111;
-  color: #ffffff;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.13);
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: 0 8px 24px rgba(var(--shadow-rgb), 0.13);
 }
 
 html.memora-theme-light .settings-save:hover:not(:disabled),
@@ -196,43 +221,35 @@ html.memora-theme-light .landing-start-button:hover,
 html.memora-theme-light .landing-hero-actions button:hover,
 html.memora-theme-light .landing-final-cta button:hover,
 html.memora-theme-light .auth-submit:hover:not(:disabled) {
-  border-color: #000000;
-  background: #000000;
-  color: #ffffff;
+  border-color: var(--accent-light);
+  background: var(--accent-light);
+  color: var(--paper);
 }
 
 html.memora-theme-light .account-upgrade-button:hover {
-  border-color: #111111;
-  background: #111111;
-  color: #ffffff;
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 html.memora-theme-light .settings-toggle-list input:checked {
-  border-color: #171717;
-  background: #171717;
+  border-color: var(--ink-soft);
+  background: var(--ink-soft);
 }
 
 html.memora-theme-light .settings-toggle-list input:checked::before {
-  background: #ffffff;
-}
-
-html.memora-theme-light .settings-theme-swatch.is-dark {
-  background: #090909;
-}
-
-html.memora-theme-light .settings-theme-swatch.is-light {
-  background: #f5f5f5;
+  background: var(--bg-deep);
 }
 
 html.memora-theme-light .landing-nav {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(var(--panel-tint-rgb), 0.9);
 }
 
 html.memora-theme-light .landing-stage-card,
 html.memora-theme-light .landing-agent-visual span,
 html.memora-theme-light .preview-draft,
 html.memora-theme-light .preview-composer {
-  background: rgba(248, 248, 248, 0.96);
+  background: rgba(var(--panel-tint-rgb), 0.96);
 }
 
 html.memora-theme-light .landing-page :where(h1, h2, h3, strong, summary, code),

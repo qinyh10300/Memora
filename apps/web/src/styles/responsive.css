@@ -128,7 +128,7 @@
     height: 100dvh;
     border-width: 0 1px 0 0;
     border-radius: 0 var(--r-xl) var(--r-xl) 0;
-    box-shadow: 24px 0 70px rgba(0, 0, 0, 0.45);
+    box-shadow: 24px 0 70px rgba(var(--shadow-rgb), 0.45);
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior-y: contain;
@@ -180,7 +180,7 @@
     inset: 0;
     display: block;
     border: 0;
-    background: rgba(0, 0, 0, 0.58);
+    background: rgba(var(--scrim-rgb), 0.58);
     opacity: 0;
     pointer-events: none;
     backdrop-filter: blur(3px);

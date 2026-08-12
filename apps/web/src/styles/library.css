@@ -95,7 +95,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
   background: var(--tone-0b);
-  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 22px 55px rgba(var(--shadow-rgb), 0.5);
   animation: menu-reveal var(--t-base) var(--ease-out) both;
 }
 
@@ -178,8 +178,8 @@
 .library-search-popover input:focus,
 .library-search-popover select:focus,
 .library-search-query > span:last-child:focus-within {
-  border-color: rgba(209, 209, 209, 0.42);
-  box-shadow: 0 0 0 3px rgba(135, 135, 135, 0.07);
+  border-color: rgba(var(--mono-rgb), 0.344);
+  box-shadow: 0 0 0 3px rgba(var(--mono-rgb), 0.037);
 }
 
 .library-search-segment {
@@ -227,9 +227,9 @@
 }
 
 .library-search-popover > footer .primary-action {
-  border-color: rgba(209, 209, 209, 0.7);
-  background: linear-gradient(145deg, #ebebeb, #a6a6a6 58%, #636363);
-  color: #0f0f0f;
+  border-color: rgba(var(--mono-rgb), 0.574);
+  background: linear-gradient(145deg, var(--tone-eb), var(--tone-a7) 58%, var(--tone-63));
+  color: var(--tone-0f);
 }
 
 .timeline-scroll {
@@ -237,7 +237,7 @@
   flex: 1;
   overflow-y: auto;
   padding: 13px 12px 32px;
-  scrollbar-color: #2b2b2b transparent;
+  scrollbar-color: var(--tone-2b) transparent;
 }
 
 .timeline-group {
@@ -304,7 +304,7 @@
 .memory-card.is-selected {
   border-color: rgba(var(--mono-rgb), 0.07);
   background:
-    linear-gradient(100deg, rgba(135, 135, 135, 0.065), rgba(var(--mono-rgb), 0.03)),
+    linear-gradient(100deg, rgba(var(--mono-rgb), 0.034), rgba(var(--mono-rgb), 0.03)),
     var(--surface-raised);
   box-shadow: var(--inset-hi), var(--shadow-sm);
   transform: translateX(0);
@@ -407,8 +407,8 @@
 }
 
 .memory-card-meta > span.is-workspace {
-  border-color: rgba(209, 209, 209, 0.15);
-  background: rgba(135, 135, 135, 0.055);
+  border-color: rgba(var(--mono-rgb), 0.123);
+  background: rgba(var(--mono-rgb), 0.029);
   color: var(--accent-light);
 }
 
@@ -578,7 +578,7 @@
   gap: 10px;
   padding: 9px 20px;
   border-bottom: 1px solid var(--line);
-  background: rgba(135, 135, 135, 0.025);
+  background: rgba(var(--mono-rgb), 0.013);
   animation: text-soft-in var(--t-base) var(--ease-out) both;
 }
 
@@ -669,7 +669,7 @@
   padding: 6px 9px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: rgba(135, 135, 135, 0.04);
+  background: rgba(var(--mono-rgb), 0.021);
   color: var(--muted);
   font-size: var(--fs-xs);
   transition:
@@ -680,7 +680,7 @@
 
 .visibility-action:hover:not(:disabled) {
   border-color: var(--line-hover);
-  background: rgba(135, 135, 135, 0.08);
+  background: rgba(var(--mono-rgb), 0.042);
   color: var(--text-soft);
 }
 
@@ -868,8 +868,8 @@
 }
 
 .revision-actions.is-dirty strong::before {
-  background: #c9c9c9;
-  box-shadow: 0 0 0 3px rgba(201, 201, 201, 0.14);
+  background: var(--tone-c9);
+  box-shadow: 0 0 0 3px rgba(var(--mono-rgb), 0.11);
 }
 
 .revision-actions small {
@@ -957,7 +957,8 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   background:
-    linear-gradient(145deg, rgba(var(--mono-rgb), 0.045), transparent 50%), rgba(27, 27, 27, 0.97);
+    linear-gradient(145deg, rgba(var(--mono-rgb), 0.045), transparent 50%),
+    rgba(var(--panel-tint-rgb), 0.97);
   color: var(--text);
   font-size: var(--fs-sm);
   box-shadow: var(--inset-hi), var(--shadow-xl);
