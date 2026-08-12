@@ -23,6 +23,7 @@ light_hits=$(awk '
   NR == 1, /^\}/ { intoken = 1 }
   /^\}/ && intoken { intoken = 0; next }
   intoken { next }
+  /^[[:space:]]*\/\*/ { next }
   (/rgba?\(\s*[0-9]/ || /#[0-9a-fA-F]{3,8}/) && $0 !~ /var\(--/ { print FILENAME ":" FNR ": " $0 }
 ' theme-light.css || true)
 if [ -n "$light_hits" ]; then

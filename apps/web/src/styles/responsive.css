@@ -362,7 +362,7 @@
   }
 
   .conversation-intro h2 {
-    font-size: 1.65rem;
+    font-size: var(--fs-4xl);
   }
 
   .conversation-panel.is-empty-conversation .conversation-intro {

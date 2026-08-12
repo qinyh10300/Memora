@@ -932,7 +932,7 @@
 .landing-stage-chat blockquote {
   margin: 0;
   padding: 14px;
-  border: 1px solid rgba(var(--mono-rgb), 0.08);
+  border: 1px solid var(--line);
   border-radius: var(--r-md);
   color: var(--tone-b6);
   font-size: var(--fs-xs);
@@ -1330,14 +1330,14 @@
 .landing-stat-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-top: 1px solid rgba(var(--mono-rgb), 0.08);
-  border-bottom: 1px solid rgba(var(--mono-rgb), 0.08);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
 .landing-stat-grid article {
   min-height: 230px;
   padding: 30px 24px;
-  border-right: 1px solid rgba(var(--mono-rgb), 0.08);
+  border-right: 1px solid var(--line);
 }
 
 .landing-stat-grid article:last-child {
@@ -1746,7 +1746,7 @@
   }
 
   .landing-stat-grid article:nth-child(-n + 2) {
-    border-bottom: 1px solid rgba(var(--mono-rgb), 0.08);
+    border-bottom: 1px solid var(--line);
   }
 }
 
@@ -1936,7 +1936,7 @@
   .landing-stat-grid article,
   .landing-stat-grid article:nth-child(2) {
     border-right: 0;
-    border-bottom: 1px solid rgba(var(--mono-rgb), 0.08);
+    border-bottom: 1px solid var(--line);
   }
 
   .landing-stat-grid article:last-child {

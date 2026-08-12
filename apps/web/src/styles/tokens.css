@@ -125,6 +125,10 @@
   --fs-base: 0.82rem;
   --fs-lg: 0.94rem;
   --fs-xl: 1.05rem;
+  --fs-2xl: 1.2rem;
+  --fs-3xl: 1.45rem;
+  --fs-4xl: 1.72rem;
+  --fs-hero: 2.35rem;
 
   /* Weight scale */
   --fw-normal: 450;
@@ -142,6 +146,8 @@
   --r-2xl: 16px;
   --r-pill: 999px;
   --panel-radius: 12px;
+  --r-2xs: 5px;
+  --r-composer: 20px;
 
   /* Motion — one easing family, three speeds */
   --ease: cubic-bezier(0.32, 0.72, 0.24, 1);
