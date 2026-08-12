@@ -18,6 +18,11 @@ RUN apt-get update \
     && groupadd --system --gid 1001 memora \
     && useradd --system --uid 1001 --gid memora --create-home memora
 
+# Override to a regional PyPI mirror when the default wheel CDN is unreachable,
+# e.g. --build-arg PYPI_INDEX=https://mirrors.aliyun.com/pypi/simple/
+ARG PYPI_INDEX=https://pypi.org/simple/
+ENV UV_DEFAULT_INDEX=${PYPI_INDEX}
+
 WORKDIR /app
 
 COPY apps/api/pyproject.toml apps/api/uv.lock apps/api/README.md ./
