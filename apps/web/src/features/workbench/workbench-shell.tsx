@@ -888,9 +888,24 @@ export function WorkbenchShell() {
     storeBoolean("memora.sidebar.collapsed", false);
   }
 
-  function navigateTo(nextView: AppView) {
+  function navigateTo(nextView: AppView, preserveMemorySelection = false) {
     conversationDetailRequestRef.current += 1;
     conversationViewRevisionRef.current += 1;
+    const enteringDifferentMemoryView =
+      nextView !== view && (nextView === "LIBRARY" || nextView === "KNOWLEDGE");
+    if (enteringDifferentMemoryView && !preserveMemorySelection) {
+      setSelectedMemory(null);
+      setMemoryMarkdown("");
+      setMemoryBaseline("");
+      setRevisions([]);
+      setMemorySearchFilters(EMPTY_MEMORY_SEARCH);
+      setMemorySearchActive(false);
+      if (user && activeWorkspace) {
+        void loadMemories(user.id, activeWorkspace).catch(() => {
+          showToast("重新读取记忆失败，请稍后重试");
+        });
+      }
+    }
     if (nextView !== view) {
       setViewMotion(nextView === "LIBRARY" ? "forward" : "back");
       setView(nextView);
@@ -1162,7 +1177,13 @@ export function WorkbenchShell() {
   }, [enterPersonalSpace]);
 
   useEffect(() => {
-    if (selectedMemory) return;
+    const selectedMemoryBelongsToView =
+      view === "LIBRARY"
+        ? selectedMemory?.is_owner === true
+        : view === "KNOWLEDGE"
+          ? selectedMemory?.visibility === "WORKSPACE"
+          : false;
+    if (selectedMemoryBelongsToView) return;
     const firstVisibleMemory =
       view === "LIBRARY"
         ? memories.find((memory) => memory.is_owner)
@@ -1321,7 +1342,7 @@ export function WorkbenchShell() {
     setMembers((current) => current.filter((member) => member.id !== memberId));
   }
 
-  async function searchMemoryLibrary() {
+  async function searchMemoryLibrary(scope: "PERSONAL" | "TEAM") {
     if (!user || !activeWorkspace) return;
     const { query, field, from, to, authorId } = memorySearchFilters;
     if (from && to && from > to) {
@@ -1344,10 +1365,10 @@ export function WorkbenchShell() {
         limit: 200,
         ...(createdFrom ? { created_from: createdFrom } : {}),
         ...(createdTo ? { created_to: createdTo } : {}),
-        ...(isCollaborativeWorkspace(activeWorkspace) && authorId
-          ? { author_id: authorId }
-          : activeWorkspace.kind === "PERSONAL"
-            ? { author_id: user.id }
+        ...(scope === "PERSONAL"
+          ? { author_id: user.id }
+          : isCollaborativeWorkspace(activeWorkspace) && authorId
+            ? { author_id: authorId }
             : {}),
       };
       const data = await serverState.query({
@@ -1363,7 +1384,13 @@ export function WorkbenchShell() {
       setMemoryMarkdown("");
       setMemoryBaseline("");
       setRevisions([]);
-      setMemories(data.results.map((result) => result.memory));
+      setMemories(
+        data.results
+          .map((result) => result.memory)
+          .filter((memory) =>
+            scope === "PERSONAL" ? memory.is_owner : memory.visibility === "WORKSPACE",
+          ),
+      );
       setMemorySearchActive(true);
     } catch {
       showToast("检索失败，请稍后重试");
@@ -1835,7 +1862,9 @@ export function WorkbenchShell() {
                       ? data.draft_changed
                         ? "右侧 Markdown 已同步"
                         : data.citations.length
-                          ? `引用 ${data.citations.length} 条个人记忆`
+                          ? `引用 ${data.citations.length} 条${
+                              chatContext === "TEAM" ? "团队共享记忆" : "个人记忆"
+                            }`
                           : "已回答，Markdown 未改变"
                       : data.model_status === "DISABLED"
                         ? "基础草稿模式"
@@ -1848,6 +1877,7 @@ export function WorkbenchShell() {
             images,
             documents,
             requestedWebSearch,
+            memoryScope: memoryScopeForContext[chatContext],
             response: data,
           }),
           resultTarget: savedMemory ? "MEMORY" : data.draft_changed ? "DRAFT" : undefined,
@@ -1860,6 +1890,7 @@ export function WorkbenchShell() {
           images,
           documents,
           requestedWebSearch,
+          memoryScope: memoryScopeForContext[chatContext],
           response: data,
         }),
         savedMemoryId: savedMemory?.id,
@@ -2133,6 +2164,7 @@ export function WorkbenchShell() {
         isCollaborativeWorkspace(activeWorkspace)
         ? "KNOWLEDGE"
         : "LIBRARY",
+      true,
     );
     await selectMemory(resolved);
   }
@@ -2497,6 +2529,7 @@ export function WorkbenchShell() {
                   isCollaborativeWorkspace(activeWorkspace) && memory.visibility === "WORKSPACE"
                     ? "KNOWLEDGE"
                     : "LIBRARY",
+                  true,
                 );
                 void selectMemory(memory);
               }}
@@ -2535,11 +2568,12 @@ export function WorkbenchShell() {
                       searchFilters={memorySearchFilters}
                       searchActive={memorySearchActive}
                       onSearchFiltersChange={setMemorySearchFilters}
-                      onSearch={() => void searchMemoryLibrary()}
+                      onSearch={() => void searchMemoryLibrary("TEAM")}
                       onResetSearch={() => void resetMemorySearch()}
                       onSelect={(memory) => void selectMemory(memory)}
                       title="共享记忆"
                       eyebrow="成员主动共享"
+                      showMemberFilter
                     />
                   }
                   right={
@@ -2660,11 +2694,12 @@ export function WorkbenchShell() {
                 searchFilters={memorySearchFilters}
                 searchActive={memorySearchActive}
                 onSearchFiltersChange={setMemorySearchFilters}
-                onSearch={() => void searchMemoryLibrary()}
+                onSearch={() => void searchMemoryLibrary("PERSONAL")}
                 onResetSearch={() => void resetMemorySearch()}
                 onSelect={(memory) => void selectMemory(memory)}
                 title="我的记忆"
                 eyebrow="个人 Markdown 记忆"
+                showMemberFilter={false}
                 headerAction={
                   <button
                     className="memory-assistant-action"
@@ -2681,10 +2716,10 @@ export function WorkbenchShell() {
               <MemoryDetail
                 key={selectedMemory?.id ?? "empty-memory"}
                 workspace={activeWorkspace}
-                memory={selectedMemory}
-                markdown={memoryMarkdown}
-                baseline={memoryBaseline}
-                revisions={revisions}
+                memory={selectedMemory?.is_owner ? selectedMemory : null}
+                markdown={selectedMemory?.is_owner ? memoryMarkdown : ""}
+                baseline={selectedMemory?.is_owner ? memoryBaseline : ""}
+                revisions={selectedMemory?.is_owner ? revisions : []}
                 refining={refiningMemory}
                 savingMode={savingMode}
                 deleting={deletingMemory}

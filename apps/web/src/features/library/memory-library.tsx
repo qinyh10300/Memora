@@ -27,6 +27,7 @@ import {
 function MemorySearchPopover({
   workspace,
   members,
+  showMemberFilter,
   filters,
   active,
   searching,
@@ -36,6 +37,7 @@ function MemorySearchPopover({
 }: {
   workspace: Workspace;
   members: WorkspaceMember[];
+  showMemberFilter: boolean;
   filters: MemorySearchFilters;
   active: boolean;
   searching: boolean;
@@ -140,7 +142,7 @@ function MemorySearchPopover({
               />
             </label>
           </div>
-          {isCollaborativeWorkspace(workspace) ? (
+          {showMemberFilter && isCollaborativeWorkspace(workspace) ? (
             <label>
               <span>空间成员</span>
               <select
@@ -192,6 +194,7 @@ export function Timeline({
   title = "记忆库",
   eyebrow,
   headerAction,
+  showMemberFilter = isCollaborativeWorkspace(workspace),
 }: {
   workspace: Workspace;
   members: WorkspaceMember[];
@@ -207,6 +210,7 @@ export function Timeline({
   title?: string;
   eyebrow?: string;
   headerAction?: ReactNode;
+  showMemberFilter?: boolean;
 }) {
   const groups = useMemo(() => {
     const result: { key: string; label: string; memories: Memory[] }[] = [];
@@ -240,6 +244,7 @@ export function Timeline({
           <MemorySearchPopover
             workspace={workspace}
             members={members}
+            showMemberFilter={showMemberFilter}
             filters={searchFilters}
             active={searchActive}
             searching={loading}

@@ -2603,6 +2603,37 @@ describe("Memora personal Markdown MVP", () => {
     expect(screen.queryByLabelText("让 AI 修改这条记忆")).not.toBeInTheDocument();
   });
 
+  it("个人与团队记忆切换会重置详情和检索范围", async () => {
+    mockAuthenticatedSession([memory, teammateMemory], teamWorkspace.id);
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
+    fireEvent.click(await screen.findByRole("button", { name: /查看记忆：社会世界模型/ }));
+    expect(await screen.findByLabelText("记忆 Markdown")).toHaveValue(teammateMemory.body);
+
+    fireEvent.click(screen.getByRole("button", { name: "我的记忆" }));
+    expect(await screen.findByLabelText("记忆 Markdown")).toHaveValue(memory.body);
+    expect(screen.queryByText(`由 Blair 分享到 ${teamWorkspace.name}`)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "检索记忆库" }));
+    expect(screen.queryByLabelText("空间成员")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("关键词"), { target: { value: "产品方向" } });
+    fireEvent.click(screen.getByRole("button", { name: "检索" }));
+
+    await waitFor(() => {
+      expect(apiMocks.POST).toHaveBeenCalledWith("/search", {
+        body: expect.objectContaining({
+          q: "产品方向",
+          author_id: personalUser.id,
+        }),
+      });
+    });
+    expect(screen.queryByText("社会世界模型")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "团队记忆" }));
+    expect(await screen.findByLabelText("记忆 Markdown")).toHaveValue(teammateMemory.body);
+  });
+
   it("隐藏联网控件并默认自动联网，把优化后的内容和可点击来源加入右侧", async () => {
     mockAuthenticatedSession([]);
 

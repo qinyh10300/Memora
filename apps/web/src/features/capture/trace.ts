@@ -2,6 +2,7 @@ import type {
   DraftChatResponse,
   DraftDocumentAttachment,
   DraftImageAttachment,
+  DraftMemoryScope,
   DraftModel,
   DraftTrace,
   DraftTraceStep,
@@ -101,12 +102,14 @@ export function buildCompletedTrace({
   images,
   documents,
   requestedWebSearch,
+  memoryScope,
   response,
 }: {
   modelLabel: string;
   images: DraftImageAttachment[];
   documents: DraftDocumentAttachment[];
   requestedWebSearch: boolean;
+  memoryScope: DraftMemoryScope;
   response: DraftChatResponse;
 }): DraftTrace {
   if (response.trace) return response.trace;
@@ -151,18 +154,32 @@ export function buildCompletedTrace({
     });
   }
 
-  steps.push({
-    id: "retrieval",
-    kind: "RETRIEVAL",
-    status: "COMPLETED",
-    title: "授权个人记忆已检索",
-    detail: response.citations.length
-      ? `检索个人记忆：引用 ${response.citations.length} 条`
-      : "检索个人记忆：未引用已有记录",
-    elapsed_ms: 0,
-    duration_ms: null,
-    item_count: response.citations.length,
-  });
+  const retrievalLabel = memoryScope === "TEAM" ? "团队共享记忆" : "个人记忆";
+  steps.push(
+    memoryScope === "NONE"
+      ? {
+          id: "retrieval",
+          kind: "RETRIEVAL",
+          status: "SKIPPED",
+          title: "本轮不使用记忆",
+          detail: "通用聊天只使用当前对话、附件和本轮允许的网页来源。",
+          elapsed_ms: 0,
+          duration_ms: null,
+          item_count: 0,
+        }
+      : {
+          id: "retrieval",
+          kind: "RETRIEVAL",
+          status: "COMPLETED",
+          title: `${retrievalLabel}已检索`,
+          detail: response.citations.length
+            ? `检索${retrievalLabel}：引用 ${response.citations.length} 条`
+            : `检索${retrievalLabel}：未引用已有记录`,
+          elapsed_ms: 0,
+          duration_ms: null,
+          item_count: response.citations.length,
+        },
+  );
 
   if (response.web_search_status === "AVAILABLE") {
     steps.push({
