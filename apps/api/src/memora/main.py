@@ -1,7 +1,8 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
 
 from memora.api.agent import router as agent_router
 from memora.api.alignments import router as alignments_router
@@ -21,6 +22,7 @@ from memora.api.system import router as system_router
 from memora.api.visuals import job_router as visual_jobs_router
 from memora.api.visuals import router as visuals_router
 from memora.api.workspaces import router as workspaces_router
+from memora.conversations.service import ConversationUnavailableError
 from memora.database import build_engine, build_session_factory
 from memora.identity.email_verification import build_verification_code_sender
 from memora.identity.rate_limit import LoginRateLimiter
@@ -68,6 +70,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.state.settings = resolved_settings
     application.dependency_overrides[get_settings] = lambda: resolved_settings
+
+    @application.exception_handler(ConversationUnavailableError)
+    async def conversation_unavailable(
+        _request: Request,
+        _error: ConversationUnavailableError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": "对话不存在"},
+        )
+
     application.add_middleware(RequestContextMiddleware)
     application.include_router(system_router)
     application.include_router(observability_router)

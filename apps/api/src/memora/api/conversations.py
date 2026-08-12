@@ -33,10 +33,11 @@ class CreateConversationRequest(BaseModel):
 class UpdateConversationRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=120)
     archived: bool | None = None
+    pinned: bool | None = None
 
     @model_validator(mode="after")
     def require_change(self) -> "UpdateConversationRequest":
-        if self.title is None and self.archived is None:
+        if self.title is None and self.archived is None and self.pinned is None:
             raise ValueError("至少需要更新一个字段")
         if self.title is not None:
             self.title = " ".join(self.title.split())
@@ -52,6 +53,7 @@ class ConversationSummaryResponse(BaseModel):
     topic: str
     created_at: datetime
     updated_at: datetime
+    pinned_at: datetime | None
     archived_at: datetime | None
     message_count: int
 
@@ -86,6 +88,7 @@ def _summary_for(
         topic=conversation.topic,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
+        pinned_at=conversation.pinned_at,
         archived_at=conversation.archived_at,
         message_count=message_count,
     )
@@ -111,7 +114,12 @@ def list_conversations(
             ),
         )
         .group_by(Conversation.id)
-        .order_by(Conversation.updated_at.desc(), Conversation.id)
+        .order_by(
+            Conversation.pinned_at.is_(None),
+            Conversation.pinned_at.desc(),
+            Conversation.updated_at.desc(),
+            Conversation.id,
+        )
         .limit(limit)
     )
     return [
@@ -254,8 +262,12 @@ def update_conversation(
         raise _not_found()
     if payload.title is not None:
         conversation.title = payload.title
+    if payload.pinned is not None:
+        conversation.pinned_at = datetime.now(UTC) if payload.pinned else None
     if payload.archived is not None:
         conversation.archived_at = datetime.now(UTC) if payload.archived else None
+    if conversation.archived_at is not None:
+        conversation.pinned_at = None
     conversation.updated_at = datetime.now(UTC)
     database.commit()
     database.refresh(conversation)
@@ -263,3 +275,21 @@ def update_conversation(
         select(func.count(Message.id)).where(Message.conversation_id == conversation.id)
     )
     return _summary_for(conversation, message_count=message_count or 0)
+
+
+@router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_conversation(
+    conversation_id: UUID,
+    principal: CurrentPrincipal,
+    database: DatabaseSession,
+) -> None:
+    conversation = get_owned_conversation(
+        database,
+        principal,
+        conversation_id,
+        include_archived=True,
+    )
+    if conversation is None:
+        raise _not_found()
+    database.delete(conversation)
+    database.commit()

@@ -768,6 +768,18 @@
             "title": "Messages",
             "type": "array"
           },
+          "pinned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned At"
+          },
           "scope": {
             "enum": [
               "PERSONAL",
@@ -798,6 +810,7 @@
           "topic",
           "created_at",
           "updated_at",
+          "pinned_at",
           "archived_at",
           "message_count",
           "messages"
@@ -895,6 +908,18 @@
             "title": "Message Count",
             "type": "integer"
           },
+          "pinned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned At"
+          },
           "scope": {
             "enum": [
               "PERSONAL",
@@ -925,6 +950,7 @@
           "topic",
           "created_at",
           "updated_at",
+          "pinned_at",
           "archived_at",
           "message_count"
         ],
@@ -2104,6 +2130,16 @@
             "default": "",
             "maxLength": 10000,
             "title": "Markdown",
+            "type": "string"
+          },
+          "memory_scope": {
+            "default": "PERSONAL",
+            "enum": [
+              "NONE",
+              "PERSONAL",
+              "TEAM"
+            ],
+            "title": "Memory Scope",
             "type": "string"
           },
           "messages": {
@@ -4345,6 +4381,17 @@
             ],
             "title": "Archived"
           },
+          "pinned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned"
+          },
           "title": {
             "anyOf": [
               {
@@ -6378,6 +6425,40 @@
       }
     },
     "/conversations/{conversation_id}": {
+      "delete": {
+        "operationId": "delete_conversation_conversations__conversation_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Conversation",
+        "tags": [
+          "conversations"
+        ]
+      },
       "get": {
         "operationId": "get_conversation_conversations__conversation_id__get",
         "parameters": [

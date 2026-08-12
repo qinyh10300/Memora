@@ -171,6 +171,48 @@ def test_external_model_receives_only_authorized_minimal_evidence(
     assert [item["memory_id"] for item in answer_citations] == [shared["id"]]
 
 
+def test_chat_deleted_during_model_returns_not_found(
+    chat_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alex = _login(chat_client, "alex@memora.local", "memora-local-alex")
+    _create(chat_client, alex, "并发删除验证：只用这条授权记录回答。")
+    conversation = chat_client.post(
+        "/conversations",
+        headers=alex,
+        json={"title": "问答并发删除验证"},
+    ).json()
+    engine = cast(FastAPI, chat_client.app).state.engine
+    model = CaptureChatModel()
+    complete = model.complete
+
+    def complete_and_delete(messages: list[ChatMessage]) -> ChatResult:
+        result = complete(messages)
+        with Session(engine) as database:
+            stored = database.get(Conversation, UUID(conversation["id"]))
+            assert stored is not None
+            database.delete(stored)
+            database.commit()
+        return result
+
+    monkeypatch.setattr(model, "complete", complete_and_delete)
+    monkeypatch.setattr("memora.api.chat.build_chat_model", lambda _settings: model)
+
+    response = chat_client.post(
+        "/chat/questions",
+        headers=alex,
+        json={
+            "conversation_id": conversation["id"],
+            "question": "并发删除验证记录了什么？",
+            "topic": "并发删除验证",
+            "scope": "PERSONAL",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "对话不存在"}
+
+
 def test_ambiguous_period_requires_dates_and_invalid_scope_is_rejected(
     chat_client: TestClient,
 ) -> None:

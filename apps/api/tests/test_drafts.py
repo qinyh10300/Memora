@@ -1,6 +1,7 @@
 import base64
 import json
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from io import BytesIO
 from typing import cast
 from uuid import UUID
@@ -27,7 +28,9 @@ from memora.ai.ports import (
     WebSource,
 )
 from memora.audit.models import AuditEvent
-from memora.billing.models import Subscription
+from memora.billing.models import CreditLedgerEntry, Subscription
+from memora.billing.service import InsufficientCreditsError
+from memora.conversations.models import Conversation
 from memora.database import Base
 from memora.identity.dependencies import SESSION_COOKIE_NAME
 from memora.identity.models import User
@@ -476,6 +479,154 @@ def test_draft_chat_receives_conversation_and_only_authorized_personal_memory(
     assert event is not None and event.model == "draft-chat-model"
 
 
+def test_general_draft_chat_explicitly_skips_all_memory_retrieval(
+    draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alex = _login(draft_client)
+    private_memory = draft_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "GENERAL_CHAT_MUST_NOT_RECEIVE_THIS_MEMORY"},
+    )
+    assert private_memory.status_code == 201
+    conversation = draft_client.post(
+        "/conversations",
+        headers=alex,
+        json={"title": "通用问答"},
+    )
+    assert conversation.status_code == 201
+
+    model = CaptureDraftChatModel(memory_id=private_memory.json()["id"])
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+    monkeypatch.setattr(
+        "memora.api.drafts.select_chat_evidence",
+        lambda *_args, **_kwargs: pytest.fail("NONE scope must skip recent memory retrieval"),
+    )
+    monkeypatch.setattr(
+        "memora.api.drafts.build_embedding_model",
+        lambda _settings: pytest.fail("NONE scope must skip semantic memory retrieval"),
+    )
+
+    response = draft_client.post(
+        "/drafts/chat",
+        headers=alex,
+        json={
+            "conversation_id": conversation.json()["id"],
+            "memory_scope": "NONE",
+            "markdown": "",
+            "messages": [{"role": "USER", "content": "帮我回答一个通用问题。"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["citations"] == []
+    prompt = "\n".join(message.content for message in model.messages)
+    assert "GENERAL_CHAT_MUST_NOT_RECEIVE_THIS_MEMORY" not in prompt
+    assert "不得声称读取过用户或团队记忆" in prompt
+    summaries = draft_client.get("/conversations", headers=alex).json()
+    persisted = next(item for item in summaries if item["id"] == conversation.json()["id"])
+    assert persisted["scope"] == "PERSONAL"
+    assert persisted["topic"] == "通用助手"
+
+
+def test_team_draft_chat_requires_collaborative_workspace(draft_client: TestClient) -> None:
+    alex = _login(draft_client)
+    personal_workspace = next(
+        workspace
+        for workspace in draft_client.get("/workspaces", headers=alex).json()
+        if workspace["kind"] == "PERSONAL"
+    )
+    assert (
+        draft_client.post(
+            f"/workspaces/{personal_workspace['id']}/activate",
+            headers=alex,
+        ).status_code
+        == 200
+    )
+
+    response = draft_client.post(
+        "/drafts/chat",
+        headers=alex,
+        json={
+            "memory_scope": "TEAM",
+            "markdown": "",
+            "messages": [{"role": "USER", "content": "团队最近记录了什么？"}],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "团队记忆问答只能在协作团队中使用"
+
+
+def test_team_draft_chat_only_receives_workspace_shared_memories(
+    draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alex = _login(draft_client)
+    created_team = draft_client.post(
+        "/workspaces",
+        headers=alex,
+        json={"name": "记忆范围测试团队", "kind": "TEAM"},
+    )
+    assert created_team.status_code == 201
+    team_id = created_team.json()["id"]
+    assert (
+        draft_client.post(
+            f"/workspaces/{team_id}/activate",
+            headers=alex,
+        ).status_code
+        == 200
+    )
+    private_memory = draft_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "TEAM_CHAT_MUST_NOT_RECEIVE_PRIVATE_MEMORY"},
+    )
+    assert private_memory.status_code == 201
+    shared_memory = draft_client.post(
+        "/memories",
+        headers=alex,
+        json={
+            "body": "团队共享判断：先验证成员主动共享的记录。",
+            "visibility": "WORKSPACE",
+        },
+    )
+    assert shared_memory.status_code == 201
+    conversation = draft_client.post(
+        "/conversations",
+        headers=alex,
+        json={"title": "团队问答"},
+    )
+    assert conversation.status_code == 201
+
+    model = CaptureDraftChatModel(memory_id=shared_memory.json()["id"])
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+    response = draft_client.post(
+        "/drafts/chat",
+        headers=alex,
+        json={
+            "conversation_id": conversation.json()["id"],
+            "memory_scope": "TEAM",
+            "markdown": "",
+            "messages": [{"role": "USER", "content": "团队最近形成了什么判断？"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert [item["memory_id"] for item in response.json()["citations"]] == [
+        shared_memory.json()["id"]
+    ]
+    prompt = "\n".join(message.content for message in model.messages)
+    assert "团队共享判断：先验证成员主动共享的记录。" in prompt
+    assert "TEAM_CHAT_MUST_NOT_RECEIVE_PRIVATE_MEMORY" not in prompt
+    assert "必须区分不同作者和记录时间" in prompt
+    summaries = draft_client.get("/conversations", headers=alex).json()
+    persisted = next(item for item in summaries if item["id"] == conversation.json()["id"])
+    assert persisted["scope"] == "WORKSPACE"
+    assert persisted["topic"] == "团队记忆"
+
+
 def test_draft_chat_appends_user_visible_exchange_to_owned_conversation(
     draft_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -546,6 +697,95 @@ def test_draft_chat_appends_user_visible_exchange_to_owned_conversation(
         },
     )
     assert forbidden.status_code == 404
+
+
+@pytest.mark.parametrize("lifecycle_change", ["DELETE", "ARCHIVE"])
+def test_draft_chat_lifecycle_change_during_model_returns_not_found_without_charging(
+    draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    lifecycle_change: str,
+) -> None:
+    alex = _login(draft_client)
+    conversation = draft_client.post(
+        "/conversations",
+        headers=alex,
+        json={"title": "并发删除验证"},
+    ).json()
+    engine = cast(FastAPI, draft_client.app).state.engine
+    model = TraceHeadersDraftModel()
+    complete = model.complete
+
+    def complete_and_delete(messages: list[ChatMessage]) -> ChatResult:
+        result = complete(messages)
+        with Session(engine) as database:
+            stored = database.get(Conversation, UUID(conversation["id"]))
+            assert stored is not None
+            if lifecycle_change == "DELETE":
+                database.delete(stored)
+            else:
+                stored.archived_at = datetime.now(UTC)
+            database.commit()
+        return result
+
+    monkeypatch.setattr(model, "complete", complete_and_delete)
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+
+    response = draft_client.post(
+        "/drafts/chat",
+        headers=alex,
+        json={
+            "conversation_id": conversation["id"],
+            "markdown": "",
+            "messages": [{"role": "USER", "content": "生成期间删除当前对话"}],
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "对话不存在"}
+    assert (
+        draft_client.get("/billing/subscription", headers=alex).json()["credits_remaining"] == 2_000
+    )
+    with Session(engine) as database:
+        draft_charges = database.scalars(
+            select(CreditLedgerEntry).where(CreditLedgerEntry.idempotency_key.like("draft-chat:%"))
+        ).all()
+    assert draft_charges == []
+
+
+def test_draft_chat_charge_race_rolls_back_staged_messages(
+    draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alex = _login(draft_client)
+    conversation = draft_client.post(
+        "/conversations",
+        headers=alex,
+        json={"title": "扣费竞态验证"},
+    ).json()
+    model = TraceHeadersDraftModel()
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+
+    def reject_charge(*_args: object, **_kwargs: object) -> None:
+        raise InsufficientCreditsError("并发请求已用完余额")
+
+    monkeypatch.setattr("memora.api.drafts.consume_credits", reject_charge)
+    response = draft_client.post(
+        "/drafts/chat",
+        headers=alex,
+        json={
+            "conversation_id": conversation["id"],
+            "markdown": "",
+            "messages": [{"role": "USER", "content": "最终扣费前余额发生变化"}],
+        },
+    )
+
+    assert response.status_code == 402
+    assert response.json() == {"detail": "credits 余额不足，请升级套餐后继续"}
+    detail = draft_client.get(f"/conversations/{conversation['id']}", headers=alex).json()
+    assert detail["message_count"] == 0
+    assert (
+        draft_client.get("/billing/subscription", headers=alex).json()["credits_remaining"] == 2_000
+    )
 
 
 def test_draft_chat_sends_validated_current_turn_images_without_persisting_them(
@@ -1201,6 +1441,53 @@ def test_draft_chat_stream_emits_safe_progress_and_final_trace(
     assert any(step["id"] == "model" and step["status"] == "SKIPPED" for step in steps)
     assert any(step["id"] == "output" and step["status"] == "COMPLETED" for step in steps)
     assert private_marker not in json.dumps(trace, ensure_ascii=False)
+
+
+def test_draft_chat_stream_reports_deleted_conversation_without_charging(
+    draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alex = _login(draft_client)
+    conversation = draft_client.post(
+        "/conversations",
+        headers=alex,
+        json={"title": "流式并发删除验证"},
+    ).json()
+    engine = cast(FastAPI, draft_client.app).state.engine
+    model = TraceHeadersDraftModel()
+    complete = model.complete
+
+    def complete_and_delete(messages: list[ChatMessage]) -> ChatResult:
+        result = complete(messages)
+        with Session(engine) as database:
+            stored = database.get(Conversation, UUID(conversation["id"]))
+            assert stored is not None
+            database.delete(stored)
+            database.commit()
+        return result
+
+    monkeypatch.setattr(model, "complete", complete_and_delete)
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+
+    response = draft_client.post(
+        "/drafts/chat/stream",
+        headers=alex,
+        json={
+            "conversation_id": conversation["id"],
+            "markdown": "",
+            "web_search": "DISABLED",
+            "messages": [{"role": "USER", "content": "流式生成期间删除当前对话"}],
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert payloads[-1]["type"] == "error"
+    assert payloads[-1]["code"] == "http_404"
+    assert payloads[-1]["message"] == "对话不存在"
+    assert (
+        draft_client.get("/billing/subscription", headers=alex).json()["credits_remaining"] == 2_000
+    )
 
 
 def test_draft_chat_stream_propagates_request_and_execution_ids_into_worker_thread(

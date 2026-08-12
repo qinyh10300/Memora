@@ -58,6 +58,7 @@ class Conversation(Base):
         onupdate=func.now(),
         index=True,
     )
+    pinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
 

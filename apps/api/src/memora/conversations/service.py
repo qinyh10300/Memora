@@ -21,6 +21,10 @@ ALL_TOPICS = {"全部", "所有", "*"}
 DEFAULT_CONVERSATION_TITLE = "新对话"
 
 
+class ConversationUnavailableError(RuntimeError):
+    """Raised when a conversation disappears before an exchange can be persisted."""
+
+
 @dataclass(frozen=True)
 class ChatEvidence:
     memory: Memory
@@ -54,6 +58,8 @@ def select_chat_evidence(
             Memory.author_id == subject_author_id,
             Memory.visibility == "WORKSPACE",
         )
+    elif scope in {"TEAM", "WORKSPACE"}:
+        statement = statement.where(Memory.visibility == "WORKSPACE")
     if created_from is not None:
         statement = statement.where(Memory.created_at >= created_from)
     if created_to is not None:
@@ -138,14 +144,25 @@ def reauthorize_evidence(
     database: Session,
     principal: Principal,
     evidence: list[ChatEvidence],
+    *,
+    scope: str | None = None,
+    subject_author_id: UUID | None = None,
 ) -> list[ChatEvidence]:
     if not evidence:
         return []
+    statement = authorized_memories_statement(principal).with_only_columns(Memory.id)
+    if scope == "PERSONAL":
+        statement = statement.where(Memory.author_id == principal.user_id)
+    elif scope == "COLLEAGUE":
+        statement = statement.where(
+            Memory.author_id == subject_author_id,
+            Memory.visibility == "WORKSPACE",
+        )
+    elif scope in {"TEAM", "WORKSPACE"}:
+        statement = statement.where(Memory.visibility == "WORKSPACE")
     allowed_ids = set(
         database.scalars(
-            authorized_memories_statement(principal)
-            .with_only_columns(Memory.id)
-            .where(Memory.id.in_([item.memory.id for item in evidence]))
+            statement.where(Memory.id.in_([item.memory.id for item in evidence]))
         ).all()
     )
     return [item for item in evidence if item.memory.id in allowed_ids]
@@ -212,10 +229,15 @@ def _touch_conversation(
 
 def _lock_conversation(database: Session, conversation: Conversation) -> Conversation:
     locked = database.scalar(
-        select(Conversation).where(Conversation.id == conversation.id).with_for_update()
+        select(Conversation)
+        .where(
+            Conversation.id == conversation.id,
+            Conversation.archived_at.is_(None),
+        )
+        .with_for_update()
     )
     if locked is None:
-        raise RuntimeError("conversation disappeared while appending messages")
+        raise ConversationUnavailableError("conversation disappeared while appending messages")
     return locked
 
 
