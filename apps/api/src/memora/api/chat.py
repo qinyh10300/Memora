@@ -208,7 +208,13 @@ def ask_chatbot(
         except AIProviderError:
             model_status = "DEGRADED"
 
-    authorized_evidence = reauthorize_evidence(database, principal, evidence)
+    authorized_evidence = reauthorize_evidence(
+        database,
+        principal,
+        evidence,
+        scope=payload.scope,
+        subject_author_id=subject_author_id,
+    )
     if len(authorized_evidence) != len(evidence):
         # 生成期间发生撤回或删除时丢弃模型答案，只基于仍授权证据重建。
         model_result = None

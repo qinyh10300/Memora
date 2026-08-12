@@ -14,6 +14,7 @@ from memora.database import Base
 from memora.identity.dependencies import SESSION_COOKIE_NAME
 from memora.identity.seed import seed_database
 from memora.main import create_app
+from memora.memories.models import Memory
 from memora.settings import Settings
 
 
@@ -169,6 +170,44 @@ def test_external_model_receives_only_authorized_minimal_evidence(
     assert answer["model_status"] == "AVAILABLE"
     answer_citations = cast(list[dict[str, object]], answer["citations"])
     assert [item["memory_id"] for item in answer_citations] == [shared["id"]]
+
+
+def test_workspace_chat_reauthorizes_scope_after_owner_unshares_during_model(
+    chat_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alex = _login(chat_client, "alex@memora.local", "memora-local-alex")
+    shared = _create(chat_client, alex, "范围重授权验证：生成完成前撤回共享。")
+    assert chat_client.post(f"/memories/{shared['id']}/share", headers=alex).status_code == 200
+    engine = cast(FastAPI, chat_client.app).state.engine
+    model = CaptureChatModel()
+    complete = model.complete
+
+    def complete_and_unshare(messages: list[ChatMessage]) -> ChatResult:
+        result = complete(messages)
+        with Session(engine) as database:
+            stored = database.get(Memory, UUID(cast(str, shared["id"])))
+            assert stored is not None
+            stored.visibility = "PRIVATE"
+            stored.shared_at = None
+            database.commit()
+        return result
+
+    monkeypatch.setattr(model, "complete", complete_and_unshare)
+    monkeypatch.setattr("memora.api.chat.build_chat_model", lambda _settings: model)
+
+    answer = _ask(
+        chat_client,
+        alex,
+        question="团队在范围重授权验证上记录了什么？",
+        topic="范围重授权验证",
+        scope="WORKSPACE",
+    )
+
+    assert answer["status"] == "NO_EVIDENCE"
+    assert answer["model_status"] == "DEGRADED"
+    assert answer["citations"] == []
+    assert "我不知道" in cast(str, answer["answer"])
 
 
 def test_chat_deleted_during_model_returns_not_found(
