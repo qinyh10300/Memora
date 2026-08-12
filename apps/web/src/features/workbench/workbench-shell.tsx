@@ -74,7 +74,12 @@ import {
   MenuIcon,
   UserAvatar,
 } from "@/features/shared/icons";
-import { applyInterfaceTheme, readInterfaceTheme } from "@/features/shared/interface-theme";
+import {
+  applyInterfaceTheme,
+  readInterfaceTheme,
+  readInterfaceThemePreference,
+  watchSystemTheme,
+} from "@/features/shared/interface-theme";
 import { formatDateTime, nextId, readStoredBoolean, storeBoolean } from "@/features/shared/utils";
 import { TeamAccessDialog, TeamWorkspace } from "@/features/team/team";
 import { TeamMemoryCenter } from "@/features/team-memory/team-memory-center";
@@ -948,6 +953,9 @@ export function WorkbenchShell() {
     applyInterfaceTheme(readInterfaceTheme());
     document.documentElement.classList.toggle("memora-compact", compact);
     document.documentElement.classList.toggle("memora-reduce-motion", reduceMotion);
+    return watchSystemTheme((theme) => {
+      if (readInterfaceThemePreference() === "system") applyInterfaceTheme(theme);
+    });
   }, []);
 
   const loadMemories = useCallback(

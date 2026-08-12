@@ -93,26 +93,31 @@ html.memora-theme-light {
   --inset-hi: 0 1px 0 rgba(255, 255, 255, 0.72) inset;
 }
 
+/* asymmetric: pure-white ground; base body/.landing-page use --bg (#f8f8f8) */
 html.memora-theme-light body,
 html.memora-theme-light .app-shell,
 html.memora-theme-light .landing-page {
   background: var(--bg-deep);
 }
 
+/* asymmetric: light-only panel-tint sheen over the flat --sidebar base fill */
 html.memora-theme-light .app-sidebar {
   background:
     linear-gradient(155deg, rgba(var(--panel-tint-rgb), 0.72), transparent 38%), var(--sidebar);
 }
 
+/* asymmetric: softer light shadow (0.16 vs base 0.48/0.58) and drops --inset-hi */
 html.memora-theme-light .workspace-menu,
 html.memora-theme-light .sidebar-account-menu {
   box-shadow: 0 24px 64px rgba(var(--shadow-rgb), 0.16);
 }
 
+/* asymmetric: denser overlay fill in light (0.88 vs base 0.84) */
 html.memora-theme-light .file-drop-overlay {
   background: rgba(var(--panel-tint-rgb), 0.88);
 }
 
+/* asymmetric: stronger glass header fill in light (0.86 vs base 0.62) */
 html.memora-theme-light .panel-header,
 html.memora-theme-light .markdown-header,
 html.memora-theme-light .library-list-header,
@@ -120,33 +125,12 @@ html.memora-theme-light .detail-header {
   background: rgba(var(--panel-tint-rgb), 0.86);
 }
 
-html.memora-theme-light .agent-retry-bar,
-html.memora-theme-light .visual-workspace-header,
-html.memora-theme-light .diagram-toolbar {
-  background: rgba(var(--panel-tint-rgb), 0.96);
-}
-
-html.memora-theme-light .composer-wrap {
-  background: rgba(var(--panel-tint-rgb), 0.98);
-}
-
-html.memora-theme-light .composer {
-  background: var(--composer-surface);
-}
-
-html.memora-theme-light .conversation-panel.is-empty-conversation::before {
-  background: radial-gradient(
-    ellipse at center,
-    rgba(var(--mono-rgb), 0.035) 0%,
-    rgba(var(--mono-rgb), 0.012) 42%,
-    transparent 72%
-  );
-}
-
+/* asymmetric: lighter backdrop scrim under blur (0.72 vs base 0.76) */
 html.memora-theme-light .subscription-backdrop {
   background: rgba(var(--scrim-rgb), 0.72);
 }
 
+/* asymmetric: panel-tint glass highlights replace base dark mono vignette; much softer shadow with bright inset */
 html.memora-theme-light .subscription-dialog {
   background:
     radial-gradient(circle at 50% -20%, rgba(var(--panel-tint-rgb), 0.92), transparent 34%),
@@ -156,6 +140,7 @@ html.memora-theme-light .subscription-dialog {
     0 1px 0 rgba(var(--panel-tint-rgb), 0.86) inset;
 }
 
+/* asymmetric: white highlight radial replaces base dark mono tint; softer light shadow */
 html.memora-theme-light .plan-option {
   background:
     radial-gradient(circle at 88% 3%, rgba(var(--panel-tint-rgb), 0.86), transparent 30%),
@@ -163,6 +148,7 @@ html.memora-theme-light .plan-option {
   box-shadow: 0 16px 42px rgba(var(--shadow-rgb), 0.06);
 }
 
+/* asymmetric: white highlight radial replaces base dark mono tint; softer light shadow */
 html.memora-theme-light .plan-option:hover {
   background:
     radial-gradient(circle at 88% 3%, rgba(var(--panel-tint-rgb), 0.96), transparent 34%),
@@ -170,18 +156,17 @@ html.memora-theme-light .plan-option:hover {
   box-shadow: 0 24px 54px rgba(var(--shadow-rgb), 0.11);
 }
 
-html.memora-theme-light .composer-resize-handle {
-  background: transparent;
-}
-
+/* asymmetric: denser backdrop-blur fill in light (0.88 vs base 0.82) */
 html.memora-theme-light .pending-images > div > button:not(.document-status-action) {
   background: rgba(var(--panel-tint-rgb), 0.88);
 }
 
+/* asymmetric: denser backdrop-blur hover fill in light (0.96 vs base 0.9) */
 html.memora-theme-light .pending-images > div > button:not(.document-status-action):hover {
   background: rgba(var(--panel-tint-rgb), 0.96);
 }
 
+/* asymmetric: normalizes near-black inversions (#000/#0e-#19 tones) to --text */
 html.memora-theme-light .conversation-intro h2,
 html.memora-theme-light .markdown-preview code,
 html.memora-theme-light .primary-nav button.is-active,
@@ -191,6 +176,7 @@ html.memora-theme-light .visual-template-preview.is-scientific {
   color: var(--text);
 }
 
+/* asymmetric: black primary-button cluster on --ink/--paper with light-tuned shadow */
 html.memora-theme-light .settings-save,
 html.memora-theme-light .primary-action,
 html.memora-theme-light .library-search-popover > footer .primary-action,
@@ -205,6 +191,7 @@ html.memora-theme-light .auth-submit {
   box-shadow: 0 8px 24px rgba(var(--shadow-rgb), 0.13);
 }
 
+/* asymmetric: black primary-button hover deepens to --accent-light (#000) on --paper */
 html.memora-theme-light .settings-save:hover:not(:disabled),
 html.memora-theme-light .primary-action:hover:not(:disabled),
 html.memora-theme-light .composer .send-button:hover:not(:disabled),
@@ -217,25 +204,19 @@ html.memora-theme-light .auth-submit:hover:not(:disabled) {
   color: var(--paper);
 }
 
+/* asymmetric: solid --ink/--paper hover fill instead of tone inversion */
 html.memora-theme-light .account-upgrade-button:hover {
   border-color: var(--ink);
   background: var(--ink);
   color: var(--paper);
 }
 
-html.memora-theme-light .settings-toggle-list input:checked {
-  border-color: var(--ink-soft);
-  background: var(--ink-soft);
-}
-
+/* asymmetric: pure-white knob on the checked track; base tone-09 gives #f6f6f6 */
 html.memora-theme-light .settings-toggle-list input:checked::before {
   background: var(--bg-deep);
 }
 
-html.memora-theme-light .landing-nav {
-  background: rgba(var(--panel-tint-rgb), 0.9);
-}
-
+/* asymmetric: solidifies glass fills (.landing-agent-visual span 0.88 -> 0.96) */
 html.memora-theme-light .landing-stage-card,
 html.memora-theme-light .landing-agent-visual span,
 html.memora-theme-light .preview-draft,
@@ -243,6 +224,7 @@ html.memora-theme-light .preview-composer {
   background: rgba(var(--panel-tint-rgb), 0.96);
 }
 
+/* asymmetric: normalizes --accent-light (#000) and dark tone inversions to --text */
 html.memora-theme-light .landing-page :where(h1, h2, h3, strong, summary, code),
 html.memora-theme-light .landing-brand,
 html.memora-theme-light .landing-nav nav a:hover,
@@ -261,6 +243,7 @@ html.memora-theme-light .auth-form input {
   color: var(--text);
 }
 
+/* asymmetric: unifies assorted tone-gray inversions (#2e-#77 range) to --muted */
 html.memora-theme-light .landing-nav nav a,
 html.memora-theme-light .landing-login-button,
 html.memora-theme-light .landing-footer button,
@@ -284,21 +267,7 @@ html.memora-theme-light .auth-form > label > span:first-child {
   color: var(--muted);
 }
 
-html.memora-theme-light .landing-menu-button,
-html.memora-theme-light .auth-dialog-header > button,
-html.memora-theme-light .auth-form input {
-  background: var(--tone-0f);
-}
-
+/* asymmetric: darker glyph than tone inversion (base tone-eb #141414 -> --text) */
 html.memora-theme-light .landing-menu-button {
   color: var(--text);
-}
-
-html.memora-theme-light .landing-product-stage,
-html.memora-theme-light .landing-feature-showcase,
-html.memora-theme-light .visual-image-grid img,
-html.memora-theme-light img,
-html.memora-theme-light video,
-html.memora-theme-light canvas {
-  color-scheme: light;
 }

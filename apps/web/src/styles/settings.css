@@ -624,6 +624,10 @@
   background: var(--paper-soft);
 }
 
+.settings-theme-swatch.is-system {
+  background: linear-gradient(135deg, var(--ink-panel) 0 50%, var(--paper-soft) 50% 100%);
+}
+
 .settings-info-list > div,
 .settings-toggle-list > label {
   display: flex;

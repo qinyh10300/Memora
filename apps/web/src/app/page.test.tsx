@@ -3169,9 +3169,11 @@ describe("Memora personal Markdown MVP", () => {
     const { unmount } = render(<HomePage />);
     await openAccountSettings("通用设置");
 
+    const systemTheme = screen.getByRole("radio", { name: /跟随系统/ });
     const darkTheme = screen.getByRole("radio", { name: /黑色/ });
     const lightTheme = screen.getByRole("radio", { name: /白色/ });
-    expect(darkTheme).toHaveAttribute("aria-checked", "true");
+    expect(systemTheme).toHaveAttribute("aria-checked", "true");
+    expect(darkTheme).toHaveAttribute("aria-checked", "false");
 
     fireEvent.click(lightTheme);
     expect(window.localStorage.getItem("memora.interface.theme")).toBe("light");
@@ -3180,6 +3182,11 @@ describe("Memora personal Markdown MVP", () => {
 
     fireEvent.click(darkTheme);
     expect(window.localStorage.getItem("memora.interface.theme")).toBe("dark");
+    expect(document.documentElement).not.toHaveClass("memora-theme-light");
+
+    fireEvent.click(systemTheme);
+    expect(window.localStorage.getItem("memora.interface.theme")).toBe("system");
+    // jsdom has no matchMedia, so "system" resolves to dark here.
     expect(document.documentElement).not.toHaveClass("memora-theme-light");
 
     window.localStorage.setItem("memora.interface.theme", "light");

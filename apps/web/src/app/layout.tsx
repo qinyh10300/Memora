@@ -26,10 +26,17 @@ export const metadata: Metadata = {
   },
 };
 
+// Applies the stored (or system) theme before first paint so light-theme users
+// never see a dark flash. Mirrors the contract in features/shared/interface-theme.ts.
+const themeBootScript = `(function(){try{var v=localStorage.getItem("memora.interface.theme");var t=v==="dark"||v==="light"?v:(window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark");document.documentElement.classList.toggle("memora-theme-light",t==="light");document.documentElement.dataset.memoraTheme=t;}catch(e){}})();`;
+
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+        {children}
+      </body>
     </html>
   );
 }

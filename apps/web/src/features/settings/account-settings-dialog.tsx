@@ -19,9 +19,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { ACCEPTED_DRAFT_IMAGE_TYPES } from "@/features/capture/attachments";
 import {
-  readInterfaceTheme,
-  storeInterfaceTheme,
-  type InterfaceTheme,
+  readInterfaceThemePreference,
+  storeInterfaceThemePreference,
+  type InterfaceThemePreference,
 } from "@/features/shared/interface-theme";
 import type {
   AvatarMediaType,
@@ -78,7 +78,9 @@ export function AccountSettingsDialog({
   const [reduceMotion, setReduceMotion] = useState(
     () => readStoredBoolean("memora.interface.reduceMotion") === true,
   );
-  const [interfaceTheme, setInterfaceTheme] = useState<InterfaceTheme>(readInterfaceTheme);
+  const [interfaceTheme, setInterfaceTheme] = useState<InterfaceThemePreference>(
+    readInterfaceThemePreference,
+  );
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
@@ -253,9 +255,9 @@ export function AccountSettingsDialog({
     }
   }
 
-  function updateTheme(theme: InterfaceTheme) {
-    setInterfaceTheme(theme);
-    storeInterfaceTheme(theme);
+  function updateTheme(preference: InterfaceThemePreference) {
+    setInterfaceTheme(preference);
+    storeInterfaceThemePreference(preference);
   }
 
   return (
@@ -561,6 +563,22 @@ export function AccountSettingsDialog({
                 <fieldset className="settings-theme-fieldset">
                   <legend>外观主题</legend>
                   <div className="settings-theme-picker" role="radiogroup" aria-label="外观主题">
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={interfaceTheme === "system"}
+                      className={interfaceTheme === "system" ? "is-selected" : ""}
+                      onClick={() => updateTheme("system")}
+                    >
+                      <span className="settings-theme-swatch is-system" aria-hidden="true" />
+                      <span>
+                        <strong>跟随系统</strong>
+                        <small>自动匹配设备</small>
+                      </span>
+                      {interfaceTheme === "system" ? (
+                        <Check aria-hidden="true" size={14} strokeWidth={2} />
+                      ) : null}
+                    </button>
                     <button
                       type="button"
                       role="radio"

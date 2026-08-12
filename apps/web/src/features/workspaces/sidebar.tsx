@@ -13,6 +13,7 @@ import {
   LogOut,
   Mail,
   MessageSquarePlus,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
@@ -20,6 +21,7 @@ import {
   PinOff,
   Plus,
   Settings,
+  Sun,
   Trash2,
   UserRound,
   UserRoundPlus,
@@ -38,6 +40,11 @@ import type {
   Workspace,
 } from "@/features/shared/contracts";
 import { CaptureIcon, CloseIcon, LibraryIcon, Logo, UserAvatar } from "@/features/shared/icons";
+import {
+  readInterfaceTheme,
+  storeInterfaceThemePreference,
+  type InterfaceTheme,
+} from "@/features/shared/interface-theme";
 
 const CONVERSATION_MENU_WIDTH = 158;
 const CONVERSATION_MENU_HEIGHT = 150;
@@ -455,6 +462,16 @@ export function Sidebar({
   onLogout: () => void;
 }) {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [interfaceTheme, setInterfaceTheme] = useState<InterfaceTheme>("dark");
+  function toggleAccountMenu() {
+    setInterfaceTheme(readInterfaceTheme());
+    setAccountMenuOpen((current) => !current);
+  }
+  function toggleInterfaceTheme() {
+    const next = readInterfaceTheme() === "dark" ? "light" : "dark";
+    storeInterfaceThemePreference(next);
+    setInterfaceTheme(next);
+  }
   const [conversationMenu, setConversationMenu] = useState<{
     id: string;
     left: number;
@@ -855,6 +872,19 @@ export function Sidebar({
                       </small>
                     </span>
                   </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    aria-label={`切换主题，当前${interfaceTheme === "dark" ? "深色" : "浅色"}`}
+                    onClick={toggleInterfaceTheme}
+                  >
+                    {interfaceTheme === "dark" ? (
+                      <Moon aria-hidden="true" size={18} strokeWidth={1.7} />
+                    ) : (
+                      <Sun aria-hidden="true" size={18} strokeWidth={1.7} />
+                    )}
+                    切换主题
+                  </button>
                   <button type="button" role="menuitem" onClick={() => openSettings("GENERAL")}>
                     <Settings aria-hidden="true" size={18} strokeWidth={1.7} />
                     通用设置
@@ -879,7 +909,7 @@ export function Sidebar({
                 aria-label="打开账户菜单"
                 aria-expanded={accountMenuOpen}
                 title="账户菜单"
-                onClick={() => setAccountMenuOpen((current) => !current)}
+                onClick={toggleAccountMenu}
               >
                 <UserAvatar user={user} />
                 <span className="account-copy">
