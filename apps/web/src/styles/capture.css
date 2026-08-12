@@ -424,9 +424,9 @@ body.is-settings-open {
 }
 
 .conversation-context.is-team {
-  border-color: rgba(126, 163, 218, 0.22);
-  background: rgba(75, 112, 172, 0.09);
-  color: #b6c9e5;
+  border-color: rgba(var(--mono-rgb), 0.22);
+  background: rgba(var(--mono-rgb), 0.07);
+  color: var(--text-soft);
 }
 
 .conversation-context.is-personal {
@@ -448,7 +448,7 @@ body.is-settings-open {
 }
 
 .conversation-panel.is-empty-conversation .conversation-intro h2 {
-  color: #f4f3f0;
+  color: var(--text);
   font-size: clamp(2.15rem, 2.35vw, 3rem);
   font-weight: 500;
   letter-spacing: -0.025em;
@@ -1401,7 +1401,7 @@ body.is-resizing-composer .composer-wrap {
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  color: #818188;
+  color: var(--tone-82);
   font-size: var(--fs-3xs);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1857,7 +1857,7 @@ body.is-resizing-composer .composer-wrap {
 }
 
 .composer-wrap > .attachment-error {
-  color: #d99a9a;
+  color: var(--danger);
   animation: rise-in var(--t-base) var(--ease-out) both;
 }
 

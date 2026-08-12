@@ -170,15 +170,6 @@ html.memora-theme-light .plan-option:hover {
   box-shadow: 0 24px 54px rgba(var(--shadow-rgb), 0.11);
 }
 
-html.memora-theme-light .plan-option.is-recommended {
-  background:
-    radial-gradient(circle at 86% 0%, rgba(49, 88, 230, 0.12), transparent 34%),
-    rgba(var(--panel-tint-rgb), 0.34);
-  box-shadow:
-    0 18px 56px rgba(24, 53, 172, 0.11),
-    0 0 0 1px rgba(58, 91, 226, 0.06) inset;
-}
-
 html.memora-theme-light .composer-resize-handle {
   background: transparent;
 }

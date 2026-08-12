@@ -458,7 +458,7 @@
 }
 
 .settings-feedback.is-error {
-  color: #ffaaaa;
+  color: var(--danger);
 }
 
 .settings-save {

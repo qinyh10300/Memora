@@ -531,7 +531,7 @@
   width: auto;
   border-color: rgba(var(--danger-rgb), 0.38);
   padding-inline: 8px;
-  color: #ff9ca7;
+  color: var(--danger);
 }
 
 .team-requests-empty {
