@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ def build_public_draft_plan(
     restore_original: bool,
     has_attachments: bool,
     model_available: bool,
+    memory_scope: Literal["NONE", "PERSONAL", "TEAM"],
     web_search_requested: bool,
     web_search_available: bool,
     save_requested: bool,
@@ -37,8 +39,11 @@ def build_public_draft_plan(
         return PublicAgentPlan(steps=tuple(steps))
     if has_attachments:
         steps.append(PublicAgentPlanStep(id="attachments", title="读取已授权附件"))
-    if model_available:
-        steps.append(PublicAgentPlanStep(id="retrieval", title="检索已授权个人记忆"))
+    if model_available and memory_scope != "NONE":
+        retrieval_title = (
+            "搜索完整授权团队共享记忆" if memory_scope == "TEAM" else "搜索完整授权个人记忆"
+        )
+        steps.append(PublicAgentPlanStep(id="retrieval", title=retrieval_title))
     if web_search_requested and web_search_available:
         steps.append(PublicAgentPlanStep(id="web-search", title="查询可验证网页来源"))
     if model_available:

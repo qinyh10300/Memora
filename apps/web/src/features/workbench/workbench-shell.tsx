@@ -33,7 +33,6 @@ import {
   willSearchWeb,
 } from "@/features/capture/trace";
 import { SubscriptionDialog } from "@/features/billing/subscription-dialog";
-import { DiagramWorkspace } from "@/features/diagrams/diagram-workspace";
 import { TeamIntelligenceWorkspace } from "@/features/insights/team-intelligence-workspace";
 import { MemoryDetail, Timeline } from "@/features/library/memory-library";
 import { ServerStateClient, serverStateKeys } from "@/features/server-state/query-client";
@@ -43,12 +42,14 @@ import type {
   ChatContext,
   ConversationSummary,
   CurrentUser,
+  DevelopmentAccount,
   DraftDocumentAttachment,
   DraftDocumentCitation,
   DraftImageAttachment,
   DraftMessage,
   DraftMemoryScope,
   DraftModel,
+  DraftTrace,
   Memory,
   MemorySearchFilters,
   MemoryVisibility,
@@ -95,18 +96,28 @@ import {
   streamDraftChat,
 } from "@/lib/api";
 
-const demoAccounts = [
-  { name: "Alex", email: "alex@memora.local" },
-  { name: "Blair", email: "blair@memora.local" },
-  { name: "Casey", email: "casey@memora.local" },
-  { name: "Devon", email: "devon@memora.local" },
-];
-
 const memoryScopeForContext: Record<ChatContext, DraftMemoryScope> = {
   GENERAL: "NONE",
   PERSONAL: "PERSONAL",
   TEAM: "TEAM",
 };
+
+const TRACE_NEW_STEP_GAP_MS = 280;
+const TRACE_FINAL_RESULT_HOLD_MS = 320;
+const CHATBOT_INTRO_DISMISSED_KEY = "memora.chatbot-intro.dismissed";
+
+function waitForTracePresentation(delayMs: number, signal: AbortSignal) {
+  if (delayMs <= 0 || signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const finish = () => {
+      window.clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timer = window.setTimeout(finish, delayMs);
+    signal.addEventListener("abort", finish, { once: true });
+  });
+}
 
 function orderConversations(items: ConversationSummary[]) {
   return [...items].sort((left, right) => {
@@ -147,32 +158,129 @@ function AuthDialog({
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [quickLoginError, setQuickLoginError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [developmentAccounts, setDevelopmentAccounts] = useState<DevelopmentAccount[]>([]);
+  const [developmentAccountsLoaded, setDevelopmentAccountsLoaded] = useState(false);
+  const [quickLoginAccountId, setQuickLoginAccountId] = useState<string | null>(null);
   const firstInputRef = useRef<HTMLInputElement>(null);
+  const firstQuickAccountRef = useRef<HTMLButtonElement>(null);
+  const quickLoginControllerRef = useRef<AbortController | null>(null);
   const isRegister = mode === "REGISTER";
 
+  const cancelQuickLogin = useCallback(() => {
+    if (!quickLoginControllerRef.current) return;
+    quickLoginControllerRef.current.abort();
+    quickLoginControllerRef.current = null;
+    setSubmitting(false);
+    setQuickLoginAccountId(null);
+  }, []);
+
+  const closeDialog = useCallback(() => {
+    cancelQuickLogin();
+    onClose();
+  }, [cancelQuickLogin, onClose]);
+
+  function changeMode(nextMode: PublicAuthMode) {
+    cancelQuickLogin();
+    setError("");
+    setQuickLoginError("");
+    onModeChange(nextMode);
+  }
+
   useEffect(() => {
+    if (!isRegister && !developmentAccountsLoaded) return;
     const timer = window.setTimeout(() => {
       const activeElement = document.activeElement;
       const userIsEditing =
         activeElement instanceof HTMLElement &&
         activeElement.matches('input, textarea, select, [contenteditable="true"]');
-      if (!userIsEditing) firstInputRef.current?.focus();
+      if (userIsEditing) return;
+      if (!isRegister && developmentAccounts.length > 0) {
+        firstQuickAccountRef.current?.focus();
+      } else {
+        firstInputRef.current?.focus();
+      }
     }, 40);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [developmentAccounts.length, developmentAccountsLoaded, isRegister]);
 
   useEffect(() => {
     function closeOnEscape(event: globalThis.KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") closeDialog();
     }
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
+  }, [closeDialog]);
+
+  useEffect(
+    () => () => {
+      quickLoginControllerRef.current?.abort();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (isRegister) return;
+
+    let active = true;
+    void (async () => {
+      try {
+        const result = await api.GET("/auth/development/accounts");
+        if (!active) return;
+        setDevelopmentAccounts(result.data && result.response.ok ? result.data : []);
+      } catch {
+        if (active) setDevelopmentAccounts([]);
+      } finally {
+        if (active) setDevelopmentAccountsLoaded(true);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [isRegister]);
+
+  async function loginDevelopmentAccount(account: DevelopmentAccount) {
+    cancelQuickLogin();
+    const controller = new AbortController();
+    quickLoginControllerRef.current = controller;
+    setError("");
+    setQuickLoginError("");
+    setSubmitting(true);
+    setQuickLoginAccountId(account.account_id);
+    try {
+      const result = await api.POST("/auth/development/login", {
+        body: { account_id: account.account_id },
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || quickLoginControllerRef.current !== controller) return;
+      if (!result.data || !result.response.ok) {
+        setQuickLoginError(
+          result.response.status === 429
+            ? "尝试次数过多，请稍后再试。"
+            : "测试账号暂时不可用，请使用邮箱密码登录。",
+        );
+        return;
+      }
+      onAuthenticated(result.data);
+    } catch {
+      if (!controller.signal.aborted && quickLoginControllerRef.current === controller) {
+        setQuickLoginError("暂时无法连接 Memora，请稍后重试。");
+      }
+    } finally {
+      if (quickLoginControllerRef.current === controller) {
+        quickLoginControllerRef.current = null;
+        setSubmitting(false);
+        setQuickLoginAccountId(null);
+      }
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setQuickLoginError("");
     if (isRegister && password.length < 10) {
       setError("密码至少需要 10 个字符。");
       return;
@@ -214,7 +322,7 @@ function AuthDialog({
       className="auth-backdrop"
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) closeDialog();
       }}
     >
       <section
@@ -228,7 +336,7 @@ function AuthDialog({
             <Logo />
             <span>Memora</span>
           </div>
-          <button type="button" aria-label="关闭账号窗口" onClick={onClose}>
+          <button type="button" aria-label="关闭账号窗口" onClick={closeDialog}>
             <X aria-hidden="true" size={18} strokeWidth={1.7} />
           </button>
         </header>
@@ -249,7 +357,7 @@ function AuthDialog({
             role="tab"
             aria-selected={!isRegister}
             className={!isRegister ? "is-active" : ""}
-            onClick={() => onModeChange("LOGIN")}
+            onClick={() => changeMode("LOGIN")}
           >
             登录
           </button>
@@ -258,11 +366,51 @@ function AuthDialog({
             role="tab"
             aria-selected={isRegister}
             className={isRegister ? "is-active" : ""}
-            onClick={() => onModeChange("REGISTER")}
+            onClick={() => changeMode("REGISTER")}
           >
             注册
           </button>
         </div>
+
+        {!isRegister && developmentAccounts.length > 0 ? (
+          <section className="demo-accounts" aria-label="开发环境快捷登录">
+            <div className="demo-accounts-heading">
+              <span>选择测试账号直接进入</span>
+              <small>仅本机开发环境</small>
+            </div>
+            <div className="demo-account-list">
+              {developmentAccounts.map((account, index) => (
+                <button
+                  key={account.account_id}
+                  ref={index === 0 ? firstQuickAccountRef : undefined}
+                  type="button"
+                  disabled={submitting}
+                  aria-busy={quickLoginAccountId === account.account_id}
+                  aria-label={`使用 ${account.display_name} 测试账号直接登录`}
+                  onClick={() => void loginDevelopmentAccount(account)}
+                >
+                  <span>
+                    {quickLoginAccountId === account.account_id
+                      ? "正在登录…"
+                      : account.display_name}
+                  </span>
+                  <small>{account.email}</small>
+                </button>
+              ))}
+            </div>
+            {quickLoginError ? (
+              <p className="form-error quick-login-error" role="alert">
+                {quickLoginError}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
+        {!isRegister && developmentAccounts.length > 0 ? (
+          <div className="auth-divider" aria-hidden="true">
+            <span>或使用邮箱密码</span>
+          </div>
+        ) : null}
 
         <form className="auth-form" onSubmit={submit}>
           {isRegister ? (
@@ -344,19 +492,6 @@ function AuthDialog({
           </button>
         </form>
 
-        {!isRegister ? (
-          <details className="demo-accounts">
-            <summary>开发环境测试账号</summary>
-            <div className="demo-account-list">
-              {demoAccounts.map((account) => (
-                <button key={account.email} type="button" onClick={() => setEmail(account.email)}>
-                  <span>{account.name}</span>
-                  <small>{account.email}</small>
-                </button>
-              ))}
-            </div>
-          </details>
-        ) : null}
         <p className="auth-footnote">
           <ShieldCheck aria-hidden="true" size={14} />
           密码经 Argon2 哈希保存，内容默认仅自己可见
@@ -782,6 +917,79 @@ function PublicLanding({
   );
 }
 
+function ChatbotIntroDialog({
+  onClose,
+  onDismissForever,
+}: {
+  onClose: () => void;
+  onDismissForever: () => void;
+}) {
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    confirmButtonRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <div
+      className="chatbot-intro-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        className="chatbot-intro-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="chatbot-intro-title"
+        aria-describedby="chatbot-intro-description"
+      >
+        <header>
+          <span className="chatbot-intro-mark" aria-hidden="true">
+            <Logo />
+          </span>
+          <button type="button" aria-label="关闭 Chatbot 介绍" onClick={onClose}>
+            <X aria-hidden="true" size={17} strokeWidth={1.8} />
+          </button>
+        </header>
+        <div className="chatbot-intro-copy">
+          <span>统一操作入口</span>
+          <h2 id="chatbot-intro-title">一个 Chatbot，连接你的记忆</h2>
+          <p id="chatbot-intro-description">
+            这个 Chatbot
+            页面已经统一了操作接口，可以传入和整理个人记忆，也可以分析成员主动共享的团队记忆。系统始终遵循当前空间与记忆权限。
+          </p>
+        </div>
+        <footer>
+          <label>
+            <input
+              type="checkbox"
+              checked={dontShowAgain}
+              onChange={(event) => setDontShowAgain(event.target.checked)}
+            />
+            <span>是否不再显示</span>
+          </label>
+          <button
+            ref={confirmButtonRef}
+            className="chatbot-intro-confirm"
+            type="button"
+            onClick={dontShowAgain ? onDismissForever : onClose}
+          >
+            我知道了
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 export function WorkbenchShell() {
   const [serverState] = useState(() => new ServerStateClient());
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -796,6 +1004,7 @@ export function WorkbenchShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialView, setSettingsInitialView] = useState<SettingsView>("PROFILE");
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
+  const [chatbotIntroOpen, setChatbotIntroOpen] = useState(false);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -823,6 +1032,7 @@ export function WorkbenchShell() {
   const [memorySearchFilters, setMemorySearchFilters] =
     useState<MemorySearchFilters>(EMPTY_MEMORY_SEARCH);
   const [memorySearchActive, setMemorySearchActive] = useState(false);
+  const [teamSearchOpen, setTeamSearchOpen] = useState(false);
   const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
   const [memoryMarkdown, setMemoryMarkdown] = useState("");
   const [memoryBaseline, setMemoryBaseline] = useState("");
@@ -1352,9 +1562,12 @@ export function WorkbenchShell() {
     setMembers((current) => current.filter((member) => member.id !== memberId));
   }
 
-  async function searchMemoryLibrary(scope: "PERSONAL" | "TEAM") {
+  async function searchMemoryLibrary(
+    scope: "PERSONAL" | "TEAM",
+    filters: MemorySearchFilters = memorySearchFilters,
+  ) {
     if (!user || !activeWorkspace) return;
-    const { query, field, from, to, authorId } = memorySearchFilters;
+    const { query, field, from, to, authorId } = filters;
     if (from && to && from > to) {
       showToast("结束日期不能早于开始日期");
       return;
@@ -1409,6 +1622,17 @@ export function WorkbenchShell() {
     }
   }
 
+  async function selectMemoryAuthor(authorId: string) {
+    const filters = { ...memorySearchFilters, authorId };
+    setMemorySearchFilters(filters);
+    const hasOtherCriteria = Boolean(filters.query.trim() || filters.from || filters.to);
+    if (!authorId && !hasOtherCriteria) {
+      await resetMemorySearch();
+      return;
+    }
+    await searchMemoryLibrary("TEAM", filters);
+  }
+
   async function resetMemorySearch() {
     if (!user || !activeWorkspace) return;
     setMemorySearchFilters(EMPTY_MEMORY_SEARCH);
@@ -1436,6 +1660,9 @@ export function WorkbenchShell() {
     setChatContext(nextContext);
     resetDraft();
     navigateTo("CAPTURE");
+    if (nextContext === "GENERAL" && readStoredBoolean(CHATBOT_INTRO_DISMISSED_KEY) !== true) {
+      setChatbotIntroOpen(true);
+    }
   }
 
   async function openConversation(conversation: ConversationSummary) {
@@ -1706,7 +1933,11 @@ export function WorkbenchShell() {
       }
       return;
     }
-    const requestedWebSearch = willSearchWeb(instruction, webSearch);
+    const requestedWebSearch = willSearchWeb(
+      instruction,
+      webSearch,
+      memoryScopeForContext[chatContext],
+    );
     const modelLabel = selectedDraftModelLabel(modelOptions, modelId);
     let liveTrace = buildLiveTrace({
       modelLabel,
@@ -1757,6 +1988,10 @@ export function WorkbenchShell() {
     if (appendUserMessage) setMessages((current) => [...current, userMessage]);
     dispatchDraftAgent({ type: "START", trace: liveTrace, request: retryRequest });
     setDraftStarting(false);
+    let terminalStreamTrace: DraftTrace | null = null;
+    let lastProgressPresentationAt = Date.now();
+    let presentedNewStepCount = 0;
+    let progressPresentation = Promise.resolve();
     try {
       const data = await streamDraftChat(
         {
@@ -1770,20 +2005,34 @@ export function WorkbenchShell() {
         (event) => {
           if (!draftRunIsCurrent()) return;
           if (event.type === "progress") {
-            liveTrace = {
-              ...liveTrace,
-              duration_ms: Math.max(liveTrace.duration_ms, event.step.elapsed_ms),
-              steps: upsertTraceStep(liveTrace.steps, event.step),
-            };
-            dispatchDraftAgent({
-              type: "PROGRESS",
-              step: event.step,
-              sequence: event.sequence,
+            const progressEvent = event;
+            progressPresentation = progressPresentation.then(async () => {
+              if (!draftRunIsCurrent()) return;
+              const isNewStep = !liveTrace.steps.some((step) => step.id === progressEvent.step.id);
+              await waitForTracePresentation(
+                isNewStep
+                  ? Math.max(0, TRACE_NEW_STEP_GAP_MS - (Date.now() - lastProgressPresentationAt))
+                  : 0,
+                abortController.signal,
+              );
+              if (!draftRunIsCurrent()) return;
+              liveTrace = {
+                ...liveTrace,
+                duration_ms: Math.max(liveTrace.duration_ms, progressEvent.step.elapsed_ms),
+                steps: upsertTraceStep(liveTrace.steps, progressEvent.step),
+              };
+              dispatchDraftAgent({
+                type: "PROGRESS",
+                step: progressEvent.step,
+                sequence: progressEvent.sequence,
+              });
+              lastProgressPresentationAt = Date.now();
+              if (isNewStep) presentedNewStepCount += 1;
             });
           } else if (event.type === "result" && event.response.trace) {
-            liveTrace = event.response.trace;
+            terminalStreamTrace = event.response.trace;
           } else if (event.type === "error") {
-            liveTrace = event.trace;
+            terminalStreamTrace = event.trace;
           }
         },
         {
@@ -1795,7 +2044,16 @@ export function WorkbenchShell() {
           },
         },
       );
+      await progressPresentation;
       if (!draftRunIsCurrent()) return;
+      await waitForTracePresentation(
+        presentedNewStepCount
+          ? Math.max(0, TRACE_FINAL_RESULT_HOLD_MS - (Date.now() - lastProgressPresentationAt))
+          : 0,
+        abortController.signal,
+      );
+      if (!draftRunIsCurrent()) return;
+      if (terminalStreamTrace) liveTrace = terminalStreamTrace;
       const responseDocumentCitations = data.document_citations ?? [];
       if (data.conversation_id) {
         activeConversationIdRef.current = data.conversation_id;
@@ -1907,6 +2165,8 @@ export function WorkbenchShell() {
       });
       void loadConversations(conversationWorkspaceEpochRef.current);
     } catch (caught) {
+      await progressPresentation;
+      if (terminalStreamTrace) liveTrace = terminalStreamTrace;
       if (!draftRunIsCurrent()) return;
       const streamError = caught instanceof DraftChatStreamError ? caught : null;
       if (streamError?.code === "http_402") {
@@ -2556,7 +2816,12 @@ export function WorkbenchShell() {
           >
             <TeamMemoryCenter
               workspace={activeWorkspace}
-              sharedCount={memories.filter((memory) => memory.visibility === "WORKSPACE").length}
+              members={members}
+              sharedMemories={memories.filter((memory) => memory.visibility === "WORKSPACE")}
+              selectedAuthorId={memorySearchFilters.authorId}
+              searchOpen={teamSearchOpen}
+              onSearchTeam={() => setTeamSearchOpen(true)}
+              onMemberSelect={(authorId) => void selectMemoryAuthor(authorId)}
               onAskTeam={() => startNewConversation("TEAM")}
               memories={
                 <ResizableSplit
@@ -2577,13 +2842,18 @@ export function WorkbenchShell() {
                       loading={loadingMemories}
                       searchFilters={memorySearchFilters}
                       searchActive={memorySearchActive}
+                      searchOpen={teamSearchOpen}
+                      onSearchOpenChange={setTeamSearchOpen}
+                      hideSearchTrigger
                       onSearchFiltersChange={setMemorySearchFilters}
                       onSearch={() => void searchMemoryLibrary("TEAM")}
                       onResetSearch={() => void resetMemorySearch()}
+                      onMemberSelect={(authorId) => void selectMemoryAuthor(authorId)}
                       onSelect={(memory) => void selectMemory(memory)}
-                      title="共享记忆"
-                      eyebrow="成员主动共享"
+                      title="成员动态"
+                      eyebrow="共享时间线"
                       showMemberFilter
+                      showMemberQuickFilter={false}
                     />
                   }
                   right={
@@ -2610,35 +2880,6 @@ export function WorkbenchShell() {
                       onDelete={deleteSelectedMemory}
                     />
                   }
-                />
-              }
-              graph={
-                <DiagramWorkspace
-                  workspace={activeWorkspace}
-                  memories={memories.filter((memory) => memory.visibility === "WORKSPACE")}
-                  members={members}
-                  onNotify={showToast}
-                />
-              }
-              analysis={
-                <TeamIntelligenceWorkspace
-                  workspace={activeWorkspace}
-                  members={members}
-                  subscription={subscription}
-                  onSubscriptionChange={setSubscription}
-                  onUpgrade={() => setSubscriptionOpen(true)}
-                  onOpenMemory={(memoryId) => void openCitation(memoryId)}
-                  onMemoryCreated={(memory) =>
-                    setMemories((current) => [
-                      memory,
-                      ...current.filter((item) => item.id !== memory.id),
-                    ])
-                  }
-                  onCreateVisual={(projectId, memoryIds) => {
-                    setVisualSeed({ projectId, memoryIds });
-                    navigateTo("DIAGRAMS");
-                  }}
-                  onNotify={showToast}
                 />
               }
             />
@@ -2778,6 +3019,15 @@ export function WorkbenchShell() {
           initialMode={teamAccessMode}
           onClose={() => setTeamAccessMode(null)}
           onWorkspaceReady={finishTeamAccess}
+        />
+      ) : null}
+      {chatbotIntroOpen ? (
+        <ChatbotIntroDialog
+          onClose={() => setChatbotIntroOpen(false)}
+          onDismissForever={() => {
+            storeBoolean(CHATBOT_INTRO_DISMISSED_KEY, true);
+            setChatbotIntroOpen(false);
+          }}
         />
       ) : null}
       {toast ? (

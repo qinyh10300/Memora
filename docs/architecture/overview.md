@@ -185,7 +185,7 @@ apps/api/
     ├── agent/          # 公开计划、工具注册、执行状态与事件
     ├── billing/        # 用户套餐、credits 账本、额度检查和幂等升级
     ├── diagrams/       # workspace 图、节点/边验证和记忆引用授权
-    ├── ai/             # ChatModelPort、EmbeddingModelPort 与 adapters
+    ├── ai/             # Chat、Embedding、WebSearch、SpeechToText ports 与 adapters
     ├── api/drafts.py   # Markdown 草稿、Agent、credits 与 conversation 编排
     ├── jobs/           # transactional outbox、重试和状态
     └── shared/         # 少量跨模块基础设施；禁止成为杂物目录
@@ -278,15 +278,21 @@ M4 的投影列使用 pgvector 可变维度 `vector`，查询必须同时硬过�
 
 ## AI provider boundary
 
-定义三个独立端口：
+定义四个独立端口：
 
 - `ChatModelPort`：流式或非流式生成、结构化输出、受限图片输入、用量和错误归一化。
 - `EmbeddingModelPort`：批量 embedding、模型标识、维度和用量。
 - `WebSearchPort`：查询、搜索上下文深度、证据摘要、网页来源、用量和错误归一化。
+- `SpeechToTextPort`：受限音频输入、语言提示、转写文本、模型标识、用量和错误归一化。
 
 基础设施 adapter 从环境变量读取 base URL、API Key、模型名、超时和重试配置。领域和应用模块只依赖端口，不引用云雾或任一模型 SDK 的专用类型。
 
 当前兼容 adapter 按 OpenAI 的 [embeddings HTTP 契约](https://developers.openai.com/api/reference/resources/embeddings/methods/create) 发送请求并验证索引、有限浮点向量、模型与用量字段。配置为空时不构造 adapter，也不发起网络请求。
+
+语音输入由浏览器在用户点击后通过 `MediaRecorder` 采集。`POST /audio/transcriptions` 先完成
+session 鉴权、限流、媒体类型、文件签名和大小校验，再把请求内存中的原始音频交给
+`SpeechToTextPort`；兼容 adapter 使用 Audio Transcriptions multipart 契约。音频不进入
+assets、数据库、日志或审计，审计只保留模型和用量元数据。转写结果只回填输入框，不触发发送。
 
 M5 的聊天 adapter 使用供应商兼容的 `v1/chat/completions` 端点；该端点仍被当前 OpenAI 文本模型列为支持的接口，例如 [Chat Latest 模型页](https://developers.openai.com/api/docs/models/chat-latest)。adapter 只负责 HTTP 契约和错误归一化，不读取数据库、不选择证据，也不决定引用。
 
@@ -358,6 +364,10 @@ v0.1 报告不长期保存，也不导出文件，只写入不含正文的 `REPO
   返回冲突，不创建第二个用户或孤立空间。
 - seed 命令创建的四个账号和测试工作区继续用于开发验收；公开注册用户不会自动加入
   测试团队。
+- 开发快捷登录由 `APP_ENV=development`、development seed 和独立 quick-login 三重配置门禁
+  控制。账号候选来自服务端 seed 允许列表并要求活动用户和有效 membership；客户端只接收
+  不透明账号标识、显示名和邮箱，不接收密码。成功后复用普通登录的 HttpOnly session 与
+  workspace 选择逻辑。非开发环境或任一开关关闭时，发现和直登接口统一返回 404。
 - 密码必须使用成熟的慢哈希算法保存，不能明文或可逆加密。
 - 用户可在已认证会话中修改昵称、受保护头像和密码。头像复用 `assets` 二进制存储，
   `users.avatar_asset_id` 只允许指向当前用户上传的有效图片；读取头像仍需有效 session。

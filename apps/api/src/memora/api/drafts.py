@@ -97,7 +97,7 @@ from memora.memories.schemas import MemoryResponse, memory_response_for
 from memora.memories.service import add_private_memory_with_processing, get_authorized_memory
 from memora.observability import normalize_request_id, observability_context
 from memora.retrieval.schemas import EvidenceCitationResponse, evidence_citation_for
-from memora.retrieval.service import semantic_search
+from memora.retrieval.service import keyword_search, semantic_search
 from memora.settings import Settings, get_settings
 from memora.workspaces.models import Workspace
 
@@ -635,6 +635,20 @@ def _apply_evidence_budget(candidates: list[ChatEvidence]) -> list[ChatEvidence]
     return selected
 
 
+def _merge_evidence(
+    preferred: list[ChatEvidence],
+    existing: list[ChatEvidence],
+) -> list[ChatEvidence]:
+    merged: list[ChatEvidence] = []
+    seen: set[UUID] = set()
+    for item in [*preferred, *existing]:
+        if item.memory.id in seen:
+            continue
+        seen.add(item.memory.id)
+        merged.append(item)
+    return _apply_evidence_budget(merged)
+
+
 def _recent_personal_evidence(
     database: DatabaseSession,
     principal: CurrentPrincipal,
@@ -697,13 +711,9 @@ def _should_search_web(payload: DraftChatRequest) -> bool:
         return False
     if payload.web_search == "REQUIRED":
         return True
-    search_markers = (
+    explicit_web_markers = (
         "联网",
         "上网",
-        "搜索",
-        "搜一下",
-        "查一下",
-        "查查",
         "查最新",
         "最新消息",
         "最新进展",
@@ -717,7 +727,23 @@ def _should_search_web(payload: DraftChatRequest) -> bool:
         "search the web",
         "latest news",
     )
-    return any(marker in latest for marker in search_markers)
+    if any(marker in latest for marker in explicit_web_markers):
+        return True
+    memory_target_markers = (
+        "我的记忆",
+        "个人记忆",
+        "团队记忆",
+        "共享记忆",
+        "记忆库",
+        "my memories",
+        "personal memories",
+        "team memories",
+        "memory library",
+    )
+    if payload.memory_scope != "NONE" and any(marker in latest for marker in memory_target_markers):
+        return False
+    generic_search_markers = ("搜索", "搜一下", "查一下", "查查")
+    return any(marker in latest for marker in generic_search_markers)
 
 
 def _web_search_context_size(payload: DraftChatRequest) -> WebSearchContextSize:
@@ -1076,7 +1102,18 @@ class WebSearchToolArguments(BaseModel):
     context_size: str | None = None
 
 
-def _chat_tool_definitions(*, include_web_search: bool) -> list[ChatToolDefinition]:
+class SearchMemoriesToolArguments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=1, max_length=1_000)
+    limit: int = Field(default=8, ge=1, le=MAX_PERSONAL_EVIDENCE)
+
+
+def _chat_tool_definitions(
+    *,
+    include_web_search: bool,
+    include_memory_search: bool,
+) -> list[ChatToolDefinition]:
     tools = [
         ChatToolDefinition(
             name="save_memory",
@@ -1107,6 +1144,37 @@ def _chat_tool_definitions(*, include_web_search: bool) -> list[ChatToolDefiniti
             },
         )
     ]
+    if include_memory_search:
+        tools.insert(
+            0,
+            ChatToolDefinition(
+                name="search_memories",
+                description=(
+                    "Search the complete server-authorized Memora corpus for evidence related "
+                    "to the user's request. Scope, workspace, author and visibility are fixed by "
+                    "the server. Use concise topical queries and only cite returned memory IDs."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "A concise topical query in the user's language.",
+                            "minLength": 1,
+                            "maxLength": 1000,
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": MAX_PERSONAL_EVIDENCE,
+                            "default": 8,
+                        },
+                    },
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+            ),
+        )
     if include_web_search:
         tools.insert(
             0,
@@ -1288,6 +1356,7 @@ def _complete_with_draft_tools(
         and settings.ai_web_search_enabled
         and "web_search" in selected_model.capabilities
     )
+    include_memory_search = payload.memory_scope != "NONE"
     tool_attempts: dict[str, int] = {}
 
     def save_policy(arguments: BaseModel) -> AgentToolPolicyDecision:
@@ -1417,9 +1486,78 @@ def _complete_with_draft_tools(
             item_count=len(web_search_result.sources),
         )
 
+    def memory_policy(arguments: BaseModel) -> AgentToolPolicyDecision:
+        del arguments
+        if not include_memory_search:
+            return AgentToolPolicyDecision.deny("memory_search_unavailable")
+        return AgentToolPolicyDecision.allow()
+
+    def memory_handler(
+        arguments: BaseModel,
+        invocation: AgentToolInvocation,
+    ) -> AgentToolHandlerResult:
+        del invocation
+        parsed = cast(SearchMemoriesToolArguments, arguments)
+        query = parsed.query.strip()
+        if not query:
+            return AgentToolHandlerResult(
+                result=ChatToolResult(
+                    content=json.dumps(
+                        {"status": "rejected", "reason": "empty_memory_query"},
+                        ensure_ascii=False,
+                    )
+                ),
+                status="REJECTED",
+                code="empty_memory_query",
+            )
+        retrieved = keyword_search(
+            database,
+            principal,
+            query,
+            author_id=principal.user_id if payload.memory_scope == "PERSONAL" else None,
+            visibility="WORKSPACE" if payload.memory_scope == "TEAM" else None,
+            limit=parsed.limit,
+        )
+        candidates = [
+            ChatEvidence(memory=item.memory, author=item.author, score=item.score)
+            for item in retrieved
+        ]
+        evidence[:] = _merge_evidence(candidates, evidence)
+        retained_ids = {item.memory.id for item in evidence}
+        retained = [item for item in candidates if item.memory.id in retained_ids]
+        return AgentToolHandlerResult(
+            result=ChatToolResult(
+                content=json.dumps(
+                    {
+                        "status": "available",
+                        "scope": payload.memory_scope.casefold(),
+                        "results": [
+                            {
+                                "memory_id": str(item.memory.id),
+                                "author": item.author.display_name,
+                                "created_at": item.memory.created_at.isoformat(),
+                                "excerpt": excerpt_for(
+                                    item.memory.body or "",
+                                    max_length=MAX_EVIDENCE_ITEM_CHARS,
+                                ),
+                            }
+                            for item in retained
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            ),
+            status="COMPLETED",
+            code="memory_search_completed",
+            item_count=len(retained),
+        )
+
     definitions = {
         definition.name: definition
-        for definition in _chat_tool_definitions(include_web_search=True)
+        for definition in _chat_tool_definitions(
+            include_web_search=True,
+            include_memory_search=True,
+        )
     }
     tool_registry = AgentToolRegistry()
     tool_registry.register(
@@ -1441,10 +1579,24 @@ def _complete_with_draft_tools(
         max_calls=3,
         exposed=include_web_search,
     )
+    tool_registry.register(
+        definition=definitions["search_memories"],
+        arguments_model=SearchMemoriesToolArguments,
+        handler=memory_handler,
+        policy=memory_policy,
+        timeout_seconds=max(1.0, min(5.0, settings.ai_request_timeout_seconds)),
+        max_attempts=1,
+        max_calls=3,
+        exposed=include_memory_search,
+    )
 
     def execute_tool(call: ChatToolCall) -> ChatToolResult:
         nonlocal web_search_status
-        safe_name = call.name if call.name in {"save_memory", "web_search"} else "unknown"
+        safe_name = (
+            call.name
+            if call.name in {"save_memory", "web_search", "search_memories"}
+            else "unknown"
+        )
         tool_attempts[safe_name] = tool_attempts.get(safe_name, 0) + 1
         trace_step_id = f"tool-{safe_name.replace('_', '-')}-{tool_attempts[safe_name]}"
         title = (
@@ -1452,6 +1604,8 @@ def _complete_with_draft_tools(
             if safe_name == "save_memory"
             else "联网搜索"
             if safe_name == "web_search"
+            else "搜索授权记忆"
+            if safe_name == "search_memories"
             else "未知工具"
         )
         if trace is not None:
@@ -1463,6 +1617,12 @@ def _complete_with_draft_tools(
                     "已根据用户的明确联网指令开始查询；只会采用本轮返回的可验证来源。"
                     if call.id == "explicit-web-search"
                     else "模型请求查询外部信息；只会采用本轮返回的可验证来源。"
+                )
+            elif safe_name == "search_memories":
+                detail = (
+                    "正在搜索当前团队中已主动共享且仍可访问的记忆。"
+                    if payload.memory_scope == "TEAM"
+                    else "正在搜索当前账号在本空间中仍可访问的个人记忆。"
                 )
             trace.update(
                 trace_step_id,
@@ -1483,6 +1643,31 @@ def _complete_with_draft_tools(
                 )
 
         outcome = tool_registry.execute(call)
+        if safe_name == "search_memories":
+            if outcome.status == "COMPLETED":
+                event_status = "COMPLETED"
+                detail = (
+                    f"已在完整授权语料库中找到 {outcome.item_count or 0} 条候选，"
+                    "并纳入本轮证据预算。"
+                )
+            elif outcome.status == "REJECTED":
+                event_status = "REJECTED"
+                detail = "本轮没有启用记忆范围，服务端已拒绝检索。"
+            else:
+                event_status = "FAILED"
+                detail = "记忆检索没有成功，未向模型提供未经授权的候选。"
+            if trace is not None:
+                trace.update(
+                    trace_step_id,
+                    kind="RETRIEVAL",
+                    status=cast(DraftTraceStatus, event_status),
+                    title=(
+                        "搜索团队共享记忆" if payload.memory_scope == "TEAM" else "搜索个人记忆"
+                    ),
+                    detail=detail,
+                    item_count=outcome.item_count,
+                )
+            return outcome.result
         if safe_name == "save_memory":
             save_outcomes = {
                 "memory_saved": (
@@ -1614,6 +1799,18 @@ def _complete_with_draft_tools(
             )
         return outcome.result
 
+    if include_memory_search:
+        execute_tool(
+            ChatToolCall(
+                id="initial-memory-search",
+                name="search_memories",
+                arguments={
+                    "query": latest_user_message[:1_000],
+                    "limit": 8,
+                },
+            )
+        )
+
     explicit_web_search = include_web_search and _should_search_web(payload)
     if explicit_web_search:
         execute_tool(
@@ -1655,7 +1852,10 @@ def _complete_with_draft_tools(
         if save_allowed:
             result = chat_model.complete_with_tools(
                 grounded_messages,
-                _chat_tool_definitions(include_web_search=False),
+                _chat_tool_definitions(
+                    include_web_search=False,
+                    include_memory_search=include_memory_search,
+                ),
                 execute_tool,
             )
         else:
@@ -1891,7 +2091,8 @@ def chat_with_draft(
             restore_original=original_text is not None,
             has_attachments=bool(payload.messages[-1].images or payload.messages[-1].attachments),
             model_available=selected_model is not None,
-            web_search_requested=payload.web_search != "DISABLED",
+            memory_scope=payload.memory_scope,
+            web_search_requested=_should_search_web(payload),
             web_search_available=(
                 selected_model is not None
                 and settings.ai_web_search_enabled
@@ -2169,8 +2370,8 @@ def chat_with_draft(
             status="RUNNING",
             title="准备模型与工具",
             detail=(
-                f"聊天模型为 {resolved_provider_model}；服务端会按本轮指令选择允许的联网或"
-                "保存工具，这里展示工具动作，不展示隐藏思维链。"
+                f"聊天模型为 {resolved_provider_model}；服务端会按本轮范围开放记忆检索、"
+                "联网或保存工具，这里展示工具动作，不展示隐藏思维链。"
                 if use_tool_calling
                 else (
                     f"聊天模型为 {resolved_provider_model}；正在基于当前对话、Markdown 和"

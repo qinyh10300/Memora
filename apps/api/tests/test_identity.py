@@ -9,7 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from memora.audit.models import AuditEvent
@@ -35,6 +35,22 @@ def identity_client() -> Iterator[tuple[TestClient, Settings]]:
         app_env="test",
         database_url="sqlite+pysqlite:///:memory:",
         session_secret="identity-test-secret-not-for-production",
+    )
+    app = create_app(settings)
+    with TestClient(app) as client:
+        Base.metadata.create_all(app.state.engine)
+        seed_database(app.state.engine, settings)
+        yield client, settings
+
+
+@pytest.fixture
+def development_quick_login_client() -> Iterator[tuple[TestClient, Settings]]:
+    settings = Settings(
+        app_env="development",
+        database_url="sqlite+pysqlite:///:memory:",
+        session_secret="development-quick-login-test-secret",
+        seed_development_data_enabled=True,
+        development_quick_login_enabled=True,
     )
     app = create_app(settings)
     with TestClient(app) as client:
@@ -72,6 +88,119 @@ def test_seed_cli_is_a_noop_without_explicit_opt_in() -> None:
         assert seed_main() == 0
 
     build_engine.assert_not_called()
+
+
+def test_development_quick_login_is_hidden_without_explicit_opt_in(
+    identity_client: tuple[TestClient, Settings],
+) -> None:
+    client, _settings = identity_client
+
+    accounts = client.get("/auth/development/accounts")
+    login = client.post("/auth/development/login", json={"account_id": "seed-1"})
+
+    assert accounts.status_code == 404
+    assert login.status_code == 404
+    assert SESSION_COOKIE_NAME not in client.cookies
+
+
+def test_development_quick_login_requires_independent_kill_switch() -> None:
+    settings = Settings(
+        app_env="development",
+        database_url="sqlite+pysqlite:///:memory:",
+        session_secret="development-quick-login-disabled-test-secret",
+        seed_development_data_enabled=True,
+        development_quick_login_enabled=False,
+    )
+    app = create_app(settings)
+    with TestClient(app) as client:
+        Base.metadata.create_all(app.state.engine)
+        seed_database(app.state.engine, settings)
+
+        accounts = client.get("/auth/development/accounts")
+        login = client.post("/auth/development/login", json={"account_id": "seed-1"})
+
+        assert accounts.status_code == 404
+        assert login.status_code == 404
+        assert SESSION_COOKIE_NAME not in client.cookies
+
+
+def test_development_accounts_are_password_free_and_click_login_all_four_users(
+    development_quick_login_client: tuple[TestClient, Settings],
+) -> None:
+    client, _settings = development_quick_login_client
+
+    accounts_response = client.get("/auth/development/accounts")
+    assert accounts_response.status_code == 200
+    assert accounts_response.headers["cache-control"] == "no-store"
+    accounts = accounts_response.json()
+    assert accounts == [
+        {"account_id": "seed-1", "display_name": "Alex", "email": "alex@memora.local"},
+        {"account_id": "seed-2", "display_name": "Blair", "email": "blair@memora.local"},
+        {"account_id": "seed-3", "display_name": "Casey", "email": "casey@memora.local"},
+        {"account_id": "seed-4", "display_name": "Devon", "email": "devon@memora.local"},
+    ]
+    assert all(set(account) == {"account_id", "display_name", "email"} for account in accounts)
+
+    for account in accounts:
+        login_response = client.post(
+            "/auth/development/login",
+            json={"account_id": account["account_id"]},
+        )
+        assert login_response.status_code == 200
+        assert login_response.json()["email"] == account["email"]
+        cookie_header = login_response.headers["set-cookie"].lower()
+        assert "httponly" in cookie_header
+        assert "samesite=lax" in cookie_header
+        assert client.get("/auth/me").json()["email"] == account["email"]
+        assert client.post("/auth/logout").status_code == 204
+
+
+def test_development_quick_login_rejects_unknown_or_unavailable_accounts(
+    development_quick_login_client: tuple[TestClient, Settings],
+) -> None:
+    client, _settings = development_quick_login_client
+    engine = cast(FastAPI, client.app).state.engine
+
+    unknown = client.post("/auth/development/login", json={"account_id": "not-a-seed"})
+    assert unknown.status_code == 404
+    assert SESSION_COOKIE_NAME not in client.cookies
+
+    with Session(engine) as database, database.begin():
+        blair = database.scalar(select(User).where(User.email == "blair@memora.local"))
+        casey = database.scalar(select(User).where(User.email == "casey@memora.local"))
+        assert blair is not None
+        assert casey is not None
+        blair.status = "DISABLED"
+        database.execute(delete(WorkspaceMembership).where(WorkspaceMembership.user_id == casey.id))
+
+    accounts = client.get("/auth/development/accounts")
+    assert [account["email"] for account in accounts.json()] == [
+        "alex@memora.local",
+        "devon@memora.local",
+    ]
+    unavailable = client.post("/auth/development/login", json={"account_id": "seed-2"})
+    membership_missing = client.post("/auth/development/login", json={"account_id": "seed-3"})
+    assert unavailable.status_code == 404
+    assert membership_missing.status_code == 404
+    assert SESSION_COOKIE_NAME not in client.cookies
+
+
+def test_development_quick_login_limits_successful_session_creation(
+    development_quick_login_client: tuple[TestClient, Settings],
+) -> None:
+    client, _settings = development_quick_login_client
+
+    for _attempt in range(8):
+        assert (
+            client.post(
+                "/auth/development/login",
+                json={"account_id": "seed-1"},
+            ).status_code
+            == 200
+        )
+
+    limited = client.post("/auth/development/login", json={"account_id": "seed-1"})
+    assert limited.status_code == 429
 
 
 def test_login_cookie_me_members_and_logout(

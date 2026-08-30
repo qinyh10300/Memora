@@ -290,6 +290,55 @@ class SaveMemoryToolDraftModel:
         )
 
 
+class SearchMemoriesToolDraftModel:
+    model_id = "memory-tool-model"
+
+    def __init__(self, *, query: str) -> None:
+        self.query = query
+        self.tool_names: list[str] = []
+        self.tool_result = ""
+
+    def complete(self, messages: list[ChatMessage]) -> ChatResult:
+        raise AssertionError("memory tool test model should use complete_with_tools")
+
+    def complete_with_tools(
+        self,
+        messages: list[ChatMessage],
+        tools: list[ChatToolDefinition],
+        execute_tool: ChatToolExecutor,
+    ) -> ChatResult:
+        del messages
+        self.tool_names = [tool.name for tool in tools]
+        if "search_memories" not in self.tool_names:
+            used_memory_ids: list[str] = []
+        else:
+            result = execute_tool(
+                ChatToolCall(
+                    id="call-search-memories",
+                    name="search_memories",
+                    arguments={"query": self.query, "limit": 8},
+                )
+            )
+            self.tool_result = result.content
+            used_memory_ids = [
+                item["memory_id"] for item in json.loads(result.content).get("results", [])
+            ]
+        return ChatResult(
+            content=json.dumps(
+                {
+                    "assistant_message": "已搜索授权记忆并整理关键点。",
+                    "markdown": "",
+                    "draft_changed": False,
+                    "used_memory_ids": used_memory_ids,
+                    "used_web_source_urls": [],
+                },
+                ensure_ascii=False,
+            ),
+            model=self.model_id,
+            usage=ModelUsage(input_tokens=80, output_tokens=24),
+        )
+
+
 class FailingWebSearch:
     model_id = "failing-web-search"
 
@@ -479,6 +528,70 @@ def test_draft_chat_receives_conversation_and_only_authorized_personal_memory(
     assert event is not None and event.model == "draft-chat-model"
 
 
+def test_memory_search_tool_scans_only_the_explicit_personal_scope_and_streams_progress(
+    tool_draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alex = _login(tool_draft_client)
+    alex_memory = tool_draft_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "产品方向：先验证个人知识工作流。"},
+    )
+    assert alex_memory.status_code == 201
+
+    blair_login = tool_draft_client.post(
+        "/auth/login",
+        json={"email": "blair@memora.local", "password": "memora-local-blair"},
+    )
+    blair_token = blair_login.cookies.get(SESSION_COOKIE_NAME)
+    assert blair_token
+    blair = {"Cookie": f"{SESSION_COOKIE_NAME}={blair_token}"}
+    assert (
+        tool_draft_client.post(
+            "/memories",
+            headers=blair,
+            json={"body": "产品方向：BLAIR_PRIVATE_TOOL_MUST_NOT_RETURN"},
+        ).status_code
+        == 201
+    )
+
+    model = SearchMemoriesToolDraftModel(query="产品方向")
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+    response = tool_draft_client.post(
+        "/drafts/chat/stream",
+        headers=alex,
+        json={
+            "memory_scope": "PERSONAL",
+            "markdown": "",
+            "web_search": "DISABLED",
+            "messages": [{"role": "USER", "content": "搜索我的产品方向并提炼关键点。"}],
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    result = cast(dict[str, object], payloads[-1]["response"])
+    assert "search_memories" in model.tool_names
+    assert [item["memory_id"] for item in cast(list[dict[str, object]], result["citations"])] == [
+        alex_memory.json()["id"]
+    ]
+    assert "BLAIR_PRIVATE_TOOL_MUST_NOT_RETURN" not in model.tool_result
+    progress_steps: list[dict[str, object]] = []
+    for payload in payloads:
+        step = payload.get("step")
+        if (
+            payload.get("type") == "progress"
+            and isinstance(step, dict)
+            and isinstance(step.get("id"), str)
+            and step["id"].startswith("tool-search-memories-")
+        ):
+            progress_steps.append(cast(dict[str, object], step))
+    assert any(step["status"] == "RUNNING" for step in progress_steps)
+    assert any(step["status"] == "COMPLETED" and step["item_count"] == 1 for step in progress_steps)
+    assert "搜索我的产品方向" not in json.dumps(progress_steps, ensure_ascii=False)
+
+
 def test_general_draft_chat_explicitly_skips_all_memory_retrieval(
     draft_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -528,6 +641,31 @@ def test_general_draft_chat_explicitly_skips_all_memory_retrieval(
     persisted = next(item for item in summaries if item["id"] == conversation.json()["id"])
     assert persisted["scope"] == "PERSONAL"
     assert persisted["topic"] == "通用助手"
+
+
+def test_general_tool_loop_does_not_expose_memory_search(
+    tool_draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alex = _login(tool_draft_client)
+    model = SearchMemoriesToolDraftModel(query="不应执行")
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+
+    response = tool_draft_client.post(
+        "/drafts/chat",
+        headers=alex,
+        json={
+            "memory_scope": "NONE",
+            "markdown": "",
+            "web_search": "DISABLED",
+            "messages": [{"role": "USER", "content": "回答一个通用问题。"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "search_memories" not in model.tool_names
+    assert model.tool_result == ""
+    assert response.json()["citations"] == []
 
 
 def test_team_draft_chat_requires_collaborative_workspace(draft_client: TestClient) -> None:
@@ -625,6 +763,54 @@ def test_team_draft_chat_only_receives_workspace_shared_memories(
     persisted = next(item for item in summaries if item["id"] == conversation.json()["id"])
     assert persisted["scope"] == "WORKSPACE"
     assert persisted["topic"] == "团队记忆"
+
+
+def test_memory_search_tool_restricts_team_results_to_shared_memories(
+    tool_draft_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alex = _login(tool_draft_client)
+    created_team = tool_draft_client.post(
+        "/workspaces",
+        headers=alex,
+        json={"name": "工具检索团队", "kind": "TEAM"},
+    )
+    assert created_team.status_code == 201
+    team_id = created_team.json()["id"]
+    assert (
+        tool_draft_client.post(f"/workspaces/{team_id}/activate", headers=alex).status_code == 200
+    )
+    private_memory = tool_draft_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "团队方向：PRIVATE_TEAM_TOOL_MUST_NOT_RETURN"},
+    )
+    assert private_memory.status_code == 201
+    shared_memory = tool_draft_client.post(
+        "/memories",
+        headers=alex,
+        json={"body": "团队方向：先验证共享证据。", "visibility": "WORKSPACE"},
+    )
+    assert shared_memory.status_code == 201
+
+    model = SearchMemoriesToolDraftModel(query="团队方向")
+    monkeypatch.setattr("memora.api.drafts.build_chat_model", lambda _settings, **_kwargs: model)
+    response = tool_draft_client.post(
+        "/drafts/chat",
+        headers=alex,
+        json={
+            "memory_scope": "TEAM",
+            "markdown": "",
+            "web_search": "DISABLED",
+            "messages": [{"role": "USER", "content": "提炼团队方向。"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert [item["memory_id"] for item in response.json()["citations"]] == [
+        shared_memory.json()["id"]
+    ]
+    assert "PRIVATE_TEAM_TOOL_MUST_NOT_RETURN" not in model.tool_result
 
 
 def test_draft_chat_appends_user_visible_exchange_to_owned_conversation(
@@ -1219,6 +1405,19 @@ def test_draft_chat_auto_searches_only_for_explicit_web_intent_and_can_be_disabl
     assert automatic.json()["web_search_status"] == "AVAILABLE"
     assert len(search.calls) == 1
     assert search.calls[0][1] == "low"
+
+    memory_only = draft_client.post(
+        "/drafts/chat",
+        headers=headers,
+        json={
+            "memory_scope": "PERSONAL",
+            "markdown": "# 当前草稿",
+            "messages": [{"role": "USER", "content": "搜索我的记忆并提炼关键点。"}],
+        },
+    )
+    assert memory_only.status_code == 200
+    assert memory_only.json()["web_search_status"] == "NOT_USED"
+    assert len(search.calls) == 1
 
 
 def test_tool_capable_model_uses_one_web_call_and_no_extra_planning_round_for_explicit_search(

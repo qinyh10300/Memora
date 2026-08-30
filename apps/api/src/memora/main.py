@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from memora.api.agent import router as agent_router
 from memora.api.alignments import router as alignments_router
 from memora.api.assets import router as assets_router
+from memora.api.audio import router as audio_router
 from memora.api.auth import router as auth_router
 from memora.api.billing import router as billing_router
 from memora.api.chat import router as chat_router
@@ -91,6 +92,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(conversations_router)
     application.include_router(diagrams_router)
     application.include_router(assets_router)
+    application.include_router(audio_router)
     application.include_router(drafts_router)
     application.include_router(memories_router)
     application.include_router(search_router)

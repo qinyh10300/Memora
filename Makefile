@@ -46,7 +46,7 @@ secret-permissions-check:
 		[ "$$MODE" = "600" ] || { echo ".env must have mode 600; run: chmod 600 .env" >&2; exit 1; }; \
 	fi
 
-dev:
+dev: compose-check
 	$(COMPOSE) up --build
 
 down:
@@ -157,10 +157,12 @@ contract:
 contract-check:
 	./scripts/check-openapi.sh
 
-check: secret-permissions-check format-check lint typecheck test eval-retrieval eval-retrieval-postgres contract-check build
+check: secret-permissions-check compose-check format-check lint typecheck test eval-retrieval eval-retrieval-postgres contract-check build
 
 compose-check:
+	python3 scripts/test-check-compose-security.py
 	$(COMPOSE) config --quiet
+	$(COMPOSE) config --format json | python3 scripts/check-compose-security.py
 
 e2e:
 	./scripts/api-e2e.sh

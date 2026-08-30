@@ -9,12 +9,9 @@ import type {
   WebSearchMode,
 } from "@/features/shared/contracts";
 
-const AUTO_WEB_SEARCH_MARKERS = [
+const EXPLICIT_WEB_SEARCH_MARKERS = [
   "联网",
   "上网",
-  "搜索",
-  "搜一下",
-  "查一下",
   "查最新",
   "最新消息",
   "最新进展",
@@ -28,11 +25,36 @@ const AUTO_WEB_SEARCH_MARKERS = [
   "latest news",
 ];
 
-export function willSearchWeb(instruction: string, mode: WebSearchMode) {
+const MEMORY_SEARCH_TARGET_MARKERS = [
+  "我的记忆",
+  "个人记忆",
+  "团队记忆",
+  "共享记忆",
+  "记忆库",
+  "my memories",
+  "personal memories",
+  "team memories",
+  "memory library",
+];
+
+const GENERIC_SEARCH_MARKERS = ["搜索", "搜一下", "查一下", "查查"];
+
+export function willSearchWeb(
+  instruction: string,
+  mode: WebSearchMode,
+  memoryScope: DraftMemoryScope = "NONE",
+) {
   if (mode === "DISABLED") return false;
   if (mode === "REQUIRED") return true;
   const normalized = instruction.toLocaleLowerCase();
-  return AUTO_WEB_SEARCH_MARKERS.some((marker) => normalized.includes(marker));
+  if (EXPLICIT_WEB_SEARCH_MARKERS.some((marker) => normalized.includes(marker))) return true;
+  if (
+    memoryScope !== "NONE" &&
+    MEMORY_SEARCH_TARGET_MARKERS.some((marker) => normalized.includes(marker))
+  ) {
+    return false;
+  }
+  return GENERIC_SEARCH_MARKERS.some((marker) => normalized.includes(marker));
 }
 
 export function modelSupports(

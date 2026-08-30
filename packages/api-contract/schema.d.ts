@@ -209,6 +209,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/audio/transcriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transcribe Audio */
+        post: operations["transcribe_audio_audio_transcriptions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/avatar": {
         parameters: {
             query?: never;
@@ -238,6 +255,40 @@ export interface paths {
         get: operations["get_avatar_auth_avatar__avatar_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/development/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Development Accounts */
+        get: operations["development_accounts_auth_development_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/development/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Development Login */
+        post: operations["development_login_auth_development_login_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1828,6 +1879,20 @@ export interface components {
             /** Supersedes Id */
             supersedes_id: string | null;
         };
+        /** DevelopmentAccountResponse */
+        DevelopmentAccountResponse: {
+            /** Account Id */
+            account_id: string;
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+        };
+        /** DevelopmentLoginRequest */
+        DevelopmentLoginRequest: {
+            /** Account Id */
+            account_id: string;
+        };
         /** DiagramEdgeInput */
         DiagramEdgeInput: {
             /** Id */
@@ -2864,6 +2929,13 @@ export interface components {
             /** Score */
             score: number;
         };
+        /** SpeechTranscriptionResponse */
+        SpeechTranscriptionResponse: {
+            /** Model */
+            model: string;
+            /** Text */
+            text: string;
+        };
         /** SubscriptionResponse */
         SubscriptionResponse: {
             /** Credits Granted */
@@ -3616,6 +3688,37 @@ export interface operations {
             };
         };
     };
+    transcribe_audio_audio_transcriptions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "audio/m4a": string;
+                "audio/mp4": string;
+                "audio/mpeg": string;
+                "audio/ogg": string;
+                "audio/wav": string;
+                "audio/webm": string;
+                "audio/x-m4a": string;
+                "audio/x-wav": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpeechTranscriptionResponse"];
+                };
+            };
+        };
+    };
     update_avatar_auth_avatar_put: {
         parameters: {
             query?: never;
@@ -3697,6 +3800,80 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    development_accounts_auth_development_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevelopmentAccountResponse"][];
+                };
+            };
+            /** @description 开发快捷登录未启用 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    development_login_auth_development_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevelopmentLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentUserResponse"];
+                };
+            };
+            /** @description 开发快捷登录未启用或账号不可用 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description 尝试过多 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

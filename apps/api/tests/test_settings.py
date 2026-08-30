@@ -37,6 +37,38 @@ def test_production_rejects_development_seed_data() -> None:
         )
 
 
+def test_development_quick_login_requires_development_seed_opt_in() -> None:
+    with pytest.raises(ValidationError, match="requires APP_ENV=development"):
+        Settings(
+            app_env="test",
+            development_quick_login_enabled=True,
+            seed_development_data_enabled=True,
+        )
+
+    with pytest.raises(ValidationError, match="requires development seed data"):
+        Settings(
+            app_env="development",
+            development_quick_login_enabled=True,
+            seed_development_data_enabled=False,
+        )
+
+    settings = Settings(
+        app_env="development",
+        development_quick_login_enabled=True,
+        seed_development_data_enabled=True,
+    )
+    assert settings.development_quick_login_enabled is True
+
+
+def test_production_rejects_development_quick_login() -> None:
+    with pytest.raises(ValidationError, match="requires APP_ENV=development"):
+        Settings(
+            app_env="production",
+            session_secret="a-long-test-only-secret-with-32-characters",
+            development_quick_login_enabled=True,
+        )
+
+
 def test_enabled_metrics_require_a_dedicated_token() -> None:
     with pytest.raises(ValidationError, match=r"dedicated token of 32\+ characters"):
         Settings(metrics_enabled=True, metrics_token=SecretStr("too-short"))

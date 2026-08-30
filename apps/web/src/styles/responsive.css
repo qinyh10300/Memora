@@ -28,21 +28,43 @@
 
 @media (max-width: 820px) {
   .team-memory-center {
-    gap: 9px;
-    padding: 12px;
+    padding: 8px 10px 10px;
   }
 
   .team-memory-header {
-    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding-inline: 2px;
   }
 
-  .team-memory-header > div > span {
+  .team-memory-heading {
+    flex: 1 1 100%;
+  }
+
+  .team-memory-recent {
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  .team-memory-recent li:nth-child(n + 2) {
     display: none;
   }
 
+  .team-memory-actions {
+    width: 100%;
+    padding-top: 0;
+  }
+
+  .team-memory-search,
   .team-memory-ask {
+    flex: 1;
+    justify-content: center;
     min-height: 36px;
     padding: 0 11px;
+  }
+
+  .team-memory-members {
+    padding-inline: 2px;
   }
 
   .team-memory-tabs {
@@ -524,10 +546,29 @@
     grid-template-columns: 1fr;
   }
 
-  .library-workspace {
+  .library-workspace,
+  .team-memory-library {
     display: block;
     height: calc(100dvh - 58px);
     overflow-y: auto;
+  }
+
+  .team-memory-center .team-memory-library {
+    height: 100%;
+  }
+
+  .team-chat-mini {
+    right: 12px;
+    bottom: 14px;
+  }
+
+  .team-chat-mini-open {
+    padding: 14px;
+  }
+
+  .team-chat-mini > p {
+    padding-right: 14px;
+    padding-left: 62px;
   }
 
   .library-workspace:has(.library-search-popover),
@@ -546,7 +587,8 @@
     overscroll-behavior: contain;
   }
 
-  .library-workspace .split-handle {
+  .library-workspace .split-handle,
+  .team-memory-library .split-handle {
     display: none;
   }
 
@@ -576,6 +618,34 @@
 
   .detail-editor-wrap {
     min-height: 280px;
+  }
+
+  .memory-markdown-reader {
+    min-height: 360px;
+  }
+
+  .memory-markdown-reader .markdown-preview-pane,
+  .memory-markdown-reader .markdown-preview {
+    max-height: none;
+  }
+
+  .memory-markdown-reader .markdown-preview {
+    padding: 24px 20px 38px;
+  }
+
+  .memory-detail-tabs {
+    padding-inline: 16px;
+  }
+
+  .memory-revision-panel {
+    min-height: 360px;
+    padding: 18px 18px 30px;
+  }
+
+  .memory-revision-panel > header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .revision-actions > div:last-child {
@@ -730,6 +800,8 @@
   .team-workspace,
   .auth-backdrop,
   .auth-dialog,
+  .chatbot-intro-backdrop,
+  .chatbot-intro-dialog,
   .landing-hero-copy,
   .landing-faq-list details p,
   .file-drop-overlay,

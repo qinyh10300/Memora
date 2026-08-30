@@ -440,7 +440,7 @@ body.is-settings-open {
 .conversation-panel.is-empty-conversation .conversation-intro {
   position: absolute;
   z-index: 3;
-  top: calc(50% - 26px - var(--composer-auto-half-height, 50px) - clamp(70px, 7vh, 96px));
+  top: calc(50% - 26px - var(--composer-auto-half-height, 50px) - clamp(44px, 4.5vh, 62px));
   right: 24px;
   left: 24px;
   padding: 0;
@@ -851,7 +851,7 @@ body.is-settings-open {
   height: 16px;
 }
 
-.activity-trace > summary > span:nth-child(2) {
+.trace-summary-copy {
   display: flex;
   min-width: 0;
   align-items: baseline;
@@ -865,16 +865,15 @@ body.is-settings-open {
 }
 
 .activity-trace > summary small,
-.trace-summary-state {
+.trace-summary-time {
   color: var(--faint);
   font-size: var(--fs-3xs);
 }
 
-.trace-summary-state {
-  padding: 2px 6px;
-  border: 1px solid rgba(var(--mono-rgb), 0.06);
-  border-radius: var(--r-pill);
-  background: rgba(var(--mono-rgb), 0.025);
+.trace-summary-time {
+  min-width: 48px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .trace-chevron {
@@ -890,8 +889,7 @@ body.is-settings-open {
   transform: rotate(225deg) translate(-1px, -1px);
 }
 
-.activity-trace.is-active > summary strong,
-.activity-trace.is-active .trace-summary-state {
+.activity-trace.is-active > summary strong {
   color: var(--accent-light);
 }
 
@@ -936,6 +934,39 @@ body.is-settings-open {
   line-height: 1.55 !important;
 }
 
+.trace-live-status {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  margin: -3px 0 14px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.trace-live-status > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-live-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--accent-light);
+  box-shadow: 0 0 0 0 rgba(var(--mono-rgb), 0.18);
+  animation: trace-live-dot 1.25s var(--ease) infinite;
+}
+
+@keyframes trace-live-dot {
+  50% {
+    box-shadow: 0 0 0 5px rgba(var(--mono-rgb), 0);
+    opacity: 0.68;
+  }
+}
+
 .trace-body > ol {
   display: grid;
   gap: 0;
@@ -948,9 +979,21 @@ body.is-settings-open {
   position: relative;
   display: grid;
   min-width: 0;
-  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   gap: 9px;
   padding: 0 0 18px;
+  animation: trace-step-enter var(--t-base) var(--ease-out) both;
+}
+
+@keyframes trace-step-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .trace-body > ol > li:not(:last-child)::after {
@@ -1016,6 +1059,15 @@ body.is-settings-open {
   padding-top: 3px;
 }
 
+.trace-step-time {
+  min-width: 48px;
+  padding-top: 5px;
+  color: var(--faint);
+  font-size: var(--fs-3xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .trace-step-title {
   display: flex;
   min-width: 0;
@@ -1032,8 +1084,7 @@ body.is-settings-open {
   white-space: nowrap;
 }
 
-.trace-step-title span,
-.trace-step-title time {
+.trace-step-title span {
   flex: 0 0 auto;
   color: var(--faint);
   font-size: var(--fs-3xs);
@@ -1576,12 +1627,54 @@ body.is-resizing-composer .composer-wrap {
   color: var(--faint);
 }
 
-.composer .send-button {
+.composer .voice-input-button {
   display: grid;
   width: 32px;
   height: 32px;
   flex: 0 0 auto;
   margin-left: auto;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(var(--mono-rgb), 0.035);
+  color: var(--muted);
+  transition:
+    border-color var(--t-base) var(--ease),
+    background var(--t-base) var(--ease),
+    color var(--t-base) var(--ease),
+    transform var(--t-base) var(--ease-spring);
+}
+
+.composer .voice-input-button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: rgba(var(--mono-rgb), 0.09);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.composer .voice-input-button.is-recording {
+  border-color: color-mix(in srgb, var(--danger) 60%, transparent);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+  animation: voice-recording-pulse 1.4s ease-in-out infinite;
+}
+
+.composer .voice-input-button.is-requesting svg,
+.composer .voice-input-button.is-transcribing svg {
+  animation: voice-transcribing-pulse 1s ease-in-out infinite;
+}
+
+.composer .voice-input-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.composer .send-button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  margin-left: 0;
   place-items: center;
   border: 0;
   border-radius: 50%;
@@ -1619,6 +1712,19 @@ body.is-resizing-composer .composer-wrap {
   }
   to {
     transform: scale(1);
+  }
+}
+
+@keyframes voice-recording-pulse {
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--danger) 9%, transparent);
+  }
+}
+
+@keyframes voice-transcribing-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.86);
   }
 }
 
@@ -1855,6 +1961,11 @@ body.is-resizing-composer .composer-wrap {
 
 .composer-wrap > .attachment-error {
   color: var(--danger);
+  animation: rise-in var(--t-base) var(--ease-out) both;
+}
+
+.composer-wrap > .voice-status {
+  color: var(--muted);
   animation: rise-in var(--t-base) var(--ease-out) both;
 }
 

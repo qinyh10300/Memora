@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     observability_sink_token: SecretStr = SecretStr("")
     observability_sink_timeout_seconds: float = Field(default=2, gt=0, le=10)
     seed_development_data_enabled: bool = False
+    development_quick_login_enabled: bool = False
 
     seed_user_1_email: str = "alex@memora.local"
     seed_user_1_display_name: str = "Alex"
@@ -64,6 +65,16 @@ class Settings(BaseSettings):
     ai_embedding_base_url: str = "https://yunwu.ai/v1"
     ai_embedding_api_key: SecretStr = SecretStr("")
     ai_embedding_model: str = ""
+    ai_speech_base_url: str = "https://yunwu.ai/v1"
+    ai_speech_api_key: SecretStr = SecretStr("")
+    ai_speech_model: str = ""
+    ai_speech_language: str = ""
+    ai_speech_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    ai_speech_max_audio_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        ge=1024,
+        le=25 * 1024 * 1024,
+    )
     ai_request_timeout_seconds: float = Field(default=60, gt=0, le=300)
     ai_web_search_enabled: bool = True
     ai_web_search_model: str = ""
@@ -105,6 +116,14 @@ class Settings(BaseSettings):
             raise ValueError("production cannot enable development seed data")
         if self.metrics_enabled and len(self.metrics_token.get_secret_value()) < 32:
             raise ValueError("enabled metrics require a dedicated token of 32+ characters")
+        return self
+
+    @model_validator(mode="after")
+    def validate_development_quick_login(self) -> Self:
+        if self.development_quick_login_enabled and self.app_env != "development":
+            raise ValueError("development quick login requires APP_ENV=development")
+        if self.development_quick_login_enabled and not self.seed_development_data_enabled:
+            raise ValueError("development quick login requires development seed data")
         return self
 
     @model_validator(mode="after")

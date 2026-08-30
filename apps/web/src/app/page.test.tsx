@@ -1,11 +1,12 @@
 import type { components } from "@memora/api-contract";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import HomePage from "./page";
 
 type Memory = components["schemas"]["MemoryResponse"];
 type DraftModel = components["schemas"]["DraftModelResponse"];
+type DevelopmentAccount = components["schemas"]["DevelopmentAccountResponse"];
 type ConversationSummary = components["schemas"]["ConversationSummaryResponse"];
 type Workspace = components["schemas"]["WorkspaceResponse"];
 type WorkspaceMember = components["schemas"]["WorkspaceMemberResponse"];
@@ -20,6 +21,7 @@ const apiMocks = vi.hoisted(() => ({
   STREAM: vi.fn(),
   GET_EXECUTION: vi.fn(),
   CANCEL_EXECUTION: vi.fn(),
+  TRANSCRIBE: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -27,6 +29,16 @@ vi.mock("@/lib/api", () => ({
   streamDraftChat: apiMocks.STREAM,
   getAgentExecution: apiMocks.GET_EXECUTION,
   cancelAgentExecution: apiMocks.CANCEL_EXECUTION,
+  transcribeAudio: apiMocks.TRANSCRIBE,
+  AudioTranscriptionError: class AudioTranscriptionError extends Error {
+    constructor(
+      message: string,
+      readonly status: number,
+    ) {
+      super(message);
+      this.name = "AudioTranscriptionError";
+    }
+  },
   DraftChatStreamError: class DraftChatStreamError extends Error {
     constructor(
       message: string,
@@ -55,6 +67,13 @@ const personalUser = {
   workspace_id: "workspace-personal",
   workspace_name: "Alex 的个人空间",
 };
+
+const developmentAccounts: DevelopmentAccount[] = [
+  { account_id: "seed-1", display_name: "Alex", email: "alex@memora.local" },
+  { account_id: "seed-2", display_name: "Blair", email: "blair@memora.local" },
+  { account_id: "seed-3", display_name: "Casey", email: "casey@memora.local" },
+  { account_id: "seed-4", display_name: "Devon", email: "devon@memora.local" },
+];
 
 const personalWorkspace: Workspace = {
   id: "workspace-personal",
@@ -658,12 +677,19 @@ async function openLibraryView() {
   fireEvent.click(await screen.findByRole("button", { name: "我的记忆" }));
 }
 
+async function openMemoryEditor() {
+  fireEvent.click(await screen.findByRole("button", { name: "编辑 Markdown" }));
+  return screen.findByLabelText("记忆 Markdown");
+}
+
 async function openAccountSettings(view: "个人资料" | "我的邀请" | "通用设置" = "个人资料") {
   fireEvent.click(await screen.findByRole("button", { name: "打开账户菜单" }));
   fireEvent.click(screen.getByRole("menuitem", { name: view }));
 }
 
 describe("Memora personal Markdown MVP", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   beforeEach(() => {
     apiMocks.GET.mockReset();
     apiMocks.POST.mockReset();
@@ -673,6 +699,8 @@ describe("Memora personal Markdown MVP", () => {
     apiMocks.STREAM.mockReset();
     apiMocks.GET_EXECUTION.mockReset();
     apiMocks.CANCEL_EXECUTION.mockReset();
+    apiMocks.TRANSCRIBE.mockReset();
+    apiMocks.TRANSCRIBE.mockResolvedValue({ text: "语音转写结果", model: "speech-model" });
     const storedValues = new Map<string, string>();
     Object.defineProperty(window, "localStorage", {
       configurable: true,
@@ -792,6 +820,7 @@ describe("Memora personal Markdown MVP", () => {
 
     fireEvent.click((await screen.findAllByRole("button", { name: "登录" }))[0]);
     expect(screen.getByRole("dialog", { name: "登录 Memora" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "开发环境快捷登录" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("邮箱账号"), {
       target: { value: "alex@memora.local" },
     });
@@ -806,6 +835,131 @@ describe("Memora personal Markdown MVP", () => {
       });
     });
     expect(await screen.findByLabelText("Memora 导航")).toBeInTheDocument();
+  });
+
+  it.each(developmentAccounts)(
+    "开发环境中点击 $display_name 测试账号即可直接登录",
+    async (selectedAccount) => {
+      apiMocks.GET.mockImplementation((path: string) => {
+        if (path === "/auth/me") return Promise.resolve(missing(401));
+        if (path === "/auth/development/accounts") {
+          return Promise.resolve(ok(developmentAccounts));
+        }
+        if (path === "/workspaces") {
+          return Promise.resolve(ok([{ ...personalWorkspace, is_current: true }]));
+        }
+        if (path === "/drafts/models") return Promise.resolve(ok([draftModel]));
+        if (path === "/memories") return Promise.resolve(ok([]));
+        return Promise.resolve(missing());
+      });
+      apiMocks.POST.mockImplementation((path: string) => {
+        if (path === "/auth/development/login") {
+          return Promise.resolve(
+            ok({
+              ...personalUser,
+              display_name: selectedAccount.display_name,
+              email: selectedAccount.email,
+            }),
+          );
+        }
+        return Promise.resolve(missing());
+      });
+
+      render(<HomePage />);
+
+      fireEvent.click((await screen.findAllByRole("button", { name: "登录" }))[0]);
+      expect(await screen.findByRole("region", { name: "开发环境快捷登录" })).toBeVisible();
+      for (const account of developmentAccounts) {
+        expect(
+          screen.getByRole("button", {
+            name: `使用 ${account.display_name} 测试账号直接登录`,
+          }),
+        ).toBeVisible();
+      }
+      expect(screen.getByLabelText("邮箱账号")).toHaveValue("");
+      expect(screen.getByLabelText("密码", { selector: "input" })).toHaveValue("");
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "使用 Alex 测试账号直接登录" })).toHaveFocus();
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: `使用 ${selectedAccount.display_name} 测试账号直接登录`,
+        }),
+      );
+
+      await waitFor(() => {
+        expect(apiMocks.POST).toHaveBeenCalledWith("/auth/development/login", {
+          body: { account_id: selectedAccount.account_id },
+          signal: expect.any(AbortSignal),
+        });
+      });
+      expect(apiMocks.POST).not.toHaveBeenCalledWith("/auth/login", expect.anything());
+      expect(await screen.findByLabelText("Memora 导航")).toBeInTheDocument();
+    },
+  );
+
+  it("关闭登录弹窗会取消尚未完成的测试账号登录", async () => {
+    let resolveQuickLogin: ((value: unknown) => void) | undefined;
+    apiMocks.GET.mockImplementation((path: string) => {
+      if (path === "/auth/me") return Promise.resolve(missing(401));
+      if (path === "/auth/development/accounts") {
+        return Promise.resolve(ok(developmentAccounts));
+      }
+      return Promise.resolve(missing());
+    });
+    apiMocks.POST.mockImplementation((path: string) => {
+      if (path === "/auth/development/login") {
+        return new Promise((resolve) => {
+          resolveQuickLogin = resolve;
+        });
+      }
+      return Promise.resolve(missing());
+    });
+
+    render(<HomePage />);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "登录" }))[0]);
+    await screen.findByRole("region", { name: "开发环境快捷登录" });
+    fireEvent.click(screen.getByRole("button", { name: "使用 Alex 测试账号直接登录" }));
+    expect(screen.getByRole("button", { name: "使用 Alex 测试账号直接登录" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    const signal = (apiMocks.POST.mock.calls[0]?.[1] as { signal: AbortSignal }).signal;
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭账号窗口" }));
+    expect(screen.queryByRole("dialog", { name: "登录 Memora" })).not.toBeInTheDocument();
+    expect(signal.aborted).toBe(true);
+
+    await act(async () => {
+      resolveQuickLogin?.(ok(personalUser));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByLabelText("Memora 导航")).not.toBeInTheDocument();
+  });
+
+  it("测试账号快捷登录失败时在账号旁显示错误并保留普通登录", async () => {
+    apiMocks.GET.mockImplementation((path: string) => {
+      if (path === "/auth/me") return Promise.resolve(missing(401));
+      if (path === "/auth/development/accounts") {
+        return Promise.resolve(ok(developmentAccounts));
+      }
+      return Promise.resolve(missing());
+    });
+    apiMocks.POST.mockResolvedValue(missing(429));
+
+    render(<HomePage />);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "登录" }))[0]);
+    await screen.findByRole("region", { name: "开发环境快捷登录" });
+    fireEvent.click(screen.getByRole("button", { name: "使用 Alex 测试账号直接登录" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("尝试次数过多，请稍后再试");
+    expect(screen.getByLabelText("邮箱账号")).toBeEnabled();
+    expect(screen.getByLabelText("密码", { selector: "input" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /登录并进入/ })).toBeEnabled();
   });
 
   it("刷新后恢复上次使用的个人空间并直接显示记录想法工作区", async () => {
@@ -851,7 +1005,7 @@ describe("Memora personal Markdown MVP", () => {
         "--character-delay",
       ),
     ).toBe("80ms");
-    expect(composer).toHaveAttribute("placeholder", "问答、调研、绘图，或上传文件开始…");
+    expect(composer).toHaveAttribute("placeholder", "上传记忆或文件，或者总结个人、团队记忆…");
     const composerTools = composer.nextElementSibling;
     expect(composerTools).toHaveClass("composer-tools");
     expect(composerTools).toContainElement(screen.getByRole("button", { name: "添加内容" }));
@@ -885,6 +1039,121 @@ describe("Memora personal Markdown MVP", () => {
     expect(composerWrap).toHaveClass("is-docked");
     expect(await screen.findByRole("separator", { name: "调整输入区高度" })).toBeInTheDocument();
     expect(panelSeparator.parentElement).toHaveClass("is-right-collapsed");
+  });
+
+  it("每次点击新对话都介绍统一 Chatbot，勾选后在当前浏览器不再显示", async () => {
+    mockAuthenticatedSession([]);
+
+    render(<HomePage />);
+    await screen.findByLabelText("Memora 导航");
+
+    fireEvent.click(screen.getByRole("button", { name: "新对话" }));
+    const firstDialog = await screen.findByRole("dialog", {
+      name: "一个 Chatbot，连接你的记忆",
+    });
+    expect(firstDialog).toHaveTextContent("可以传入和整理个人记忆");
+    expect(firstDialog).toHaveTextContent("分析成员主动共享的团队记忆");
+    expect(firstDialog.closest(".chatbot-intro-backdrop")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "我知道了" }));
+    expect(
+      screen.queryByRole("dialog", { name: "一个 Chatbot，连接你的记忆" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "新对话" }));
+    expect(await screen.findByRole("dialog", { name: "一个 Chatbot，连接你的记忆" })).toBeVisible();
+    fireEvent.click(screen.getByRole("checkbox", { name: "是否不再显示" }));
+    fireEvent.click(screen.getByRole("button", { name: "我知道了" }));
+
+    expect(window.localStorage.getItem("memora.chatbot-intro.dismissed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "新对话" }));
+    expect(
+      screen.queryByRole("dialog", { name: "一个 Chatbot，连接你的记忆" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("语音输入录音后回填文本且不会自动发送", async () => {
+    mockAuthenticatedSession([]);
+    const stopTrack = vi.fn();
+    const stream = { getTracks: () => [{ stop: stopTrack }] } as unknown as MediaStream;
+    vi.stubGlobal(
+      "navigator",
+      Object.assign(Object.create(globalThis.navigator), {
+        mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+      }),
+    );
+
+    class MockMediaRecorder {
+      static isTypeSupported() {
+        return true;
+      }
+
+      state: RecordingState = "inactive";
+      mimeType: string;
+      ondataavailable: ((event: BlobEvent) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onstop: (() => void) | null = null;
+
+      constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+        this.mimeType = options?.mimeType ?? "audio/webm";
+      }
+
+      start() {
+        this.state = "recording";
+      }
+
+      stop() {
+        this.state = "inactive";
+        const content = new Uint8Array(64);
+        content.set([0x1a, 0x45, 0xdf, 0xa3]);
+        this.ondataavailable?.({
+          data: new Blob([content], { type: this.mimeType }),
+        } as BlobEvent);
+        this.onstop?.();
+      }
+    }
+    vi.stubGlobal("MediaRecorder", MockMediaRecorder);
+
+    render(<HomePage />);
+
+    const composer = await screen.findByLabelText("告诉 Memora 你的想法");
+    fireEvent.change(composer, { target: { value: "已有内容" } });
+    fireEvent.click(screen.getByRole("button", { name: "开始语音输入" }));
+    fireEvent.click(await screen.findByRole("button", { name: "停止录音并转成文字" }));
+
+    await waitFor(() => {
+      expect(apiMocks.TRANSCRIBE).toHaveBeenCalledOnce();
+      expect(composer).toHaveValue("已有内容 语音转写结果");
+    });
+    expect(apiMocks.STREAM).not.toHaveBeenCalled();
+    expect(stopTrack).toHaveBeenCalled();
+  });
+
+  it("麦克风权限被拒绝时保留当前输入并给出可恢复提示", async () => {
+    mockAuthenticatedSession([]);
+    vi.stubGlobal(
+      "navigator",
+      Object.assign(Object.create(globalThis.navigator), {
+        mediaDevices: {
+          getUserMedia: vi
+            .fn()
+            .mockRejectedValue(new DOMException("permission denied", "NotAllowedError")),
+        },
+      }),
+    );
+    vi.stubGlobal("MediaRecorder", class MockMediaRecorder {});
+
+    render(<HomePage />);
+
+    const composer = await screen.findByLabelText("告诉 Memora 你的想法");
+    fireEvent.change(composer, { target: { value: "不要丢失" } });
+    fireEvent.click(screen.getByRole("button", { name: "开始语音输入" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "无法使用麦克风，请在浏览器设置中允许麦克风权限。",
+    );
+    expect(composer).toHaveValue("不要丢失");
+    expect(screen.getByRole("button", { name: "开始语音输入" })).toBeEnabled();
   });
 
   it("加号菜单可以上传附件或把云知识库打开到右侧", async () => {
@@ -1070,8 +1339,9 @@ describe("Memora personal Markdown MVP", () => {
         params: { path: { workspace_id: "workspace-created" } },
       });
     });
-    expect(await screen.findByRole("heading", { name: "团队记忆" })).toBeVisible();
-    expect(screen.getAllByText("社会智能研究组", { selector: ".eyebrow" })).not.toHaveLength(0);
+    const createdTeamMemory = await screen.findByRole("region", { name: "团队记忆" });
+    expect(within(createdTeamMemory).getByRole("heading", { name: "团队记忆" })).toBeVisible();
+    expect(within(createdTeamMemory).queryByText("社会智能研究组")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "切换空间，当前为 社会智能研究组" }));
     fireEvent.click(screen.getByRole("button", { name: "新建团队" }));
@@ -2089,6 +2359,7 @@ describe("Memora personal Markdown MVP", () => {
     render(<HomePage />);
     await openLibraryView();
     fireEvent.click(await screen.findByRole("button", { name: /查看记忆：产品方向/ }));
+    await openMemoryEditor();
     fireEvent.change(await screen.findByLabelText("让 AI 修改这条记忆"), {
       target: { value: "慢慢修改" },
     });
@@ -2113,29 +2384,87 @@ describe("Memora personal Markdown MVP", () => {
     await act(async () => finishRefine?.());
   });
 
-  it("团队记忆把共享时间线、图谱和分析收进同一个入口", async () => {
+  it("团队记忆只展示共享记忆入口", async () => {
+    const todayTeamMemory = {
+      ...teammateMemory,
+      created_at: new Date().toISOString(),
+    };
+    mockAuthenticatedSession([todayTeamMemory], teamWorkspace.id);
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
+    const teamMemory = await screen.findByRole("region", { name: "团队记忆" });
+    expect(within(teamMemory).getByRole("heading", { name: "团队记忆" })).toBeVisible();
+    expect(within(teamMemory).queryByText(teamWorkspace.name)).not.toBeInTheDocument();
+    expect(within(teamMemory).queryByText(/位成员.*成员主动共享/)).not.toBeInTheDocument();
+    expect(within(teamMemory).getByLabelText("团队记忆概览")).toHaveTextContent(
+      "2 位成员1 条记忆今天 1 次更新",
+    );
+    expect(within(teamMemory).getByLabelText("今日团队记忆动态")).toHaveTextContent(
+      "Blair共享了“社会世界模型”",
+    );
+    expect(screen.getAllByText("社会世界模型")).not.toHaveLength(0);
+    expect(screen.getByRole("button", { name: "问团队记忆" })).toBeVisible();
+    fireEvent.click(within(teamMemory).getByRole("button", { name: "搜索" }));
+    expect(await screen.findByText("检索记忆")).toBeVisible();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Markdown 内容",
+      "修改记录 1",
+    ]);
+    expect(screen.queryByRole("tab", { name: "记忆图谱" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "记忆分析" })).not.toBeInTheDocument();
+  });
+
+  it("问团队记忆先打开可拖动迷你对话，再进入完整新对话", async () => {
     mockAuthenticatedSession([teammateMemory], teamWorkspace.id);
 
     render(<HomePage />);
     fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
-    expect(await screen.findByRole("heading", { name: "团队记忆" })).toBeVisible();
-    expect(screen.getAllByText("社会世界模型")).not.toHaveLength(0);
-    expect(screen.getByRole("button", { name: "问团队记忆" })).toBeVisible();
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-      "共享记忆",
-      "记忆图谱",
-      "记忆分析",
-    ]);
+    fireEvent.click(await screen.findByRole("button", { name: "问团队记忆" }));
 
-    fireEvent.click(screen.getByRole("tab", { name: "记忆图谱" }));
-    expect(await screen.findByRole("heading", { name: "框图" })).toBeVisible();
+    const miniChat = await screen.findByRole("dialog", { name: "团队记忆新对话" });
+    expect(miniChat).toBeVisible();
+    const handle = within(miniChat).getByText("团队记忆新对话").parentElement;
+    expect(handle).not.toBeNull();
+    fireEvent.pointerDown(handle!, { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 150, clientY: 140 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    expect(miniChat.style.transform).toContain("50px, 40px");
+
+    fireEvent.click(within(miniChat).getByRole("button", { name: /询问团队共享的记忆/ }));
+    expect(await screen.findByText("团队助手 · 只使用成员主动共享的记忆")).toBeVisible();
+    expect(screen.queryByRole("dialog", { name: "团队记忆新对话" })).not.toBeInTheDocument();
   });
 
-  it("新对话明确使用不读取记忆的通用助手", async () => {
+  it("团队记忆可以从时间线按成员快捷筛选", async () => {
+    mockAuthenticatedSession([teammateMemory], teamWorkspace.id);
+
+    render(<HomePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
+    const memberFilter = await screen.findByRole("button", { name: "查看 Blair 的记忆" });
+    fireEvent.click(memberFilter);
+
+    await waitFor(() => {
+      expect(apiMocks.POST).toHaveBeenCalledWith("/search", {
+        body: {
+          q: "",
+          mode: "KEYWORD",
+          field: "ALL",
+          limit: 200,
+          author_id: "user-blair",
+        },
+      });
+    });
+    expect(memberFilter).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByText("共享了")).toBeVisible();
+  });
+
+  it("新对话不显示记忆范围标签，但仍明确使用不读取记忆的通用助手", async () => {
     mockAuthenticatedSession([]);
 
     render(<HomePage />);
-    expect(await screen.findByText("通用助手 · 不读取记忆")).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "有什么可以帮助您的？" })).toBeVisible();
+    expect(screen.queryByText("通用助手 · 不读取记忆")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("告诉 Memora 你的想法"), {
       target: { value: "帮我调研并画一张流程图" },
@@ -2179,6 +2508,11 @@ describe("Memora personal Markdown MVP", () => {
     render(<HomePage />);
     fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
     fireEvent.click(await screen.findByRole("button", { name: "问团队记忆" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", { name: "团队记忆新对话" })).getByRole("button", {
+        name: /询问团队共享的记忆/,
+      }),
+    );
     expect(await screen.findByText("团队助手 · 只使用成员主动共享的记忆")).toBeVisible();
 
     fireEvent.change(screen.getByLabelText("告诉 Memora 你的想法"), {
@@ -2201,12 +2535,18 @@ describe("Memora personal Markdown MVP", () => {
     render(<HomePage />);
     fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
     fireEvent.click(await screen.findByRole("button", { name: "问团队记忆" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", { name: "团队记忆新对话" })).getByRole("button", {
+        name: /询问团队共享的记忆/,
+      }),
+    );
     expect(await screen.findByText("团队助手 · 只使用成员主动共享的记忆")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: `切换空间，当前为 ${teamWorkspace.name}` }));
     fireEvent.click(screen.getByRole("menuitem", { name: personalWorkspace.name }));
 
-    expect(await screen.findByText("通用助手 · 不读取记忆")).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "有什么可以帮助您的？" })).toBeVisible();
+    expect(screen.queryByText("通用助手 · 不读取记忆")).not.toBeInTheDocument();
     expect(screen.queryByText("团队助手 · 只使用成员主动共享的记忆")).not.toBeInTheDocument();
   });
 
@@ -2298,6 +2638,93 @@ describe("Memora personal Markdown MVP", () => {
         button.getAttribute("aria-label"),
       ),
     ).toEqual(["新对话", "我的记忆", "团队记忆"]);
+  });
+
+  it("按事件顺序逐条展示执行进度，并在最后一步可见后再显示最终回答", async () => {
+    mockAuthenticatedSession([]);
+    apiMocks.STREAM.mockImplementation(
+      async (
+        payload: unknown,
+        onEvent: (event: {
+          type: string;
+          sequence?: number;
+          step?: unknown;
+          response?: unknown;
+        }) => void,
+      ) => {
+        const result = await apiMocks.POST("/drafts/chat", { body: payload });
+        if (!result.data || !result.response.ok) throw new Error("draft_chat_failed");
+        const steps = [
+          {
+            id: "analysis",
+            kind: "ANALYSIS",
+            status: "COMPLETED",
+            title: "已理解这轮请求",
+            detail: "已检查执行边界。",
+            elapsed_ms: 80,
+            duration_ms: 80,
+            item_count: null,
+          },
+          {
+            id: "plan",
+            kind: "PLAN",
+            status: "COMPLETED",
+            title: "公开执行计划已准备",
+            detail: "按真实事件顺序执行。",
+            elapsed_ms: 120,
+            duration_ms: 40,
+            item_count: 3,
+          },
+          {
+            id: "model",
+            kind: "MODEL",
+            status: "RUNNING",
+            title: "准备模型与工具",
+            detail: "正在等待模型返回。",
+            elapsed_ms: 160,
+            duration_ms: null,
+            item_count: null,
+          },
+        ] as const;
+        steps.forEach((step, index) => onEvent({ type: "progress", sequence: index + 1, step }));
+        const response = {
+          ...result.data,
+          trace: {
+            duration_ms: 900,
+            model: "balanced",
+            input_tokens: 12,
+            output_tokens: 8,
+            steps: steps.map((step) => ({
+              ...step,
+              status: "COMPLETED" as const,
+              duration_ms: step.duration_ms ?? 740,
+            })),
+          },
+        };
+        onEvent({ type: "result", response });
+        return response;
+      },
+    );
+
+    render(<HomePage />);
+    fireEvent.change(await screen.findByLabelText("告诉 Memora 你的想法"), {
+      target: { value: "按顺序展示这轮进度" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("公开执行计划已准备")).toBeInTheDocument();
+    expect(screen.queryByText("准备模型与工具")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("已按你的要求更新右侧草稿。保存前你还可以继续修改。"),
+    ).not.toBeInTheDocument();
+
+    expect(await screen.findByText("准备模型与工具")).toBeInTheDocument();
+    expect(
+      screen.queryByText("已按你的要求更新右侧草稿。保存前你还可以继续修改。"),
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByText("已按你的要求更新右侧草稿。保存前你还可以继续修改。"),
+    ).toBeInTheDocument();
   });
 
   it("可以取消正在运行的 Agent，并从持久化执行记录确认取消", async () => {
@@ -2595,12 +3022,16 @@ describe("Memora personal Markdown MVP", () => {
     fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
     fireEvent.click(await screen.findByRole("button", { name: /查看记忆：社会世界模型/ }));
 
-    const editor = await screen.findByLabelText("记忆 Markdown");
-    expect(editor).toHaveAttribute("readonly");
+    expect(await screen.findByLabelText("Markdown 预览")).toHaveTextContent("社会世界模型");
     expect(screen.getByText(`由 Blair 分享到 ${teamWorkspace.name}`)).toBeInTheDocument();
     expect(screen.getByText("团队共享", { selector: ".memory-card-meta span" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑 Markdown" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("记忆 Markdown")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("让 AI 修改这条记忆")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /修改记录/ }));
+    expect(screen.getByText("当前共享版本")).toBeVisible();
+    expect(screen.queryByText("完整修订记录")).not.toBeInTheDocument();
   });
 
   it("个人与团队记忆切换会重置详情和检索范围", async () => {
@@ -2609,10 +3040,10 @@ describe("Memora personal Markdown MVP", () => {
     render(<HomePage />);
     fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
     fireEvent.click(await screen.findByRole("button", { name: /查看记忆：社会世界模型/ }));
-    expect(await screen.findByLabelText("记忆 Markdown")).toHaveValue(teammateMemory.body);
+    expect(await screen.findByLabelText("Markdown 预览")).toHaveTextContent("社会世界模型");
 
     fireEvent.click(screen.getByRole("button", { name: "我的记忆" }));
-    expect(await screen.findByLabelText("记忆 Markdown")).toHaveValue(memory.body);
+    expect(await screen.findByLabelText("Markdown 预览")).toHaveTextContent("先验证个人记录和回顾");
     expect(screen.queryByText(`由 Blair 分享到 ${teamWorkspace.name}`)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "检索记忆库" }));
@@ -2631,7 +3062,7 @@ describe("Memora personal Markdown MVP", () => {
     expect(screen.queryByText("社会世界模型")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "团队记忆" }));
-    expect(await screen.findByLabelText("记忆 Markdown")).toHaveValue(teammateMemory.body);
+    expect(await screen.findByLabelText("Markdown 预览")).toHaveTextContent("社会世界模型");
   });
 
   it("隐藏联网控件并默认自动联网，把优化后的内容和可点击来源加入右侧", async () => {
@@ -2901,8 +3332,7 @@ describe("Memora personal Markdown MVP", () => {
     expect(source).toHaveTextContent("Alex");
     fireEvent.click(source);
 
-    const editor = await screen.findByLabelText("记忆 Markdown");
-    expect(editor).toHaveValue(memory.body);
+    expect(await screen.findByLabelText("Markdown 预览")).toHaveTextContent("先验证个人记录和回顾");
   });
 
   it("记忆库按时间选择 Markdown，并提供两种明确保存方式", async () => {
@@ -2912,7 +3342,12 @@ describe("Memora personal Markdown MVP", () => {
     await openLibraryView();
 
     fireEvent.click(await screen.findByRole("button", { name: /查看记忆：产品方向/ }));
-    const editor = await screen.findByLabelText("记忆 Markdown");
+    expect(await screen.findByLabelText("Markdown 预览")).toHaveTextContent("先验证个人记录和回顾");
+    fireEvent.click(screen.getByRole("tab", { name: /修改记录/ }));
+    expect(screen.getByText("完整修订记录")).toBeVisible();
+    expect(screen.getByText("创建了记忆")).toBeVisible();
+    fireEvent.click(screen.getByRole("tab", { name: "Markdown 内容" }));
+    const editor = await openMemoryEditor();
     expect(editor).toHaveValue(memory.body);
     expect(screen.getByRole("heading", { name: /7月26日/ })).toBeInTheDocument();
     expect(screen.getByText("仅自己可见", { exact: false })).toBeInTheDocument();
@@ -2942,7 +3377,7 @@ describe("Memora personal Markdown MVP", () => {
 
     render(<HomePage />);
     fireEvent.click(await screen.findByRole("button", { name: "团队记忆" }));
-    fireEvent.click(await screen.findByRole("button", { name: "检索记忆库" }));
+    fireEvent.click(await screen.findByRole("button", { name: "搜索" }));
     fireEvent.change(screen.getByLabelText("关键词"), { target: { value: "社会世界" } });
     fireEvent.click(screen.getByRole("button", { name: "仅标题" }));
     fireEvent.change(screen.getByLabelText("开始日期"), {
@@ -2983,6 +3418,7 @@ describe("Memora personal Markdown MVP", () => {
     await openLibraryView();
     fireEvent.click(await screen.findByRole("button", { name: /查看记忆：产品方向/ }));
 
+    await openMemoryEditor();
     const aiInput = await screen.findByLabelText("让 AI 修改这条记忆");
     fireEvent.change(aiInput, { target: { value: "改得更清楚" } });
     fireEvent.click(screen.getByRole("button", { name: "修改草稿" }));
@@ -3042,7 +3478,7 @@ describe("Memora personal Markdown MVP", () => {
     render(<HomePage />);
     await openLibraryView();
 
-    const editor = await screen.findByLabelText("记忆 Markdown");
+    const editor = await openMemoryEditor();
     fireEvent.change(editor, { target: { value: "# 产品方向\n\n补充一条。" } });
     fireEvent.click(screen.getByRole("button", { name: "更新当前记忆" }));
 

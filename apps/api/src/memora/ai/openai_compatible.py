@@ -4,6 +4,7 @@ import base64
 import binascii
 import json
 import math
+import secrets
 from collections.abc import Mapping
 from time import perf_counter
 from typing import Any, Protocol, cast
@@ -29,6 +30,8 @@ from memora.ai.ports import (
     ImageGenerationRequest,
     ImageGenerationResult,
     ModelUsage,
+    SpeechToTextPort,
+    SpeechTranscriptionResult,
     WebSearchContextSize,
     WebSearchPort,
     WebSearchResult,
@@ -71,6 +74,79 @@ class UrllibJSONTransport:
             url,
             data=json.dumps(payload).encode(),
             headers=headers,
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                raw_body = response.read()
+        except HTTPError as error:
+            if error.code == 429:
+                raise AIProviderError("rate_limited", retryable=True) from error
+            if error.code in {401, 403}:
+                raise AIProviderError("authentication_failed", retryable=False) from error
+            if error.code >= 500:
+                raise AIProviderError("provider_unavailable", retryable=True) from error
+            raise AIProviderError("invalid_provider_request", retryable=False) from error
+        except TimeoutError as error:
+            raise AIProviderError("provider_timeout", retryable=True) from error
+        except URLError as error:
+            raise AIProviderError("provider_unavailable", retryable=True) from error
+
+        try:
+            decoded = json.loads(raw_body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise AIProviderError("invalid_provider_response", retryable=True) from error
+        if not isinstance(decoded, dict):
+            raise AIProviderError("invalid_provider_response", retryable=True)
+        return cast(dict[str, Any], decoded)
+
+
+class MultipartTransport(Protocol):
+    def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        fields: dict[str, str],
+        filename: str,
+        media_type: str,
+        content: bytes,
+        timeout: float,
+    ) -> dict[str, Any]: ...
+
+
+class UrllibMultipartTransport:
+    def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        fields: dict[str, str],
+        filename: str,
+        media_type: str,
+        content: bytes,
+        timeout: float,
+    ) -> dict[str, Any]:
+        boundary = f"memora-{secrets.token_hex(16)}"
+        body = bytearray()
+        for name, value in fields.items():
+            body.extend(f"--{boundary}\r\n".encode())
+            body.extend(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode())
+            body.extend(value.encode())
+            body.extend(b"\r\n")
+        body.extend(f"--{boundary}\r\n".encode())
+        body.extend(
+            (
+                'Content-Disposition: form-data; name="file"; '
+                f'filename="{filename}"\r\nContent-Type: {media_type}\r\n\r\n'
+            ).encode()
+        )
+        body.extend(content)
+        body.extend(f"\r\n--{boundary}--\r\n".encode())
+        request = Request(
+            url,
+            data=bytes(body),
+            headers={**headers, "Content-Type": f"multipart/form-data; boundary={boundary}"},
             method="POST",
         )
         try:
@@ -695,6 +771,110 @@ class OpenAICompatibleWebSearch(WebSearchPort):
         return result
 
 
+class OpenAICompatibleSpeechToText(SpeechToTextPort):
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        timeout_seconds: float,
+        transport: MultipartTransport | None = None,
+        pricing: Mapping[str, ModelPricing] | None = None,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._api_key = api_key
+        self._model = model
+        self._timeout_seconds = timeout_seconds
+        self._transport = transport or UrllibMultipartTransport()
+        self._pricing = dict(pricing or {})
+
+    @property
+    def model_id(self) -> str:
+        return self._model
+
+    def transcribe(
+        self,
+        audio: bytes,
+        *,
+        filename: str,
+        media_type: str,
+        language: str | None = None,
+    ) -> SpeechTranscriptionResult:
+        if not audio:
+            raise ValueError("audio input must be non-empty")
+        fields = {"model": self._model, "response_format": "json"}
+        if language:
+            fields["language"] = language
+        started_at = perf_counter()
+        outcome = "success"
+        try:
+            response = self._transport.post(
+                f"{self._base_url}/audio/transcriptions",
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    **current_trace_headers(),
+                },
+                fields=fields,
+                filename=filename,
+                media_type=media_type,
+                content=audio,
+                timeout=self._timeout_seconds,
+            )
+        except AIProviderError as error:
+            outcome = error.code
+            raise
+        except Exception:
+            outcome = "unexpected_error"
+            raise
+        finally:
+            duration_seconds = max(0.0, perf_counter() - started_at)
+            metrics.increment(
+                "memora_ai_requests_total",
+                labels={
+                    "operation": "speech_transcription",
+                    "model": self._model,
+                    "outcome": outcome,
+                },
+            )
+            metrics.observe(
+                "memora_ai_request_duration_seconds",
+                labels={"operation": "speech_transcription", "model": self._model},
+                value=duration_seconds,
+            )
+            logger.info(
+                "ai.provider_request_completed",
+                operation="speech_transcription",
+                model=self._model,
+                outcome=outcome,
+                duration_ms=round(duration_seconds * 1000, 2),
+            )
+
+        text = response.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise AIProviderError("invalid_provider_response", retryable=True)
+        usage = response.get("usage", {})
+        input_tokens = usage.get("input_tokens", 0) if isinstance(usage, dict) else 0
+        output_tokens = usage.get("output_tokens", 0) if isinstance(usage, dict) else 0
+        response_model = response.get("model")
+        result = SpeechTranscriptionResult(
+            text=text.strip(),
+            model=response_model if isinstance(response_model, str) else self._model,
+            usage=ModelUsage(
+                input_tokens=input_tokens if isinstance(input_tokens, int) else 0,
+                output_tokens=output_tokens if isinstance(output_tokens, int) else 0,
+            ),
+        )
+        record_ai_usage(
+            operation="speech_transcription",
+            model=result.model,
+            input_tokens=result.usage.input_tokens,
+            output_tokens=result.usage.output_tokens,
+            pricing=self._pricing,
+        )
+        return result
+
+
 def build_embedding_model(settings: Settings) -> EmbeddingModelPort | None:
     api_key = settings.ai_embedding_api_key.get_secret_value()
     model = settings.ai_embedding_model.strip()
@@ -705,6 +885,20 @@ def build_embedding_model(settings: Settings) -> EmbeddingModelPort | None:
         api_key=api_key,
         model=model,
         timeout_seconds=settings.ai_request_timeout_seconds,
+        pricing=parse_model_pricing(settings.ai_model_pricing_json),
+    )
+
+
+def build_speech_to_text(settings: Settings) -> SpeechToTextPort | None:
+    api_key = settings.ai_speech_api_key.get_secret_value()
+    model = settings.ai_speech_model.strip()
+    if not api_key or not model:
+        return None
+    return OpenAICompatibleSpeechToText(
+        base_url=settings.ai_speech_base_url,
+        api_key=api_key,
+        model=model,
+        timeout_seconds=settings.ai_speech_timeout_seconds,
         pricing=parse_model_pricing(settings.ai_model_pricing_json),
     )
 

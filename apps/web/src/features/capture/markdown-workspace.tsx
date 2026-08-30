@@ -17,7 +17,7 @@ function safeMarkdownImageSrc(value: string) {
   }
 }
 
-function MarkdownPreview({ value }: { value: string }) {
+export function MarkdownPreview({ value }: { value: string }) {
   return (
     <div className="markdown-preview-pane" aria-label="Markdown 预览">
       <div className="markdown-preview-toolbar">

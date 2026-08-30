@@ -33,6 +33,7 @@ from memora.identity.security import (
     verify_password,
     verify_verification_code,
 )
+from memora.identity.seed import seed_users_from_settings
 from memora.settings import Settings, get_settings
 from memora.workspaces.models import Workspace, WorkspaceMembership
 
@@ -43,6 +44,16 @@ SettingsDependency = Annotated[Settings, Depends(get_settings)]
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     password: SecretStr
+
+
+class DevelopmentAccountResponse(BaseModel):
+    account_id: str
+    display_name: str
+    email: str
+
+
+class DevelopmentLoginRequest(BaseModel):
+    account_id: str = Field(min_length=1, max_length=32)
 
 
 class RegisterRequest(BaseModel):
@@ -134,6 +145,27 @@ def _validated_display_name(value: str) -> str:
             detail="昵称不能为空",
         )
     return display_name
+
+
+def _require_development_quick_login(settings: Settings) -> None:
+    if (
+        settings.app_env != "development"
+        or not settings.seed_development_data_enabled
+        or not settings.development_quick_login_enabled
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到")
+
+
+def _configured_development_accounts(settings: Settings) -> list[tuple[str, str, str]]:
+    accounts: list[tuple[str, str, str]] = []
+    seen_emails: set[str] = set()
+    for index, seed_user in enumerate(seed_users_from_settings(settings), start=1):
+        email = normalize_email(seed_user.email)
+        if email in seen_emails:
+            continue
+        seen_emails.add(email)
+        accounts.append((f"seed-{index}", email, seed_user.display_name.strip()))
+    return accounts
 
 
 def _start_session(
@@ -334,6 +366,99 @@ def login(
         workspace=workspace,
     )
     limiter.reset(rate_limit_key)
+    return _response_for(user=user, workspace=workspace, membership=membership)
+
+
+@router.get(
+    "/development/accounts",
+    response_model=list[DevelopmentAccountResponse],
+    responses={404: {"description": "开发快捷登录未启用"}},
+)
+def development_accounts(
+    response: Response,
+    database: DatabaseSession,
+    settings: SettingsDependency,
+) -> list[DevelopmentAccountResponse]:
+    _require_development_quick_login(settings)
+    response.headers["Cache-Control"] = "no-store"
+    configured_accounts = _configured_development_accounts(settings)
+    configured_emails = [email for _account_id, email, _display_name in configured_accounts]
+    available_emails = set(
+        database.scalars(
+            select(User.email)
+            .join(WorkspaceMembership, WorkspaceMembership.user_id == User.id)
+            .where(
+                User.email.in_(configured_emails),
+                User.status == "ACTIVE",
+            )
+            .distinct()
+        ).all()
+    )
+    return [
+        DevelopmentAccountResponse(
+            account_id=account_id,
+            display_name=display_name,
+            email=email,
+        )
+        for account_id, email, display_name in configured_accounts
+        if email in available_emails
+    ]
+
+
+@router.post(
+    "/development/login",
+    response_model=CurrentUserResponse,
+    responses={
+        404: {"description": "开发快捷登录未启用或账号不可用"},
+        429: {"description": "尝试过多"},
+    },
+)
+def development_login(
+    payload: DevelopmentLoginRequest,
+    request: Request,
+    response: Response,
+    database: DatabaseSession,
+    settings: SettingsDependency,
+) -> CurrentUserResponse:
+    _require_development_quick_login(settings)
+    account = next(
+        (
+            (email, display_name)
+            for account_id, email, display_name in _configured_development_accounts(settings)
+            if account_id == payload.account_id
+        ),
+        None,
+    )
+    if account is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到")
+    email, _display_name = account
+
+    rate_limit_key = _rate_limit_key(request, f"development:{email}")
+    limiter: LoginRateLimiter = request.app.state.login_rate_limiter
+    if not limiter.consume(rate_limit_key):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="请稍后再试")
+
+    user = database.scalar(select(User).where(User.email == email, User.status == "ACTIVE"))
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到")
+    membership_row = database.execute(
+        select(WorkspaceMembership, Workspace)
+        .join(Workspace, Workspace.id == WorkspaceMembership.workspace_id)
+        .where(WorkspaceMembership.user_id == user.id)
+        .order_by(Workspace.created_at, Workspace.slug)
+        .limit(1)
+    ).one_or_none()
+    if membership_row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到")
+    membership, workspace = membership_row
+
+    _start_session(
+        database=database,
+        response=response,
+        settings=settings,
+        user=user,
+        workspace=workspace,
+    )
     return _response_for(user=user, workspace=workspace, membership=membership)
 
 

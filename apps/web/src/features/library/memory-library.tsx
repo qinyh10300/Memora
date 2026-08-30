@@ -1,10 +1,10 @@
 "use client";
 
-import { LockKeyhole, Search, Users, X } from "lucide-react";
+import { FilePenLine, LockKeyhole, PencilLine, Search, Users, X } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { MarkdownWorkspace, PreviewToggle } from "@/features/capture/markdown-workspace";
+import { MarkdownPreview, MarkdownWorkspace } from "@/features/capture/markdown-workspace";
 import type {
   Memory,
   MemorySearchFilters,
@@ -31,9 +31,12 @@ function MemorySearchPopover({
   filters,
   active,
   searching,
+  controlledOpen,
+  hideTrigger = false,
   onChange,
   onSubmit,
   onReset,
+  onOpenChange,
 }: {
   workspace: Workspace;
   members: WorkspaceMember[];
@@ -41,23 +44,35 @@ function MemorySearchPopover({
   filters: MemorySearchFilters;
   active: boolean;
   searching: boolean;
+  controlledOpen?: boolean;
+  hideTrigger?: boolean;
   onChange: (filters: MemorySearchFilters) => void;
   onSubmit: () => void;
   onReset: () => void;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
   const rootRef = useRef<HTMLDivElement>(null);
   const hasCriteria = Boolean(
     filters.query.trim() || filters.from || filters.to || filters.authorId,
   );
 
+  const changeOpen = useCallback(
+    (nextOpen: boolean) => {
+      if (controlledOpen === undefined) setLocalOpen(nextOpen);
+      onOpenChange?.(nextOpen);
+    },
+    [controlledOpen, onOpenChange],
+  );
+
   useEffect(() => {
     if (!open) return;
     function closePopover(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      if (!rootRef.current?.contains(event.target as Node)) changeOpen(false);
     }
     function closeWithEscape(event: globalThis.KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") changeOpen(false);
     }
     window.addEventListener("mousedown", closePopover);
     window.addEventListener("keydown", closeWithEscape);
@@ -65,32 +80,34 @@ function MemorySearchPopover({
       window.removeEventListener("mousedown", closePopover);
       window.removeEventListener("keydown", closeWithEscape);
     };
-  }, [open]);
+  }, [changeOpen, open]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!hasCriteria || searching) return;
     onSubmit();
-    setOpen(false);
+    changeOpen(false);
   }
 
   return (
     <div className="library-search" ref={rootRef}>
-      <button
-        className={active ? "library-search-trigger is-active" : "library-search-trigger"}
-        type="button"
-        aria-label="检索记忆库"
-        title="检索记忆库"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <Search aria-hidden="true" size={16} strokeWidth={1.8} />
-      </button>
+      {hideTrigger ? null : (
+        <button
+          className={active ? "library-search-trigger is-active" : "library-search-trigger"}
+          type="button"
+          aria-label="检索记忆库"
+          title="检索记忆库"
+          aria-expanded={open}
+          onClick={() => changeOpen(!open)}
+        >
+          <Search aria-hidden="true" size={16} strokeWidth={1.8} />
+        </button>
+      )}
       {open ? (
         <form className="library-search-popover" onSubmit={submit}>
           <header>
             <strong>检索记忆</strong>
-            <button type="button" aria-label="关闭检索" onClick={() => setOpen(false)}>
+            <button type="button" aria-label="关闭检索" onClick={() => changeOpen(false)}>
               <X aria-hidden="true" size={15} strokeWidth={1.8} />
             </button>
           </header>
@@ -164,7 +181,7 @@ function MemorySearchPopover({
               disabled={!active && !hasCriteria}
               onClick={() => {
                 onReset();
-                setOpen(false);
+                changeOpen(false);
               }}
             >
               清除
@@ -190,11 +207,16 @@ export function Timeline({
   onSearchFiltersChange,
   onSearch,
   onResetSearch,
+  onMemberSelect,
   onSelect,
   title = "记忆库",
   eyebrow,
   headerAction,
   showMemberFilter = isCollaborativeWorkspace(workspace),
+  showMemberQuickFilter = showMemberFilter,
+  searchOpen,
+  onSearchOpenChange,
+  hideSearchTrigger = false,
 }: {
   workspace: Workspace;
   members: WorkspaceMember[];
@@ -206,15 +228,27 @@ export function Timeline({
   onSearchFiltersChange: (filters: MemorySearchFilters) => void;
   onSearch: () => void;
   onResetSearch: () => void;
+  onMemberSelect?: (authorId: string) => void;
   onSelect: (memory: Memory) => void;
   title?: string;
   eyebrow?: string;
   headerAction?: ReactNode;
   showMemberFilter?: boolean;
+  showMemberQuickFilter?: boolean;
+  searchOpen?: boolean;
+  onSearchOpenChange?: (open: boolean) => void;
+  hideSearchTrigger?: boolean;
 }) {
+  const displayedMemories = useMemo(
+    () =>
+      searchFilters.authorId
+        ? memories.filter((memory) => memory.author.id === searchFilters.authorId)
+        : memories,
+    [memories, searchFilters.authorId],
+  );
   const groups = useMemo(() => {
     const result: { key: string; label: string; memories: Memory[] }[] = [];
-    for (const memory of memories) {
+    for (const memory of displayedMemories) {
       const key = dayKey(memory.created_at);
       const current = result[result.length - 1];
       if (!current || current.key !== key) {
@@ -224,7 +258,7 @@ export function Timeline({
       }
     }
     return result;
-  }, [memories]);
+  }, [displayedMemories]);
 
   return (
     <section
@@ -237,10 +271,15 @@ export function Timeline({
             {eyebrow ?? (isCollaborativeWorkspace(workspace) ? workspace.name : "个人记忆")}
           </p>
           <h1>{title}</h1>
+          <span>
+            {displayedMemories.length} 条记忆
+            {searchFilters.authorId
+              ? ` · ${members.find((member) => member.id === searchFilters.authorId)?.display_name ?? "已选成员"}`
+              : ""}
+          </span>
         </div>
         <div className="library-list-actions">
           {headerAction}
-          <span>{memories.length}</span>
           <MemorySearchPopover
             workspace={workspace}
             members={members}
@@ -248,12 +287,40 @@ export function Timeline({
             filters={searchFilters}
             active={searchActive}
             searching={loading}
+            controlledOpen={searchOpen}
+            hideTrigger={hideSearchTrigger}
             onChange={onSearchFiltersChange}
             onSubmit={onSearch}
             onReset={onResetSearch}
+            onOpenChange={onSearchOpenChange}
           />
         </div>
       </header>
+      {showMemberQuickFilter && isCollaborativeWorkspace(workspace) ? (
+        <div className="memory-member-filter" aria-label="按成员筛选记忆">
+          <button
+            type="button"
+            aria-pressed={!searchFilters.authorId}
+            className={!searchFilters.authorId ? "is-active" : ""}
+            onClick={() => onMemberSelect?.("")}
+          >
+            全部成员
+          </button>
+          {members.map((member) => (
+            <button
+              type="button"
+              key={member.id}
+              aria-label={`查看 ${member.display_name} 的记忆`}
+              aria-pressed={searchFilters.authorId === member.id}
+              className={searchFilters.authorId === member.id ? "is-active" : ""}
+              onClick={() => onMemberSelect?.(member.id)}
+            >
+              <span aria-hidden="true">{member.display_name.trim().slice(0, 1).toUpperCase()}</span>
+              {member.display_name}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="timeline-scroll">
         {loading ? (
           <div className="timeline-skeleton" role="status" aria-label="正在读取记忆…">
@@ -285,7 +352,9 @@ export function Timeline({
               <div>
                 {group.memories.map((memory) => (
                   <button
-                    className={selectedId === memory.id ? "memory-card is-selected" : "memory-card"}
+                    className={`memory-card is-${memory.revision_kind.toLowerCase()} ${
+                      selectedId === memory.id ? "is-selected" : ""
+                    }`}
                     type="button"
                     key={memory.id}
                     onClick={() => onSelect(memory)}
@@ -294,10 +363,31 @@ export function Timeline({
                     <time dateTime={memory.created_at}>{formatTime(memory.created_at)}</time>
                     <span className="timeline-node" />
                     <span className="memory-card-copy">
+                      <span className="memory-card-activity">
+                        <span aria-hidden="true">
+                          {memory.author.display_name.trim().slice(0, 1).toUpperCase()}
+                        </span>
+                        <b>{memory.author.display_name}</b>
+                        <em>
+                          {memory.revision_kind === "UPDATE_CURRENT"
+                            ? "更新了"
+                            : memory.revision_kind === "NEW_VERSION"
+                              ? "新增了版本"
+                              : memory.visibility === "WORKSPACE"
+                                ? "共享了"
+                                : "新建了"}
+                        </em>
+                      </span>
                       <strong>{memory.title ?? memoryTitle(memory.body)}</strong>
                       <small>{memoryExcerpt(memory.body)}</small>
                       <span className="memory-card-meta">
-                        <span>{memory.author.display_name}</span>
+                        <span>
+                          {memory.revision_kind === "UPDATE_CURRENT"
+                            ? "已保留旧修订"
+                            : memory.revision_kind === "NEW_VERSION"
+                              ? "独立时间点"
+                              : "首个版本"}
+                        </span>
                         <span className={`is-${memory.visibility.toLowerCase()}`}>
                           {memory.visibility === "WORKSPACE" ? "团队共享" : "仅自己"}
                         </span>
@@ -349,7 +439,8 @@ export function MemoryDetail({
 }) {
   const [instruction, setInstruction] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [previewVisible, setPreviewVisible] = useState(true);
+  const [activeTab, setActiveTab] = useState<"CONTENT" | "HISTORY">("CONTENT");
+  const [editing, setEditing] = useState(false);
   const dirty = Boolean(memory?.is_owner && markdown.trim() && markdown.trim() !== baseline.trim());
 
   if (!memory) {
@@ -392,10 +483,24 @@ export function MemoryDetail({
           </p>
         </div>
         <div className="detail-header-actions">
-          <PreviewToggle
-            visible={previewVisible}
-            onToggle={() => setPreviewVisible((visible) => !visible)}
-          />
+          {memory.is_owner ? (
+            <button
+              className={editing ? "memory-edit-toggle is-active" : "memory-edit-toggle"}
+              type="button"
+              aria-pressed={editing}
+              onClick={() => {
+                setEditing((current) => !current);
+                setActiveTab("CONTENT");
+              }}
+            >
+              {editing ? (
+                <FilePenLine aria-hidden="true" size={15} strokeWidth={1.8} />
+              ) : (
+                <PencilLine aria-hidden="true" size={15} strokeWidth={1.8} />
+              )}
+              {editing ? "返回阅读" : "编辑 Markdown"}
+            </button>
+          ) : null}
           {memory.is_owner && isCollaborativeWorkspace(workspace) ? (
             <button
               className="visibility-action"
@@ -453,17 +558,84 @@ export function MemoryDetail({
         </div>
       ) : null}
 
-      <MarkdownWorkspace
-        className="detail-editor-wrap"
-        editorClassName="detail-editor"
-        value={markdown}
-        onChange={onMarkdownChange}
-        ariaLabel="记忆 Markdown"
-        previewVisible={previewVisible}
-        readOnly={!memory.is_owner}
-      />
+      <nav className="memory-detail-tabs" role="tablist" aria-label="记忆详情视图">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "CONTENT"}
+          className={activeTab === "CONTENT" ? "is-active" : ""}
+          onClick={() => setActiveTab("CONTENT")}
+        >
+          Markdown 内容
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "HISTORY"}
+          className={activeTab === "HISTORY" ? "is-active" : ""}
+          onClick={() => setActiveTab("HISTORY")}
+        >
+          修改记录 <span>{revisions.length}</span>
+        </button>
+      </nav>
 
-      {memory.is_owner ? (
+      {activeTab === "CONTENT" ? (
+        editing && memory.is_owner ? (
+          <MarkdownWorkspace
+            className="detail-editor-wrap"
+            editorClassName="detail-editor"
+            value={markdown}
+            onChange={onMarkdownChange}
+            ariaLabel="记忆 Markdown"
+            previewVisible
+          />
+        ) : (
+          <div className="memory-markdown-reader">
+            <MarkdownPreview value={markdown} />
+          </div>
+        )
+      ) : (
+        <section className="memory-revision-panel" aria-label="记忆修改记录">
+          <header>
+            <div>
+              <strong>{memory.is_owner ? "完整修订记录" : "当前共享版本"}</strong>
+              <p>
+                {memory.is_owner
+                  ? "每次正文修改都生成不可变修订，当前版本排在最前。"
+                  : "你只能查看作者主动共享的当前版本，隐藏修订仍由作者保留。"}
+              </p>
+            </div>
+            <span>{revisions.length} 个可见版本</span>
+          </header>
+          <ol>
+            {revisions.map((revision, index) => (
+              <li key={revision.id}>
+                <span className="revision-marker" aria-hidden="true" />
+                <div>
+                  <p>
+                    <strong>
+                      {revision.revision_kind === "UPDATE_CURRENT"
+                        ? "更新了当前记忆"
+                        : revision.revision_kind === "NEW_VERSION"
+                          ? "保存为新版本"
+                          : revision.visibility === "WORKSPACE"
+                            ? "创建并共享了记忆"
+                            : "创建了记忆"}
+                    </strong>
+                    <span>{index === 0 ? "当前" : `历史 ${index}`}</span>
+                  </p>
+                  <time dateTime={revision.created_at}>
+                    {formatDateTime(revision.created_at)} · {revision.author.display_name}
+                  </time>
+                  <small>{memoryExcerpt(revision.body)}</small>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {memory.is_owner && editing && activeTab === "CONTENT" ? (
         <div className="detail-tools">
           <form className="ai-edit-bar" onSubmit={submitAi}>
             <SparkleIcon />
@@ -512,25 +684,10 @@ export function MemoryDetail({
               </button>
             </div>
           </div>
-
-          {revisions.length > 1 ? (
-            <details className="revision-history">
-              <summary>查看修订历史 · {revisions.length} 个版本</summary>
-              <ol>
-                {revisions.map((revision, index) => (
-                  <li key={revision.id}>
-                    <span>{index === 0 ? "当前" : `历史 ${index}`}</span>
-                    <time dateTime={revision.created_at}>
-                      {formatDateTime(revision.created_at)}
-                    </time>
-                    <p>{memoryExcerpt(revision.body)}</p>
-                  </li>
-                ))}
-              </ol>
-            </details>
-          ) : null}
         </div>
-      ) : (
+      ) : null}
+
+      {!memory.is_owner ? (
         <div className="shared-memory-readonly">
           <Users aria-hidden="true" size={18} strokeWidth={1.7} />
           <div>
@@ -540,7 +697,7 @@ export function MemoryDetail({
             <p>你可以阅读和引用这条记忆，修改、撤回与删除仍由作者控制。</p>
           </div>
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

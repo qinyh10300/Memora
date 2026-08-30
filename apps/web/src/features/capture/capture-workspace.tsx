@@ -5,6 +5,7 @@ import {
   BookOpenText,
   FilePenLine,
   LockKeyhole,
+  Mic,
   PanelRightClose,
   PanelRightOpen,
   Paperclip,
@@ -50,6 +51,7 @@ import {
 } from "@/features/shared/utils";
 import { planAllows, RichModelPicker } from "@/features/shared/model-picker";
 import { KnowledgeBaseWorkspace } from "@/features/knowledge/knowledge-base-workspace";
+import { AudioTranscriptionError, transcribeAudio } from "@/lib/api";
 import {
   clampComposerHeight,
   COMPOSER_DEFAULT_HEIGHT,
@@ -80,6 +82,15 @@ import { modelSupports, selectedDraftModelLabel } from "./trace";
 
 const CENTERED_COMPOSER_HEIGHT = 100;
 const COMPOSER_TEXT_BASE_HEIGHT = 34;
+const MAX_VOICE_RECORDING_MS = 120_000;
+const MIN_VOICE_AUDIO_BYTES = 32;
+const VOICE_MIME_TYPES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4",
+  "audio/ogg;codecs=opus",
+] as const;
+type VoiceInputState = "IDLE" | "REQUESTING" | "RECORDING" | "TRANSCRIBING";
 
 export function CaptureWorkspace({
   mode = "CAPTURE",
@@ -168,6 +179,8 @@ export function CaptureWorkspace({
   const [documents, setDocuments] = useState<DraftDocumentAttachment[]>([]);
   const [uploadingDocuments, setUploadingDocuments] = useState(0);
   const [attachmentError, setAttachmentError] = useState("");
+  const [voiceError, setVoiceError] = useState("");
+  const [voiceState, setVoiceState] = useState<VoiceInputState>("IDLE");
   const [composerHeight, setComposerHeight] = useState(COMPOSER_DEFAULT_HEIGHT);
   const [autoComposerHeight, setAutoComposerHeight] = useState(CENTERED_COMPOSER_HEIGHT);
   const [renderedComposerHeight, setRenderedComposerHeight] = useState(CENTERED_COMPOSER_HEIGHT);
@@ -180,6 +193,13 @@ export function CaptureWorkspace({
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const composerWrapRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceTimeoutRef = useRef<number | null>(null);
+  const voiceAbortRef = useRef<AbortController | null>(null);
+  const voiceCancelledRef = useRef(false);
+  const mountedRef = useRef(true);
   const visibleMessages = messages.filter((message) => message.id !== "welcome");
   const controlsDisabled = refining || interactionLocked;
   const emptyConversation =
@@ -198,8 +218,8 @@ export function CaptureWorkspace({
   const contextCopy = {
     GENERAL: {
       title: "有什么可以帮助您的？",
-      badge: "通用助手 · 不读取记忆",
-      placeholder: "问答、调研、绘图，或上传文件开始…",
+      badge: null,
+      placeholder: "上传记忆或文件，或者总结个人、团队记忆…",
     },
     PERSONAL: {
       title: "想整理哪段个人记忆？",
@@ -229,6 +249,42 @@ export function CaptureWorkspace({
     controlsDisabled ||
     uploadingDocuments > 0 ||
     (attachments.length >= MAX_DRAFT_IMAGES && documents.length >= MAX_DRAFT_DOCUMENTS);
+
+  const clearVoiceTimeout = useCallback(() => {
+    if (voiceTimeoutRef.current === null) return;
+    window.clearTimeout(voiceTimeoutRef.current);
+    voiceTimeoutRef.current = null;
+  }, []);
+
+  const releaseVoiceStream = useCallback(() => {
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  }, []);
+
+  const cancelVoiceInput = useCallback(() => {
+    voiceCancelledRef.current = true;
+    clearVoiceTimeout();
+    voiceAbortRef.current?.abort();
+    voiceAbortRef.current = null;
+    const recorder = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    voiceChunksRef.current = [];
+    releaseVoiceStream();
+    if (mountedRef.current) setVoiceState("IDLE");
+  }, [clearVoiceTimeout, releaseVoiceStream]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      cancelVoiceInput();
+    };
+  }, [cancelVoiceInput]);
 
   useEffect(() => {
     const pending = documents.filter((document) =>
@@ -323,7 +379,7 @@ export function CaptureWorkspace({
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
-  }, [messages, refining]);
+  }, [activity?.steps.length, messages, refining]);
 
   useEffect(() => {
     if (!refining) composerRef.current?.focus?.();
@@ -360,12 +416,123 @@ export function CaptureWorkspace({
     onRightPanelOpenChange(true);
   }
 
+  function stopVoiceRecording() {
+    clearVoiceTimeout();
+    const recorder = mediaRecorderRef.current;
+    if (recorder?.state === "recording") recorder.stop();
+  }
+
+  async function startVoiceRecording() {
+    setVoiceError("");
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setVoiceError("当前浏览器不支持录音，请使用最新版 Chrome、Edge 或 Safari。");
+      return;
+    }
+
+    setVoiceState("REQUESTING");
+    voiceCancelledRef.current = false;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mountedRef.current || voiceCancelledRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      mediaStreamRef.current = stream;
+      const mimeType = VOICE_MIME_TYPES.find(
+        (candidate) =>
+          typeof MediaRecorder.isTypeSupported !== "function" ||
+          MediaRecorder.isTypeSupported(candidate),
+      );
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      voiceChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        voiceCancelledRef.current = true;
+        clearVoiceTimeout();
+        releaseVoiceStream();
+        if (mountedRef.current) {
+          setVoiceState("IDLE");
+          setVoiceError("录音过程中出现问题，请重新尝试。");
+        }
+      };
+      recorder.onstop = () => {
+        clearVoiceTimeout();
+        mediaRecorderRef.current = null;
+        releaseVoiceStream();
+        if (voiceCancelledRef.current || !mountedRef.current) return;
+
+        const audio = new Blob(voiceChunksRef.current, {
+          type: recorder.mimeType || mimeType || "audio/webm",
+        });
+        voiceChunksRef.current = [];
+        if (audio.size < MIN_VOICE_AUDIO_BYTES) {
+          setVoiceState("IDLE");
+          setVoiceError("没有录到清晰内容，请靠近麦克风后重试。");
+          return;
+        }
+
+        const abortController = new AbortController();
+        voiceAbortRef.current = abortController;
+        setVoiceState("TRANSCRIBING");
+        void transcribeAudio(audio, abortController.signal)
+          .then((result) => {
+            if (!mountedRef.current || voiceCancelledRef.current) return;
+            setInstruction((current) =>
+              current.trim() ? `${current.trimEnd()} ${result.text}` : result.text,
+            );
+            window.setTimeout(() => composerRef.current?.focus(), 0);
+          })
+          .catch((error: unknown) => {
+            if (
+              !mountedRef.current ||
+              (error instanceof DOMException && error.name === "AbortError")
+            ) {
+              return;
+            }
+            setVoiceError(
+              error instanceof AudioTranscriptionError
+                ? error.message
+                : "语音转写没有成功，请稍后再试。",
+            );
+          })
+          .finally(() => {
+            if (voiceAbortRef.current === abortController) voiceAbortRef.current = null;
+            if (mountedRef.current && !voiceCancelledRef.current) setVoiceState("IDLE");
+          });
+      };
+
+      recorder.start();
+      setVoiceState("RECORDING");
+      voiceTimeoutRef.current = window.setTimeout(stopVoiceRecording, MAX_VOICE_RECORDING_MS);
+    } catch (error) {
+      releaseVoiceStream();
+      if (!mountedRef.current) return;
+      setVoiceState("IDLE");
+      const errorName = error instanceof DOMException ? error.name : "";
+      if (errorName === "NotAllowedError" || errorName === "SecurityError") {
+        setVoiceError("无法使用麦克风，请在浏览器设置中允许麦克风权限。");
+      } else if (errorName === "NotFoundError") {
+        setVoiceError("没有检测到可用的麦克风。");
+      } else {
+        setVoiceError("无法开始录音，请检查麦克风后重试。");
+      }
+    }
+  }
+
   function startNewConversation() {
     if (interactionLocked) return;
+    cancelVoiceInput();
     setInstruction("");
     setAttachments([]);
     setDocuments([]);
     setAttachmentError("");
+    setVoiceError("");
     setAddMenuOpen(false);
     if (imageInputRef.current) imageInputRef.current.value = "";
     onReset();
@@ -374,7 +541,12 @@ export function CaptureWorkspace({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = instruction.trim();
-    if ((!value && attachments.length === 0 && documents.length === 0) || controlsDisabled) return;
+    if (
+      (!value && attachments.length === 0 && documents.length === 0) ||
+      controlsDisabled ||
+      voiceState !== "IDLE"
+    )
+      return;
     if (documentProcessing || uploadingDocuments > 0) {
       setAttachmentError("PDF 仍在解析，请等待完成后再发送。");
       return;
@@ -640,9 +812,11 @@ export function CaptureWorkspace({
                     </span>
                   ))}
                 </h2>
-                <p className={`conversation-context is-${chatContext.toLowerCase()}`}>
-                  {researchMode ? "深度调研 · 使用实时网页来源" : contextCopy.badge}
-                </p>
+                {researchMode || contextCopy.badge ? (
+                  <p className={`conversation-context is-${chatContext.toLowerCase()}`}>
+                    {researchMode ? "深度调研 · 使用实时网页来源" : contextCopy.badge}
+                  </p>
+                ) : null}
               </div>
             ) : null}
             <div className="message-list" aria-live="polite">
@@ -1000,6 +1174,33 @@ export function CaptureWorkspace({
                   <span className="model-unavailable">AI 未配置</span>
                 )}
                 <button
+                  className={`voice-input-button is-${voiceState.toLowerCase()}`}
+                  type="button"
+                  aria-label={
+                    voiceState === "RECORDING"
+                      ? "停止录音并转成文字"
+                      : voiceState === "REQUESTING"
+                        ? "正在请求麦克风权限"
+                        : voiceState === "TRANSCRIBING"
+                          ? "正在转写语音"
+                          : "开始语音输入"
+                  }
+                  aria-pressed={voiceState === "RECORDING"}
+                  title={voiceState === "RECORDING" ? "停止录音" : "语音输入"}
+                  disabled={
+                    controlsDisabled || voiceState === "REQUESTING" || voiceState === "TRANSCRIBING"
+                  }
+                  onClick={() =>
+                    voiceState === "RECORDING" ? stopVoiceRecording() : void startVoiceRecording()
+                  }
+                >
+                  {voiceState === "RECORDING" ? (
+                    <Square aria-hidden="true" size={13} fill="currentColor" />
+                  ) : (
+                    <Mic aria-hidden="true" size={17} strokeWidth={1.9} />
+                  )}
+                </button>
+                <button
                   className="send-button"
                   type="submit"
                   aria-label="发送"
@@ -1007,7 +1208,8 @@ export function CaptureWorkspace({
                     (!instruction.trim() && attachments.length === 0 && documents.length === 0) ||
                     controlsDisabled ||
                     documentProcessing ||
-                    uploadingDocuments > 0
+                    uploadingDocuments > 0 ||
+                    voiceState !== "IDLE"
                   }
                 >
                   <SendIcon />
@@ -1017,6 +1219,20 @@ export function CaptureWorkspace({
             {attachmentError ? (
               <p className="attachment-error" role="alert">
                 {attachmentError}
+              </p>
+            ) : null}
+            {voiceState === "RECORDING" ? (
+              <p className="voice-status" role="status" aria-live="polite">
+                正在录音…再次点击麦克风即可转成文字（最长 2 分钟）
+              </p>
+            ) : voiceState === "TRANSCRIBING" ? (
+              <p className="voice-status" role="status" aria-live="polite">
+                正在把语音转成文字…
+              </p>
+            ) : null}
+            {voiceError ? (
+              <p className="attachment-error" role="alert">
+                {voiceError}
               </p>
             ) : null}
           </div>

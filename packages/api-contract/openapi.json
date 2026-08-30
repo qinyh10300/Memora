@@ -1561,6 +1561,44 @@
         "title": "DecisionRecordResponse",
         "type": "object"
       },
+      "DevelopmentAccountResponse": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "display_name",
+          "email"
+        ],
+        "title": "DevelopmentAccountResponse",
+        "type": "object"
+      },
+      "DevelopmentLoginRequest": {
+        "properties": {
+          "account_id": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Account Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id"
+        ],
+        "title": "DevelopmentLoginRequest",
+        "type": "object"
+      },
       "DiagramEdgeInput": {
         "properties": {
           "id": {
@@ -4238,6 +4276,28 @@
         "title": "SearchResultResponse",
         "type": "object"
       },
+      "SpeechTranscriptionResponse": {
+        "properties": {
+          "model": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 12000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "model"
+        ],
+        "title": "SpeechTranscriptionResponse",
+        "type": "object"
+      },
       "SubscriptionResponse": {
         "properties": {
           "credits_granted": {
@@ -5664,6 +5724,80 @@
         ]
       }
     },
+    "/audio/transcriptions": {
+      "post": {
+        "operationId": "transcribe_audio_audio_transcriptions_post",
+        "requestBody": {
+          "content": {
+            "audio/m4a": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/mp4": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/mpeg": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/ogg": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/wav": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/webm": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/x-m4a": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/x-wav": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeechTranscriptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Transcribe Audio",
+        "tags": [
+          "audio"
+        ]
+      }
+    },
     "/auth/avatar": {
       "delete": {
         "operationId": "delete_avatar_auth_avatar_delete",
@@ -5760,6 +5894,81 @@
           }
         },
         "summary": "Get Avatar",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/auth/development/accounts": {
+      "get": {
+        "operationId": "development_accounts_auth_development_accounts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DevelopmentAccountResponse"
+                  },
+                  "title": "Response Development Accounts Auth Development Accounts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "开发快捷登录未启用"
+          }
+        },
+        "summary": "Development Accounts",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/auth/development/login": {
+      "post": {
+        "operationId": "development_login_auth_development_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevelopmentLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "开发快捷登录未启用或账号不可用"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "尝试过多"
+          }
+        },
+        "summary": "Development Login",
         "tags": [
           "identity"
         ]

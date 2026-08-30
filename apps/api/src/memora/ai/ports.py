@@ -51,6 +51,27 @@ class ChatModelPort(Protocol):
     def complete(self, messages: list[ChatMessage]) -> ChatResult: ...
 
 
+@dataclass(frozen=True)
+class SpeechTranscriptionResult:
+    text: str
+    model: str
+    usage: ModelUsage
+
+
+class SpeechToTextPort(Protocol):
+    @property
+    def model_id(self) -> str: ...
+
+    def transcribe(
+        self,
+        audio: bytes,
+        *,
+        filename: str,
+        media_type: str,
+        language: str | None = None,
+    ) -> SpeechTranscriptionResult: ...
+
+
 ImageAspectRatio = Literal["1:1", "4:3", "3:4", "16:9", "9:16"]
 ImageQuality = Literal["standard", "high"]
 ImageWatermarkMode = Literal["ALLOW", "CLEAN_OUTPUT"]

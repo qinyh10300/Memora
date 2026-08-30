@@ -11,6 +11,16 @@ import type {
 import { GlobeIcon, LibraryIcon, SparkleIcon } from "@/features/shared/icons";
 import { formatDateTime, sourceHostname } from "@/features/shared/utils";
 
+export function formatTraceDuration(durationMs: number) {
+  const safeDurationMs = Math.max(0, durationMs);
+  if (safeDurationMs >= 60_000) {
+    const minutes = Math.floor(safeDurationMs / 60_000);
+    const seconds = Math.floor((safeDurationMs % 60_000) / 1_000);
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${(safeDurationMs / 1_000).toFixed(1)}s`;
+}
+
 export function ActivityTrace({
   trace,
   active = false,
@@ -35,7 +45,8 @@ export function ActivityTrace({
 
   if (!trace.steps.length) return null;
   const elapsedMs = active ? Math.max(trace.duration_ms, activeElapsedMs) : trace.duration_ms;
-  const elapsedLabel = `${Math.max(1, Math.round(elapsedMs / 1000))} 秒`;
+  const settledStepCount = trace.steps.filter((step) => step.status !== "RUNNING").length;
+  const currentStep = [...trace.steps].reverse().find((step) => step.status === "RUNNING");
   const statusLabel: Record<DraftTraceStep["status"], string> = {
     RUNNING: "进行中",
     COMPLETED: "完成",
@@ -54,21 +65,26 @@ export function ActivityTrace({
         <span className="trace-summary-icon">
           <SparkleIcon />
         </span>
-        <span>
-          <strong>{active ? "正在工作" : "工作过程"}</strong>
-          <small>{elapsedLabel}</small>
+        <span className="trace-summary-copy">
+          <strong>{active ? "正在执行" : `执行了 ${trace.steps.length} 个步骤`}</strong>
+          <small>{active ? `${settledStepCount}/${trace.steps.length} 个步骤` : "工作过程"}</small>
         </span>
-        <span className="trace-summary-state">
-          {active ? "实时更新" : `${trace.steps.length} 步`}
-        </span>
+        <time className="trace-summary-time">{formatTraceDuration(elapsedMs)}</time>
         <span className="trace-chevron" aria-hidden="true" />
       </summary>
       <div className="trace-body">
         <p className="trace-safety-note">安全过程摘要，不包含模型隐藏思维链。</p>
+        {active && currentStep ? (
+          <div className="trace-live-status" role="status" aria-live="polite">
+            <span className="trace-live-dot" aria-hidden="true" />
+            <span>当前：{currentStep.title}</span>
+          </div>
+        ) : null}
         <ol>
           {trace.steps.map((step) => {
             const showWebSources = step.id.includes("web-search") && webCitations.length > 0;
             const showMemorySources = step.kind === "RETRIEVAL" && citations.length > 0;
+            const stepDurationMs = step.duration_ms ?? Math.max(0, elapsedMs - step.elapsed_ms);
             return (
               <li className={`is-${step.status.toLowerCase()}`} key={step.id}>
                 <span className="trace-node" aria-hidden="true">
@@ -84,9 +100,6 @@ export function ActivityTrace({
                   <div className="trace-step-title">
                     <strong>{step.title}</strong>
                     <span>{statusLabel[step.status]}</span>
-                    {step.duration_ms != null ? (
-                      <time>{Math.max(1, Math.round(step.duration_ms / 1000))} 秒</time>
-                    ) : null}
                   </div>
                   {step.detail ? <p>{step.detail}</p> : null}
                   {showWebSources ? (
@@ -128,6 +141,7 @@ export function ActivityTrace({
                     </div>
                   ) : null}
                 </div>
+                <time className="trace-step-time">{formatTraceDuration(stepDurationMs)}</time>
               </li>
             );
           })}

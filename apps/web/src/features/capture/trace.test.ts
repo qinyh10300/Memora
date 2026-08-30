@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { DraftChatResponse, DraftMemoryScope } from "@/features/shared/contracts";
 
-import { buildCompletedTrace } from "./trace";
+import { buildCompletedTrace, willSearchWeb } from "./trace";
 
 const response: DraftChatResponse = {
   markdown: "",
@@ -49,5 +49,18 @@ describe("buildCompletedTrace", () => {
       status: "COMPLETED",
       title: "团队共享记忆已检索",
     });
+  });
+});
+
+describe("willSearchWeb", () => {
+  it("keeps memory-only search inside the authorized memory harness", () => {
+    expect(willSearchWeb("搜索我的记忆并提炼关键点", "AUTO", "PERSONAL")).toBe(false);
+    expect(willSearchWeb("搜索团队记忆里的项目决定", "AUTO", "TEAM")).toBe(false);
+  });
+
+  it("still recognizes explicit web intent and required mode", () => {
+    expect(willSearchWeb("搜索我的记忆并联网补充最新消息", "AUTO", "PERSONAL")).toBe(true);
+    expect(willSearchWeb("搜索我的记忆", "REQUIRED", "PERSONAL")).toBe(true);
+    expect(willSearchWeb("搜索一下最新消息", "DISABLED", "NONE")).toBe(false);
   });
 });

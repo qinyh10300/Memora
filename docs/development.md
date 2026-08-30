@@ -67,8 +67,12 @@ make dev
 `make dev` 在前台显示服务日志。需要让环境在后台持续运行时，可以执行：
 
 ```bash
+make compose-check
 docker compose up --detach --build
 ```
+
+`make dev` 会自动执行同一项 Compose 安全检查。开发快捷登录启用时，检查会拒绝任何未绑定
+到 `127.0.0.1` 或 `::1` 的代理发布端口；不要绕过检查直接启动完整环境。
 
 Compose 按以下顺序启动：
 
@@ -100,6 +104,10 @@ make down
 - API readiness：`http://localhost:8080/api/ready`
 - API 文档：`http://localhost:8080/api/docs`
 
+示例配置默认把 HTTP/HTTPS 端口绑定到 `127.0.0.1`。只有完成生产密钥、HTTPS、备份恢复与
+访问控制配置的服务器部署，才应在服务器 `.env` 中显式改为外部监听地址；Caddy 的 Host
+匹配不能代替网络绑定边界。
+
 首次启动会幂等创建以下本地测试账号：
 
 | 显示名 | 邮箱                 | 本地初始密码         |
@@ -110,6 +118,14 @@ make down
 | Devon  | `devon@memora.local` | `memora-local-devon` |
 
 这些是提交到仓库的非生产开发凭据，只能用于本机。公网部署前必须通过 `SEED_USER_1_*` 到 `SEED_USER_4_*` 环境变量覆盖邮箱、显示名和每个账号的独立初始密码；生产 seed 会拒绝上述 `memora-local-*` 密码。seed 是幂等的，不会在每次启动时覆盖已有账号密码。
+
+本机需要免输入登录时，在 `.env` 同时设置
+`APP_ENV=development`、`SEED_DEVELOPMENT_DATA_ENABLED=true` 和
+`DEVELOPMENT_QUICK_LOGIN_ENABLED=true`，再运行一次 `docker compose run --rm --no-deps seed`
+并重启 API。登录弹窗会直接展示四张账号卡片，点击任一张即可创建与普通登录相同的
+HttpOnly session 并进入工作台；客户端和接口都不会读取或返回 seed 密码。任一开关关闭、环境
+不是 development、账号停用或没有 workspace membership 时，快捷入口不可用且普通邮箱密码
+登录仍然保留。该能力只能绑定本机回环地址使用，不能在公网或生产环境启用。
 
 邮箱验证码认证默认关闭，四个本地账号仍可直接使用上表密码。需要启用真实验证码邮件时，
 在 `.env` 配置 `EMAIL_VERIFICATION_ENABLED=true`、`EMAIL_SMTP_HOST`、
@@ -148,8 +164,8 @@ Web 通过同源 `/api` 和由 OpenAPI 生成的类型化客户端调用后端�
 | `make contract`       | 从 FastAPI 重新生成 OpenAPI JSON                                                                         |
 | `make contract-check` | 在临时文件生成契约并检测漂移                                                                             |
 | `make build`          | Next.js 生产构建                                                                                         |
-| `make check`          | 格式、lint、类型、测试、契约与构建总检查                                                                 |
-| `make compose-check`  | Docker Compose 语义配置检查                                                                              |
+| `make check`          | Compose 安全、格式、lint、类型、测试、契约与构建总检查                                                    |
+| `make compose-check`  | Docker Compose 语义与开发快捷登录端口安全检查                                                             |
 | `make e2e`            | 对已运行环境执行登录、默认私有、授权搜索/Chat/报告、分享、取消共享、worker 降级和删除的可清理 smoke test |
 
 `make check` 不需要真实 AI Key，也不会调用外部模型。真实供应商契约测试单独标记，不能混入默认离线 CI。
@@ -160,6 +176,7 @@ Web 通过同源 `/api` 和由 OpenAPI 生成的类型化客户端调用后端�
 
 - Chat：`gpt-5.6-terra`（文字与图片，多模态质量/成本平衡档）
 - Embedding：`text-embedding-3-small`
+- Speech-to-text：`gpt-4o-mini-transcribe`（可选，供应商需支持 Audio Transcriptions）
 
 先创建本地配置：
 
@@ -172,9 +189,15 @@ make setup
 ```dotenv
 AI_CHAT_API_KEY=你的云雾专用低额度Key
 AI_EMBEDDING_API_KEY=你的云雾专用低额度Key
+AI_SPEECH_API_KEY=拥有语音转写权限的专用Key
 ```
 
 如果暂时只需要 Markdown AI 整理，可以只填写 `AI_CHAT_API_KEY`；此时记忆仍会保存和参与关键词检索，但 embedding 状态会显示为 `WAITING_CONFIGURATION`。如果云雾账号没有模板中的模型，使用 `GET https://yunwu.ai/v1/models` 返回的实际模型 ID 替换对应 `AI_*_MODEL`。
+
+Chatbot 语音输入只需要 speech-to-text，不需要 TTS。浏览器录音停止后把原始音频发送到
+受保护的同源 API；API 临时转发到 `AI_SPEECH_BASE_URL` 的 `/audio/transcriptions`，只把文字
+返回输入框，不自动发送或保存录音。`AI_SPEECH_API_KEY` 和 `AI_SPEECH_MODEL` 必须显式配置，
+不会隐式复用聊天 Key；留空时语音按钮会收到可恢复的“尚未配置”，文字聊天不受影响。
 
 Capture Chatbot 支持在当前消息附加最多 3 张 PNG、JPEG 或 WEBP 图片：单张最多
 8 MiB，解码后总计最多 16 MiB。浏览器只把当前轮图片发送给 API，API 校验后使用
@@ -268,7 +291,7 @@ OpenAPI 差异应与 API 实现一起审查。`make contract` 会同时更新 JS
 
 ## Environment and secrets
 
-`.env.example` 将聊天和 embedding 配置分开，即使初始都指向云雾兼容入口，也不能假设两者永久使用同一模型或供应商。
+`.env.example` 将聊天、embedding 和 speech-to-text 配置分开，即使初始都指向云雾兼容入口，也不能假设它们永久使用同一模型或供应商。
 
 生产服务器至少要替换：
 
@@ -279,6 +302,7 @@ OpenAPI 差异应与 API 实现一起审查。`make contract` 会同时更新 JS
 - `HTTP_PORT` 和 `HTTPS_PORT`
 - `AI_CHAT_API_KEY`、`AI_CHAT_MODEL`
 - `AI_EMBEDDING_API_KEY`、`AI_EMBEDDING_MODEL`
+- `AI_SPEECH_API_KEY`、`AI_SPEECH_MODEL`（启用语音输入时）
 
 生产环境设置 `APP_ENV=production` 后，API 会拒绝默认会话密钥。不要将 AI Key 放入 Web 构建参数、客户端变量、日志或 CI 的普通输出。
 

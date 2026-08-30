@@ -1,6 +1,7 @@
 import type { components } from "@memora/api-contract";
 
 export type CurrentUser = components["schemas"]["CurrentUserResponse"];
+export type DevelopmentAccount = components["schemas"]["DevelopmentAccountResponse"];
 export type Workspace = components["schemas"]["WorkspaceResponse"];
 export type WorkspaceMember = components["schemas"]["WorkspaceMemberResponse"];
 export type WorkspaceJoinRequest = components["schemas"]["WorkspaceJoinRequestResponse"];

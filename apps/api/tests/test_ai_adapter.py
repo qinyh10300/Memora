@@ -7,10 +7,12 @@ from memora.ai.openai_compatible import (
     OpenAICompatibleChatModel,
     OpenAICompatibleEmbeddingModel,
     OpenAICompatibleImageGenerator,
+    OpenAICompatibleSpeechToText,
     OpenAICompatibleWebSearch,
     build_chat_model,
     build_embedding_model,
     build_image_generator,
+    build_speech_to_text,
     build_web_search,
 )
 from memora.ai.ports import (
@@ -38,6 +40,111 @@ class FakeTransport:
     ) -> dict[str, Any]:
         self.request = (url, headers, payload, timeout)
         return self.response
+
+
+class FakeMultipartTransport:
+    def __init__(self, response: dict[str, Any]) -> None:
+        self.response = response
+        self.request: (
+            tuple[
+                str,
+                dict[str, str],
+                dict[str, str],
+                str,
+                str,
+                bytes,
+                float,
+            ]
+            | None
+        ) = None
+
+    def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        fields: dict[str, str],
+        filename: str,
+        media_type: str,
+        content: bytes,
+        timeout: float,
+    ) -> dict[str, Any]:
+        self.request = (url, headers, fields, filename, media_type, content, timeout)
+        return self.response
+
+
+def test_speech_adapter_uses_compatible_multipart_contract() -> None:
+    transport = FakeMultipartTransport(
+        {
+            "text": "  转写后的文字  ",
+            "model": "speech-model-v2",
+            "usage": {"input_tokens": 12, "output_tokens": 4},
+        }
+    )
+    model = OpenAICompatibleSpeechToText(
+        base_url="https://relay.example/v1/",
+        api_key="test-secret-key",
+        model="speech-model-v1",
+        timeout_seconds=23,
+        transport=transport,
+    )
+    audio = b"fake-audio-content"
+
+    result = model.transcribe(
+        audio,
+        filename="voice.webm",
+        media_type="audio/webm",
+        language="zh",
+    )
+
+    assert result.text == "转写后的文字"
+    assert result.model == "speech-model-v2"
+    assert result.usage == ModelUsage(input_tokens=12, output_tokens=4)
+    assert transport.request is not None
+    url, headers, fields, filename, media_type, content, timeout = transport.request
+    assert url == "https://relay.example/v1/audio/transcriptions"
+    assert headers["Authorization"] == "Bearer test-secret-key"
+    assert fields == {
+        "model": "speech-model-v1",
+        "response_format": "json",
+        "language": "zh",
+    }
+    assert (filename, media_type, content, timeout) == (
+        "voice.webm",
+        "audio/webm",
+        audio,
+        23,
+    )
+
+
+def test_speech_adapter_rejects_malformed_response_and_factory_requires_configuration() -> None:
+    model = OpenAICompatibleSpeechToText(
+        base_url="https://relay.example/v1",
+        api_key="test-secret-key",
+        model="speech-model-v1",
+        timeout_seconds=23,
+        transport=FakeMultipartTransport({"text": "   "}),
+    )
+    with pytest.raises(AIProviderError, match="invalid_provider_response"):
+        model.transcribe(b"audio", filename="voice.webm", media_type="audio/webm")
+
+    assert (
+        build_speech_to_text(
+            Settings(ai_speech_api_key=SecretStr(""), ai_speech_model="speech-model")
+        )
+        is None
+    )
+    assert (
+        build_speech_to_text(Settings(ai_speech_api_key=SecretStr("secret"), ai_speech_model=""))
+        is None
+    )
+    settings = Settings(
+        ai_speech_api_key=SecretStr("private-speech-key"),
+        ai_speech_model="speech-model",
+    )
+    configured = build_speech_to_text(settings)
+    assert configured is not None and configured.model_id == "speech-model"
+    assert "private-speech-key" not in repr(settings)
 
 
 def test_embedding_adapter_uses_compatible_contract_and_orders_results() -> None:

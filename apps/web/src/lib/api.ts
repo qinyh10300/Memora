@@ -8,6 +8,7 @@ export const api = createClient<paths>({
 
 type DraftChatRequest = components["schemas"]["DraftChatRequest"];
 type DraftChatResponse = components["schemas"]["DraftChatResponse"];
+export type SpeechTranscription = components["schemas"]["SpeechTranscriptionResponse"];
 export type AgentExecution = components["schemas"]["AgentExecutionResponse"];
 export type DraftChatStreamEvent =
   | components["schemas"]["DraftChatStreamProgressEvent"]
@@ -24,6 +25,45 @@ export class DraftChatStreamError extends Error {
     super(message);
     this.name = "DraftChatStreamError";
   }
+}
+
+export class AudioTranscriptionError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "AudioTranscriptionError";
+  }
+}
+
+export async function transcribeAudio(
+  audio: Blob,
+  signal?: AbortSignal,
+): Promise<SpeechTranscription> {
+  const response = await fetch("/api/audio/transcriptions", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": audio.type || "audio/webm",
+    },
+    body: audio,
+    signal,
+  });
+  if (!response.ok) {
+    let message = "语音转写没有成功，请稍后再试。";
+    try {
+      const payload = (await response.json()) as { detail?: unknown };
+      if (typeof payload.detail === "string" && payload.detail.trim()) {
+        message = payload.detail;
+      }
+    } catch {
+      // Keep the safe fallback for non-JSON upstream failures.
+    }
+    throw new AudioTranscriptionError(message, response.status);
+  }
+  return (await response.json()) as SpeechTranscription;
 }
 
 export async function streamDraftChat(

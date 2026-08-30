@@ -5,6 +5,7 @@ import {
   cancelAgentExecution,
   getAgentExecution,
   streamDraftChat,
+  transcribeAudio,
   type AgentExecution,
   type DraftChatStreamEvent,
 } from "./api";
@@ -69,6 +70,53 @@ function eventStreamResponse(events: DraftChatStreamEvent[], executionId?: strin
 }
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("transcribeAudio", () => {
+  it("以原始音频和登录凭据请求转写", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: "转写结果", model: "speech-model" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const audio = new Blob(["webm-audio"], { type: "audio/webm;codecs=opus" });
+
+    await expect(transcribeAudio(audio)).resolves.toEqual({
+      text: "转写结果",
+      model: "speech-model",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/audio/transcriptions",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        body: audio,
+        headers: expect.objectContaining({ "Content-Type": "audio/webm;codecs=opus" }),
+      }),
+    );
+  });
+
+  it("保留服务端安全错误信息和状态码", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: "语音输入尚未配置" }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+
+    await expect(transcribeAudio(new Blob(["audio"]))).rejects.toEqual(
+      expect.objectContaining({
+        name: "AudioTranscriptionError",
+        message: "语音输入尚未配置",
+        status: 503,
+      }),
+    );
+  });
+});
 
 describe("streamDraftChat", () => {
   it("跨网络分块解析过程事件和最终响应", async () => {
